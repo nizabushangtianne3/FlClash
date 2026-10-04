@@ -242,6 +242,8 @@ class _ProfilesGridState extends ConsumerState<_ProfilesGrid> {
             crossAxisSpacing: widget.spacing,
             mainAxisExtent: _profileItemHeight,
           ),
+          addAutomaticKeepAlives: false,
+          addSemanticIndexes: false,
           itemCount: profiles.length,
           itemBuilder: (context, index) {
             final profile = profiles[index];

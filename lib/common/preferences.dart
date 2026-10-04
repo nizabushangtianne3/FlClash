@@ -11,14 +11,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 class Preferences {
   static Preferences? _instance;
   Completer<SharedPreferences?> sharedPreferencesCompleter = Completer();
+  Completer<bool> isInitCompleter = Completer();
 
-  Future<bool> get isInit async =>
-      await sharedPreferencesCompleter.future != null;
+  Future<bool> get isInit async => isInitCompleter.future;
 
   Preferences._internal() {
     SharedPreferences.getInstance()
-        .then((value) => sharedPreferencesCompleter.complete(value))
-        .onError((_, _) => sharedPreferencesCompleter.complete(null));
+        .then((value) {
+          sharedPreferencesCompleter.complete(value);
+          isInitCompleter.complete(true);
+        })
+        .onError((_, _) {
+          sharedPreferencesCompleter.complete(null);
+          isInitCompleter.complete(false);
+        });
   }
 
   factory Preferences() {

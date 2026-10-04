@@ -334,6 +334,8 @@ class _AccessViewState extends ConsumerState<AccessView>
               controller: _controller,
               padding: EdgeInsets.only(bottom: BottomInsetScope.of(context)),
               scrollCacheExtent: arrivalScrollCacheExtent(routeSettled),
+              addAutomaticKeepAlives: false,
+              addSemanticIndexes: false,
               itemCount: packages.length,
               itemExtent: 72,
               itemBuilder: (_, index) {
