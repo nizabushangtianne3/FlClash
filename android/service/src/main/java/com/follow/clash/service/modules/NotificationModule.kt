@@ -70,8 +70,10 @@ internal class NotificationModule(
                 if (!screenOn) return@collectLatest
                 combine(
                     flow {
+                        // 2s is enough for the status-bar speed line and halves
+                        // binder/Core traffic work while the screen is on.
                         while (true) {
-                            delay(1_000)
+                            delay(2_000)
                             emit(Unit)
                         }
                     },
