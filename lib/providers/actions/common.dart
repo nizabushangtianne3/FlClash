@@ -37,8 +37,6 @@ class CommonAction extends _$CommonAction {
     });
   }
 
-  int _trafficTick = 0;
-
   Future<void> updateTraffic() async {
     if (_isUpdatingTraffic) {
       return;
@@ -63,17 +61,7 @@ class CommonAction extends _$CommonAction {
         }
         return;
       }
-      _trafficTick++;
-      // Total is cumulative; refresh it every other tick via one combined IPC.
-      if (_trafficTick.isOdd) {
-        final traffic = await _readTraffic(
-          () => _core.getTraffic(onlyStatisticsProxy),
-        );
-        if (traffic != null) {
-          ref.read(trafficsProvider.notifier).addTraffic(traffic);
-        }
-        return;
-      }
+      // One combined IPC for rate + totals; only write total when it changes.
       try {
         final stats = await _core.getTrafficStats(onlyStatisticsProxy);
         ref.read(trafficsProvider.notifier).addTraffic(stats.now);
