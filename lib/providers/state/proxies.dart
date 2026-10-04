@@ -185,7 +185,12 @@ ProxyGroupSelectorState proxyGroupSelectorState(
   String groupName,
   String query,
 ) {
-  final proxiesStyle = ref.watch(proxiesStyleSettingProvider);
+  final sortType = ref.watch(
+    proxiesStyleSettingProvider.select((state) => state.sortType),
+  );
+  final cardType = ref.watch(
+    proxiesStyleSettingProvider.select((state) => state.cardType),
+  );
   final group = ref.watch(
     visibleGroupsStateProvider.select(
       (state) => state.value.getGroup(groupName),
@@ -199,8 +204,8 @@ ProxyGroupSelectorState proxyGroupSelectorState(
       [];
   return ProxyGroupSelectorState(
     testUrl: group?.testUrl,
-    proxiesSortType: proxiesStyle.sortType,
-    proxyCardType: proxiesStyle.cardType,
+    proxiesSortType: sortType,
+    proxyCardType: cardType,
     sortNum: sortNum,
     groupType: group?.type ?? GroupType.Selector,
     proxies: proxies,

@@ -363,6 +363,7 @@ class ProxiesAction extends _$ProxiesAction {
     List<_DelayTestBatch> batches,
   ) {
     final groups = ref.read(groupsProvider);
+    final realStates = <String, SelectedProxyState>{};
     final selectedMap = ref.read(
       currentProfileProvider.select((state) => state?.selectedMap ?? {}),
     );
@@ -371,10 +372,13 @@ class ProxiesAction extends _$ProxiesAction {
     for (final batch in batches) {
       final fallbackTestUrl = ref.read(realTestUrlProvider(batch.testUrl));
       for (final proxy in batch.proxies) {
-        final state = computeRealSelectedProxyState(
+        final state = realStates.putIfAbsent(
           proxy.name,
-          groups: groups,
-          selectedMap: selectedMap,
+          () => computeRealSelectedProxyState(
+            proxy.name,
+            groups: groups,
+            selectedMap: selectedMap,
+          ),
         );
         if (state.proxyName.isEmpty) {
           continue;
