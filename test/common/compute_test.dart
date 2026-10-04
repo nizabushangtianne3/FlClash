@@ -313,6 +313,35 @@ void main() {
       );
       expect(result.length, 2);
     });
+
+    test('resolves the same proxy once while sorting multiple groups', () {
+      const proxyA = Proxy(name: 'proxy-a', type: 'ss');
+      const proxyB = Proxy(name: 'proxy-b', type: 'ss');
+      const groupA = Group(
+        name: 'group-a',
+        type: GroupType.Selector,
+        testUrl: 'http://a.test',
+        all: [proxyA, proxyB],
+      );
+      const groupB = Group(
+        name: 'group-b',
+        type: GroupType.Selector,
+        testUrl: 'http://b.test',
+        all: [proxyA, proxyB],
+      );
+      final result = computeSort(
+        groups: [groupA, groupB],
+        sortType: ProxiesSortType.delay,
+        delayMap: {
+          'http://a.test': {'proxy-a': 100, 'proxy-b': 50},
+          'http://b.test': {'proxy-a': 80, 'proxy-b': 90},
+        },
+        selectedMap: {},
+        defaultTestUrl: 'http://default.test',
+      );
+      expect(result[0].all.map((p) => p.name).toList(), ['proxy-b', 'proxy-a']);
+      expect(result[1].all.map((p) => p.name).toList(), ['proxy-a', 'proxy-b']);
+    });
   });
 
   group('Group.getCurrentSelectedName', () {
