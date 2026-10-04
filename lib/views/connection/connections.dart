@@ -45,7 +45,7 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
   }
 
   @override
-  Duration get pollInterval => const Duration(seconds: 2);
+  Duration get pollInterval => const Duration(milliseconds: 2500);
 
   List<IconButtonData> _buildActions() {
     return [
@@ -94,6 +94,10 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
 
   void _applyConnections(List<TrackerInfo>? trackerInfos) {
     if (trackerInfos == null) {
+      return;
+    }
+    // Idle page: avoid rank + notifier work when nothing is open.
+    if (trackerInfos.isEmpty && _listController.value.trackerInfos.isEmpty) {
       return;
     }
     _listController.setTrackerInfos(
