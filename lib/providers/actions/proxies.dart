@@ -107,7 +107,9 @@ class ProxiesAction extends _$ProxiesAction {
         String proxyName,
       ) async {
         await changeProxy(groupName: groupName, proxyName: proxyName);
-        updateGroupsDebounce();
+        // selectedMap already updated the UI; a full groups refetch is
+        // expensive and not needed to complete the switch.
+        updateGroupsDebounce(const Duration(seconds: 1));
       },
       args: [groupName, proxyName],
       duration: const Duration(milliseconds: 150),

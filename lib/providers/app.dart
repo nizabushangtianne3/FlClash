@@ -32,10 +32,17 @@ class Logs extends _$Logs with AutoDisposeNotifierMixin {
   }
 
   void add(Log value) {
+    addAll([value]);
+  }
+
+  void addAll(Iterable<Log> values) {
     if (!ref.mounted) {
       return;
     }
-    this.value = state.append(value);
+    final next = state.appendAll(values);
+    if (!identical(next, state)) {
+      this.value = next;
+    }
   }
 
   Future<bool> exportLogs() async {
@@ -57,10 +64,17 @@ class Requests extends _$Requests with AutoDisposeNotifierMixin {
   }
 
   void addRequest(TrackerInfo value) {
+    addRequests([value]);
+  }
+
+  void addRequests(Iterable<TrackerInfo> values) {
     if (!ref.mounted) {
       return;
     }
-    this.value = state.append(value);
+    final next = state.appendAll(values);
+    if (!identical(next, state)) {
+      this.value = next;
+    }
   }
 }
 
@@ -72,10 +86,17 @@ class DnsQueries extends _$DnsQueries with AutoDisposeNotifierMixin {
   }
 
   void addQuery(DnsQuery value) {
+    addQueries([value]);
+  }
+
+  void addQueries(Iterable<DnsQuery> values) {
     if (!ref.mounted) {
       return;
     }
-    this.value = state.append(value);
+    final next = state.appendAll(values);
+    if (!identical(next, state)) {
+      this.value = next;
+    }
   }
 }
 

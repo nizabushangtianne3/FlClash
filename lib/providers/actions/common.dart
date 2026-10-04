@@ -46,6 +46,18 @@ class CommonAction extends _$CommonAction {
       final onlyStatisticsProxy = ref.read(
         appSettingProvider.select((state) => state.onlyStatisticsProxy),
       );
+      final visible = ref.read(appVisibleProvider);
+      // Tray title only needs the latest rate. Skip total-traffic IPC and
+      // the extra provider write while the window is in the menu bar.
+      if (!visible) {
+        final traffic = await _readTraffic(
+          () => _core.getTraffic(onlyStatisticsProxy),
+        );
+        if (traffic != null) {
+          ref.read(trafficsProvider.notifier).addTraffic(traffic);
+        }
+        return;
+      }
       final [traffic, totalTraffic] = await Future.wait([
         _readTraffic(() => _core.getTraffic(onlyStatisticsProxy)),
         _readTraffic(() => _core.getTotalTraffic(onlyStatisticsProxy)),

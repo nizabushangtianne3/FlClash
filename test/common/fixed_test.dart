@@ -83,6 +83,14 @@ void main() {
       }
       expect(list.list, [3, 4]);
     });
+
+    test('appendAll bumps revision once and honours maxLength', () {
+      final first = FixedList(4, list: [1, 2]);
+      final second = first.appendAll([3, 4, 5]);
+      expect(second.list, [2, 3, 4, 5]);
+      expect(second.revision, first.revision + 1);
+      expect(identical(first.appendAll(const []), first), isTrue);
+    });
   });
 
   group('retainTrimmedHead', () {

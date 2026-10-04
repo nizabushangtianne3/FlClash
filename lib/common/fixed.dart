@@ -32,6 +32,22 @@ class FixedList<T> {
     return FixedList._(maxLength, _list, _revision + 1);
   }
 
+  /// One generation bump for a batch, so a burst of logs/requests does not
+  /// rebuild listeners once per event.
+  FixedList<T> appendAll(Iterable<T> items) {
+    var added = 0;
+    for (final item in items) {
+      _list.add(item);
+      added++;
+    }
+    if (added == 0) {
+      return this;
+    }
+    _list.truncate(maxLength);
+    _snapshot = null;
+    return FixedList._(maxLength, _list, _revision + 1);
+  }
+
   List<T> get list => _snapshot ??= List.unmodifiable(_list);
 
   int get length => _list.length;

@@ -33,9 +33,15 @@ func handleGetConnectionCount() int {
 }
 
 func handleCloseConnections() bool {
+	var trackers []statistic.Tracker
 	statistic.DefaultManager.Range(func(c statistic.Tracker) bool {
-		_ = c.Close()
+		trackers = append(trackers, c)
 		return true
+	})
+	safeGo("closeConnections", func() {
+		for _, c := range trackers {
+			_ = c.Close()
+		}
 	})
 	return true
 }

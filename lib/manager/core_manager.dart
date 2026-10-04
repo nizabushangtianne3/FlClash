@@ -26,6 +26,13 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     with CoreEventListener {
   CoreController get _core => ref.read(coreHandlerProvider);
 
+  Timer? _feedFlushTimer;
+  final List<Log> _bufferedLogs = [];
+  final List<TrackerInfo> _bufferedRequests = [];
+  final List<DnsQuery> _bufferedDns = [];
+  int _bufferedRequestCount = 0;
+  int _bufferedDnsCount = 0;
+
   @override
   Widget build(BuildContext context) {
     return widget.child;
@@ -85,8 +92,44 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   void dispose() {
+    _feedFlushTimer?.cancel();
+    _flushFeeds();
     coreEventManager.removeListener(this);
     super.dispose();
+  }
+
+  void _scheduleFeedFlush() {
+    _feedFlushTimer ??= Timer(renderThrottleDuration, _flushFeeds);
+  }
+
+  void _flushFeeds() {
+    _feedFlushTimer?.cancel();
+    _feedFlushTimer = null;
+    if (_bufferedLogs.isNotEmpty) {
+      final logs = List<Log>.of(_bufferedLogs);
+      _bufferedLogs.clear();
+      ref.read(logsProvider.notifier).addAll(logs);
+    }
+    if (_bufferedRequests.isNotEmpty) {
+      final requests = List<TrackerInfo>.of(_bufferedRequests);
+      _bufferedRequests.clear();
+      ref.read(requestsProvider.notifier).addRequests(requests);
+    }
+    if (_bufferedDns.isNotEmpty) {
+      final queries = List<DnsQuery>.of(_bufferedDns);
+      _bufferedDns.clear();
+      ref.read(dnsQueriesProvider.notifier).addQueries(queries);
+    }
+    if (_bufferedRequestCount != 0) {
+      final delta = _bufferedRequestCount;
+      _bufferedRequestCount = 0;
+      ref.read(requestCountProvider.notifier).update((count) => count + delta);
+    }
+    if (_bufferedDnsCount != 0) {
+      final delta = _bufferedDnsCount;
+      _bufferedDnsCount = 0;
+      ref.read(dnsQueryCountProvider.notifier).update((count) => count + delta);
+    }
   }
 
   @override
@@ -101,7 +144,8 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   void onLog(Log log) {
-    ref.read(logsProvider.notifier).add(log);
+    _bufferedLogs.add(log);
+    _scheduleFeedFlush();
     if (log.logLevel == LogLevel.error) {
       throttler.call(
         FunctionTag.coreErrorNotifier,
@@ -132,8 +176,9 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     // Connections history is only useful while the UI is visible; dropping
     // events in the background avoids FixedList rebuild storms on busy links.
     if (ref.read(appVisibleProvider)) {
-      ref.read(requestsProvider.notifier).addRequest(trackerInfo);
-      ref.read(requestCountProvider.notifier).update((count) => count + 1);
+      _bufferedRequests.add(trackerInfo);
+      _bufferedRequestCount++;
+      _scheduleFeedFlush();
     }
     super.onRequest(trackerInfo);
   }
@@ -141,8 +186,9 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   @override
   void onDns(DnsQuery dnsQuery) {
     if (ref.read(appVisibleProvider)) {
-      ref.read(dnsQueriesProvider.notifier).addQuery(dnsQuery);
-      ref.read(dnsQueryCountProvider.notifier).update((count) => count + 1);
+      _bufferedDns.add(dnsQuery);
+      _bufferedDnsCount++;
+      _scheduleFeedFlush();
     }
     super.onDns(dnsQuery);
   }
