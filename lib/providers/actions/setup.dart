@@ -384,8 +384,10 @@ class SetupAction extends _$SetupAction {
         silence: silence,
         preloadInvoke: preloadInvoke,
         onUpdated: () async {
-          await ref.read(proxiesActionProvider.notifier).updateGroups();
-          await ref.read(providersProvider.notifier).syncProviders();
+          await Future.wait([
+            ref.read(proxiesActionProvider.notifier).updateGroups(),
+            ref.read(providersProvider.notifier).syncProviders(),
+          ]);
         },
       );
     });
@@ -425,21 +427,29 @@ class SetupAction extends _$SetupAction {
     );
     final appendSystemDns = networkSetting.appendSystemDns;
     final isCustom = setupState.profileType == ProfileType.custom;
-    Map<String, dynamic> rawConfig = isCustom
-        ? {
+    final proxyGroups = isCustom ? setupState.proxyGroups : <ProxyGroup>[];
+    final rules = isCustom ? setupState.rules : <Rule>[];
+    final configMapFuture = isCustom
+        ? Future<Map<String, dynamic>>.value({
             'proxies': appProxiesPayload(
               setupState.appProxies,
               dialers: setupState.proxyDialers,
               groups: setupState.proxyGroups,
             ),
-          }
-        : await _core.getConfig(profileId);
-    final proxyGroups = isCustom ? setupState.proxyGroups : <ProxyGroup>[];
-    final rules = isCustom ? setupState.rules : <Rule>[];
-    final scriptContent =
+          })
+        : _core.getConfig(profileId);
+    final scriptFuture =
         !isCustom && setupState.extendType == ExtendType.script
-        ? await setupState.script?.content
-        : null;
+        ? setupState.script?.content ?? Future<String?>.value(null)
+        : Future<String?>.value(null);
+    final directoryFuture = appPath.profilesPath;
+    final injectedFuture = _resolveInjectedProviders(
+      setupState,
+      proxyGroups: proxyGroups,
+      rules: rules,
+    );
+    final rawConfig = await configMapFuture;
+    final scriptContent = await scriptFuture;
     if (scriptContent?.isNotEmpty == true) {
       rawConfig = await handleEvaluate(scriptContent!, rawConfig);
     }
@@ -448,12 +458,8 @@ class SetupAction extends _$SetupAction {
         bypassPrivateRoute: networkSetting.bypassPrivateRoute,
       ),
     );
-    final directory = await appPath.profilesPath;
-    final injected = await _resolveInjectedProviders(
-      setupState,
-      proxyGroups: proxyGroups,
-      rules: rules,
-    );
+    final directory = await directoryFuture;
+    final injected = await injectedFuture;
     final res = makeRealProfileTask(
       MakeRealProfileState(
         rules: rules,
