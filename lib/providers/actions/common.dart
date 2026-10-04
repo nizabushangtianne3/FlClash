@@ -37,8 +37,13 @@ class CommonAction extends _$CommonAction {
     });
   }
 
+  int _trafficTick = 0;
+
   Future<void> updateTraffic() async {
     if (_isUpdatingTraffic) {
+      return;
+    }
+    if (ref.read(coreStatusProvider) != CoreStatus.connected) {
       return;
     }
     _isUpdatingTraffic = true;
@@ -48,8 +53,19 @@ class CommonAction extends _$CommonAction {
       );
       final visible = ref.read(appVisibleProvider);
       // Tray title only needs the latest rate. Skip total-traffic IPC and
-      // the extra provider write while the window is in the menu bar.
+      // the chart buffer while the window is in the menu bar.
       if (!visible) {
+        final traffic = await _readTraffic(
+          () => _core.getTraffic(onlyStatisticsProxy),
+        );
+        if (traffic != null) {
+          ref.read(trafficsProvider.notifier).putLatest(traffic);
+        }
+        return;
+      }
+      _trafficTick++;
+      // Total traffic is a cumulative counter; every other tick is enough.
+      if (_trafficTick.isOdd) {
         final traffic = await _readTraffic(
           () => _core.getTraffic(onlyStatisticsProxy),
         );

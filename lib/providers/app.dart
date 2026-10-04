@@ -167,6 +167,19 @@ class Traffics extends _$Traffics with AutoDisposeNotifierMixin {
     this.value = state.append(value);
   }
 
+  /// Menu-bar path: keep a single latest sample so the chart buffer and its
+  /// listeners stay quiet while the window is hidden.
+  void putLatest(Traffic value) {
+    if (!ref.mounted) {
+      return;
+    }
+    final list = state.list;
+    if (list.isNotEmpty && list.last == value) {
+      return;
+    }
+    this.value = FixedList(state.maxLength, list: [value]);
+  }
+
   void clear() {
     value = state.copyWith()..clear();
   }
