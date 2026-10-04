@@ -160,7 +160,10 @@ List<Group> computeHideTimeout({
       final delay = delayMap[testUrl]?[state.proxyName];
       return delay == null || delay > 0;
     }).toList();
-    return group.copyWith(all: visible.isEmpty ? group.all : visible);
+    return visible.length == group.all.length &&
+            _sameOrder(visible, group.all)
+        ? group
+        : group.copyWith(all: visible.isEmpty ? group.all : visible);
   }).toList();
 }
 
