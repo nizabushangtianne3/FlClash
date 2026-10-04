@@ -9,6 +9,11 @@ List<Group> computeSort({
   required Map<String, String> selectedMap,
   required String defaultTestUrl,
 }) {
+  // none: preserve group and member list identity for Riverpod equality.
+  if (sortType == ProxiesSortType.none) {
+    return groups;
+  }
+
   final groupsByName = {for (final group in groups) group.name: group};
   List<Proxy> sortOfDelay({
     required List<Group> groups,
@@ -36,21 +41,25 @@ List<Group> computeSort({
     return List.of(proxies)..sort((a, b) => a.name.compareTo(b.name));
   }
 
-  return groups.map((group) {
-    final proxies = group.all;
-    final newProxies = switch (sortType) {
-      ProxiesSortType.none => proxies,
-      ProxiesSortType.delay => sortOfDelay(
-        groups: groups,
-        proxies: proxies,
-        delayMap: delayMap,
-        selectedMap: selectedMap,
-        testUrl: group.testUrl.takeFirstValid([defaultTestUrl]),
-      ),
-      ProxiesSortType.name => sortOfName(proxies),
-    };
-    return group.copyWith(all: newProxies);
-  }).toList();
+  return [
+    for (final group in groups)
+      if (group.all.length <= 1)
+        group
+      else
+        group.copyWith(
+          all: switch (sortType) {
+            ProxiesSortType.none => group.all,
+            ProxiesSortType.delay => sortOfDelay(
+              groups: groups,
+              proxies: group.all,
+              delayMap: delayMap,
+              selectedMap: selectedMap,
+              testUrl: group.testUrl.takeFirstValid([defaultTestUrl]),
+            ),
+            ProxiesSortType.name => sortOfName(group.all),
+          },
+        ),
+  ];
 }
 
 /// Built-in adapters whose delay probe always fails, so a timeout says nothing.
