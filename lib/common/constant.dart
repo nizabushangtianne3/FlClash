@@ -180,7 +180,7 @@ const pausedMaxLogsLength = maxLogsLength * 2;
 const pausedMaxRequestsLength = maxRequestsLength * 2;
 const pausedMaxDnsQueriesLength = maxDnsQueriesLength * 2;
 
-const trafficSampleLength = 30;
+const trafficSampleLength = 24;
 
 const defaultPrimaryColors = [
   0xFF795548,
