@@ -288,9 +288,9 @@ String proxyDesc(Ref ref, Proxy proxy) {
   if (!GroupTypeExtension.valueSet.contains(proxy.type)) {
     return proxy.type;
   }
-  final groups = ref.watch(groupsProvider);
-  final index = groups.indexWhere((element) => element.name == proxy.name);
-  if (index == -1) return proxy.type;
+  // getGroup is O(n) today; keep the type-gate so leaf proxies skip the scan.
+  final group = ref.watch(groupsProvider.select((state) => state.getGroup(proxy.name)));
+  if (group == null) return proxy.type;
   final state = ref.watch(realSelectedProxyStateProvider(proxy.name));
   return "${proxy.type}(${state.proxyName.isNotEmpty ? state.proxyName : '*'})";
 }
