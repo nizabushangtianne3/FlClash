@@ -10,6 +10,7 @@ final class TrayTitleView: NSView {
         didSet { needsDisplay = true }
     }
 
+    private var currentTitle = ""
     private var titleWidth: CGFloat = TrayTitleView.width
 
     private let attributes: [NSAttributedString.Key: Any] = [
@@ -26,6 +27,10 @@ final class TrayTitleView: NSView {
     }
 
     func setTitle(_ title: String) -> Bool {
+        if title == currentTitle {
+            return false
+        }
+        currentTitle = title
         let wasHidden = isHidden
         let previousWidth = titleWidth
 

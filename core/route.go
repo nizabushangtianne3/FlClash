@@ -11,7 +11,7 @@ import (
 
 // mihomo has no hook for a health check moving a URLTest or Fallback pick, so
 // the picks are re-read on this timer while the host watches.
-const routePollInterval = time.Second
+const routePollInterval = 2 * time.Second
 
 type routeTracker struct {
 	mu               sync.Mutex

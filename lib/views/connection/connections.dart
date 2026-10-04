@@ -45,7 +45,7 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
   }
 
   @override
-  Duration get pollInterval => const Duration(seconds: 1);
+  Duration get pollInterval => const Duration(seconds: 2);
 
   List<IconButtonData> _buildActions() {
     return [

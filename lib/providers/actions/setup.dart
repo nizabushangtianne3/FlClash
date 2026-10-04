@@ -121,7 +121,10 @@ class SetupAction extends _$SetupAction {
   }
 
   void _refreshRunningState() {
-    _updateRunTime();
+    // runTime drives the in-window clock; skip it in the menu bar.
+    if (ref.read(appVisibleProvider)) {
+      _updateRunTime();
+    }
     unawaited(ref.read(commonActionProvider.notifier).updateTraffic());
   }
 

@@ -74,11 +74,24 @@ class AppTray implements TrayPort {
   }
 
   /// Stable key for "does the tray shell need a native rebuild?"
-  String _trayFingerprint(TrayState trayState) {
+  String _trayFingerprint(
+    TrayState trayState,
+    Map<String, Map<String, int>> delays,
+  ) {
     final selected = trayState.selectedMap.entries
-        .map((e) => '${e.key}=${e.value}')
+        .map((e) => '${e.key}=${e.value}:${delays[e.key]?[e.value] ?? ''}')
         .join(',');
-    final groupNames = trayState.groups.map((g) => g.name).join(',');
+    final groupSig = trayState.groups
+        .map((g) => '${g.name}:${g.all.length}')
+        .join(',');
+    var delayCount = 0;
+    var delaySum = 0;
+    for (final group in delays.values) {
+      delayCount += group.length;
+      for (final value in group.values) {
+        delaySum += value;
+      }
+    }
     return [
       trayState.isStart,
       trayState.tunEnable,
@@ -88,7 +101,9 @@ class AppTray implements TrayPort {
       trayState.mode,
       trayState.showTrayTitle,
       selected,
-      groupNames,
+      groupSig,
+      delayCount,
+      delaySum,
       trayState.hotKeys.length,
     ].join('|');
   }
@@ -111,7 +126,10 @@ class AppTray implements TrayPort {
       return;
     }
 
-    final fingerprint = _trayFingerprint(trayState);
+    final delays = isMacOS
+        ? read(trayDelaysProvider)
+        : const <String, Map<String, int>>{};
+    final fingerprint = _trayFingerprint(trayState, delays);
     final needRebuild = fingerprint != _lastTrayFingerprint;
 
     if (needRebuild) {
