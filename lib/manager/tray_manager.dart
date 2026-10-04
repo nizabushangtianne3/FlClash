@@ -26,6 +26,11 @@ class _TrayManagerState extends ConsumerState<TrayManager> {
   bool _isUpdating = false;
   bool _hasPendingUpdate = false;
 
+  /// Throttle for macOS title updates so NSStatusItem is not hit every traffic tick.
+  Timer? _titleThrottle;
+  TrayTitleState? _pendingTitle;
+  static const _titleThrottleInterval = Duration(milliseconds: 1500);
+
   @override
   void initState() {
     super.initState();
@@ -47,16 +52,45 @@ class _TrayManagerState extends ConsumerState<TrayManager> {
         }
       });
       ref.listenManual(trayTitleStateProvider, (prev, next) {
-        if (prev != next) {
-          _reportFailure(
-            appTray?.updateTitle(
-              showTrayTitle: next.showTrayTitle,
-              traffic: next.traffic,
-            ),
-          );
+        if (prev == next) {
+          return;
         }
+        // Speed stats off: only react when the flag itself flips (clear once).
+        if (!next.showTrayTitle) {
+          if (prev?.showTrayTitle == false) {
+            return;
+          }
+          _flushTitleNow(next);
+          return;
+        }
+        // Speed stats on: coalesce rapid traffic ticks.
+        _scheduleTitleUpdate(next);
       });
     }
+  }
+
+  void _scheduleTitleUpdate(TrayTitleState next) {
+    _pendingTitle = next;
+    if (_titleThrottle?.isActive ?? false) {
+      return;
+    }
+    _flushTitleNow(next);
+    _titleThrottle = Timer(_titleThrottleInterval, () {
+      final pending = _pendingTitle;
+      if (pending != null && mounted) {
+        _flushTitleNow(pending);
+      }
+    });
+  }
+
+  void _flushTitleNow(TrayTitleState state) {
+    _pendingTitle = null;
+    _reportFailure(
+      appTray?.updateTitle(
+        showTrayTitle: state.showTrayTitle,
+        traffic: state.traffic,
+      ),
+    );
   }
 
   /// A delay test changes the menu per proxy, so updates in flight coalesce.
@@ -115,6 +149,7 @@ class _TrayManagerState extends ConsumerState<TrayManager> {
 
   @override
   void dispose() {
+    _titleThrottle?.cancel();
     _subscription?.cancel();
     super.dispose();
   }

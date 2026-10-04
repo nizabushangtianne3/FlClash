@@ -13,6 +13,9 @@ import 'provider_reader.dart';
 import 'system.dart';
 import 'window.dart';
 
+/// Caps each proxy-group submenu so macOS status-item rebuilds stay cheap.
+const int _kMaxTrayProxiesPerGroup = 30;
+
 class AppTray implements TrayPort {
   static AppTray? _instance;
 
@@ -20,6 +23,12 @@ class AppTray implements TrayPort {
   final bool isWindows;
 
   bool _isShutDown = false;
+
+  /// Last title actually pushed to NSStatusItem. Used to skip no-op setTitle.
+  String? _lastTitle;
+
+  /// Fingerprint of the last full tray (icon + menu) rebuild.
+  String? _lastTrayFingerprint;
 
   AppTray._internal({required this.isMacOS, required this.isWindows});
 
@@ -64,9 +73,31 @@ class AppTray implements TrayPort {
     return '$_trayIconDir/status_$status.$_trayIconSuffix';
   }
 
+  /// Stable key for "does the tray shell need a native rebuild?"
+  String _trayFingerprint(TrayState trayState) {
+    final selected = trayState.selectedMap.entries
+        .map((e) => '${e.key}=${e.value}')
+        .join(',');
+    final groupNames = trayState.groups.map((g) => g.name).join(',');
+    return [
+      trayState.isStart,
+      trayState.tunEnable,
+      trayState.safeMode,
+      trayState.systemProxy,
+      trayState.autoLaunch,
+      trayState.mode,
+      trayState.showTrayTitle,
+      selected,
+      groupNames,
+      trayState.hotKeys.length,
+    ].join('|');
+  }
+
   @override
   Future<void> shutdown() async {
     _isShutDown = true;
+    _lastTitle = null;
+    _lastTrayFingerprint = null;
     await Tray.instance.hide();
   }
 
@@ -79,26 +110,39 @@ class AppTray implements TrayPort {
     if (_isShutDown) {
       return;
     }
-    await Tray.instance.show(
-      TraySpec(
-        icon: TrayIcon.asset(
-          getTrayIcon(
-            isStart: trayState.isStart,
-            tunEnable: trayState.tunEnable,
-            safeMode: trayState.safeMode,
+
+    final fingerprint = _trayFingerprint(trayState);
+    final needRebuild = fingerprint != _lastTrayFingerprint;
+
+    if (needRebuild) {
+      _lastTrayFingerprint = fingerprint;
+      await Tray.instance.show(
+        TraySpec(
+          icon: TrayIcon.asset(
+            getTrayIcon(
+              isStart: trayState.isStart,
+              tunEnable: trayState.tunEnable,
+              safeMode: trayState.safeMode,
+            ),
+            isTemplate: isMacOS,
+            size: isMacOS ? 18 : 16,
           ),
-          isTemplate: isMacOS,
-          size: isMacOS ? 18 : 16,
+          toolTip: trayState.safeMode
+              ? currentAppLocalizations.safeModeAppTitle(appName)
+              : appName,
+          menu: _buildMenu(trayState: trayState, read: read),
         ),
-        toolTip: trayState.safeMode
-            ? currentAppLocalizations.safeModeAppTitle(appName)
-            : appName,
-        menu: _buildMenu(trayState: trayState, read: read),
-      ),
-    );
+      );
+    }
+
     await updateTitle(showTrayTitle: trayState.showTrayTitle, traffic: traffic);
   }
 
+  /// Push title only when the visible string actually changes.
+  ///
+  /// On macOS, every [Tray.instance.setTitle] forces an NSStatusItem /
+  /// Control Center replicant redraw. Calling it every second with an empty
+  /// string (when speed stats are off) is enough to pin ~30–60% CPU.
   Future<void> updateTitle({
     required bool showTrayTitle,
     required Traffic traffic,
@@ -106,7 +150,23 @@ class AppTray implements TrayPort {
     if (_isShutDown || !isMacOS) {
       return;
     }
-    await Tray.instance.setTitle(showTrayTitle ? traffic.trayTitle : '');
+
+    final String next;
+    if (!showTrayTitle) {
+      // Clear once, then stop touching the status item.
+      if (_lastTitle == null || _lastTitle!.isEmpty) {
+        return;
+      }
+      next = '';
+    } else {
+      next = traffic.trayTitle;
+      if (next == _lastTitle) {
+        return;
+      }
+    }
+
+    _lastTitle = next;
+    await Tray.instance.setTitle(next);
   }
 
   List<TrayMenuItem> _buildMenu({
@@ -255,20 +315,47 @@ class AppTray implements TrayPort {
     required Map<String, int> delays,
     required void Function(String proxyName) onSelected,
   }) {
+    final all = group.all;
+    // Keep the selected proxy, then fill up to the cap with the rest.
+    final List<Proxy> visible;
+    if (all.length <= _kMaxTrayProxiesPerGroup) {
+      visible = all;
+    } else {
+      final selected = all.where((p) => p.name == selectedName);
+      final others = all.where((p) => p.name != selectedName);
+      visible = [
+        ...selected,
+        ...others.take(_kMaxTrayProxiesPerGroup - selected.length),
+      ];
+    }
+
+    final items = <TrayMenuItem>[
+      for (final proxy in visible)
+        TrayMenuCheckbox(
+          label: proxy.name,
+          checked: selectedName == proxy.name,
+          detail: _delayText(delays[proxy.name]),
+          onSelected: () {
+            onSelected(proxy.name);
+          },
+        ),
+    ];
+
+    if (all.length > _kMaxTrayProxiesPerGroup) {
+      items.add(
+        TrayMenuAction(
+          label: '… ${all.length - visible.length} more',
+          onSelected: () {
+            window?.show();
+          },
+        ),
+      );
+    }
+
     return TrayMenuSubmenu(
       label: group.name,
       detail: _delayText(delays[selectedName]),
-      items: [
-        for (final proxy in group.all)
-          TrayMenuCheckbox(
-            label: proxy.name,
-            checked: selectedName == proxy.name,
-            detail: _delayText(delays[proxy.name]),
-            onSelected: () {
-              onSelected(proxy.name);
-            },
-          ),
-      ],
+      items: items,
     );
   }
 }
