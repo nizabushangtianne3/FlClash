@@ -32,6 +32,11 @@ class TrackerSpeedRanker {
   var _positions = const <String, int>{};
 
   List<TrackerInfo> rank(List<TrackerInfo> trackerInfos, DateTime now) {
+    if (trackerInfos.isEmpty) {
+      _samples.clear();
+      _positions = const {};
+      return trackerInfos;
+    }
     final samples = <String, _SpeedSample>{
       for (final trackerInfo in trackerInfos)
         trackerInfo.id: _sample(trackerInfo, now),
@@ -39,6 +44,27 @@ class TrackerSpeedRanker {
     _samples
       ..clear()
       ..addAll(samples);
+
+    var anyActive = false;
+    for (final sample in samples.values) {
+      if (sample.rankSpeed >= 1) {
+        anyActive = true;
+        break;
+      }
+    }
+    if (!anyActive) {
+      final ranked = [
+        for (final trackerInfo in trackerInfos)
+          trackerInfo.copyWith(
+            uploadSpeed: samples[trackerInfo.id]!.uploadSpeed,
+            downloadSpeed: samples[trackerInfo.id]!.downloadSpeed,
+          ),
+      ];
+      _positions = {
+        for (final (index, trackerInfo) in ranked.indexed) trackerInfo.id: index,
+      };
+      return ranked;
+    }
 
     final buckets = {
       for (final trackerInfo in trackerInfos)
