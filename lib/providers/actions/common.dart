@@ -64,7 +64,7 @@ class CommonAction extends _$CommonAction {
         return;
       }
       _trafficTick++;
-      // Total traffic is a cumulative counter; every other tick is enough.
+      // Total is cumulative; refresh it every other tick via one combined IPC.
       if (_trafficTick.isOdd) {
         final traffic = await _readTraffic(
           () => _core.getTraffic(onlyStatisticsProxy),
@@ -74,15 +74,17 @@ class CommonAction extends _$CommonAction {
         }
         return;
       }
-      final [traffic, totalTraffic] = await Future.wait([
-        _readTraffic(() => _core.getTraffic(onlyStatisticsProxy)),
-        _readTraffic(() => _core.getTotalTraffic(onlyStatisticsProxy)),
-      ]);
-      if (traffic != null) {
-        ref.read(trafficsProvider.notifier).addTraffic(traffic);
-      }
-      if (totalTraffic != null) {
-        ref.read(totalTrafficProvider.notifier).value = totalTraffic;
+      try {
+        final stats = await _core.getTrafficStats(onlyStatisticsProxy);
+        ref.read(trafficsProvider.notifier).addTraffic(stats.now);
+        if (stats.total != ref.read(totalTrafficProvider)) {
+          ref.read(totalTrafficProvider.notifier).value = stats.total;
+        }
+      } catch (error) {
+        commonPrint.log(
+          'updateTraffic error: $error',
+          logLevel: coreFailureLogLevel(error),
+        );
       }
     } finally {
       _isUpdatingTraffic = false;

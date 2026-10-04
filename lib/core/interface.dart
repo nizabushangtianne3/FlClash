@@ -81,6 +81,11 @@ mixin CoreInterface {
 
   FutureOr<Traffic> getTotalTraffic(bool onlyStatisticsProxy);
 
+  /// Rate + totals in one round-trip. Prefer this on the visible traffic ticker.
+  FutureOr<({Traffic now, Traffic total})> getTrafficStats(
+    bool onlyStatisticsProxy,
+  );
+
   FutureOr<CoreMemoryStats?> getMemoryStats();
 
   FutureOr<void> resetTraffic();
@@ -474,6 +479,29 @@ abstract class CoreHandlerInterface with CoreInterface {
       arguments: onlyStatisticsProxy,
     );
     return data == null ? const Traffic() : Traffic.fromJson(data);
+  }
+
+  @override
+  Future<({Traffic now, Traffic total})> getTrafficStats(
+    bool onlyStatisticsProxy,
+  ) async {
+    final data = await _invokeMethod<Map<String, dynamic>>(
+      method: CoreMethod.getTrafficStats,
+      arguments: onlyStatisticsProxy,
+    );
+    if (data == null) {
+      return (now: const Traffic(), total: const Traffic());
+    }
+    return (
+      now: Traffic(
+        up: data['up'] as num? ?? 0,
+        down: data['down'] as num? ?? 0,
+      ),
+      total: Traffic(
+        up: data['total-up'] as num? ?? 0,
+        down: data['total-down'] as num? ?? 0,
+      ),
+    );
   }
 
   @override

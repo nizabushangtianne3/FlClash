@@ -287,13 +287,12 @@ String? selectedProxyName(Ref ref, String groupName) {
 String proxyDesc(Ref ref, Proxy proxy) {
   if (!GroupTypeExtension.valueSet.contains(proxy.type)) {
     return proxy.type;
-  } else {
-    final groups = ref.watch(groupsProvider);
-    final index = groups.indexWhere((element) => element.name == proxy.name);
-    if (index == -1) return proxy.type;
-    final state = ref.watch(realSelectedProxyStateProvider(proxy.name));
-    return "${proxy.type}(${state.proxyName.isNotEmpty ? state.proxyName : '*'})";
   }
+  final groups = ref.watch(groupsProvider);
+  final index = groups.indexWhere((element) => element.name == proxy.name);
+  if (index == -1) return proxy.type;
+  final state = ref.watch(realSelectedProxyStateProvider(proxy.name));
+  return "${proxy.type}(${state.proxyName.isNotEmpty ? state.proxyName : '*'})";
 }
 
 @riverpod

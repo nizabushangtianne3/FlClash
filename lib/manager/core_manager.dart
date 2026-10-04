@@ -137,7 +137,16 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     super.onDelay(delay);
     final proxiesAction = ref.read(proxiesActionProvider.notifier);
     proxiesAction.setDelay(delay);
+    // Only delay-based sorting needs a full groups rebuild after probes.
+    // none/name order is independent of latency, and hide-timeout uses
+    // delaysAtLastTestBatch + sortNum instead.
     debouncer.call(FunctionTag.updateDelay, () async {
+      final sortType = ref.read(
+        proxiesStyleSettingProvider.select((state) => state.sortType),
+      );
+      if (sortType != ProxiesSortType.delay) {
+        return;
+      }
       proxiesAction.updateGroupsDebounce();
     }, duration: const Duration(milliseconds: 5000));
   }

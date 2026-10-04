@@ -32,6 +32,7 @@ const (
 	changeProxyMethod              CoreMethod = "changeProxy"
 	getTrafficMethod               CoreMethod = "getTraffic"
 	getTotalTrafficMethod          CoreMethod = "getTotalTraffic"
+	getTrafficStatsMethod           CoreMethod = "getTrafficStats"
 	resetTrafficMethod             CoreMethod = "resetTraffic"
 	asyncTestDelayMethod           CoreMethod = "asyncTestDelay"
 	probeMethod                    CoreMethod = "probe"
@@ -203,6 +204,14 @@ type ProbeResult struct {
 type Traffic struct {
 	Up   int64 `json:"up"`
 	Down int64 `json:"down"`
+}
+
+// TrafficStats is one IPC for the rate + cumulative counters the host polls.
+type TrafficStats struct {
+	Up        int64 `json:"up"`
+	Down      int64 `json:"down"`
+	TotalUp   int64 `json:"total-up"`
+	TotalDown int64 `json:"total-down"`
 }
 
 type MemoryStats struct {

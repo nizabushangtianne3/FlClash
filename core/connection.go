@@ -15,6 +15,17 @@ func handleGetTotalTraffic(onlyStatisticsProxy bool) Traffic {
 	return Traffic{Up: up, Down: down}
 }
 
+func handleGetTrafficStats(onlyStatisticsProxy bool) TrafficStats {
+	up, down := statistic.DefaultManager.NowTraffic(onlyStatisticsProxy)
+	totalUp, totalDown := statistic.DefaultManager.TotalTraffic(onlyStatisticsProxy)
+	return TrafficStats{
+		Up:        up,
+		Down:      down,
+		TotalUp:   totalUp,
+		TotalDown: totalDown,
+	}
+}
+
 func handleResetTraffic() {
 	statistic.DefaultManager.ResetStatistic()
 }
