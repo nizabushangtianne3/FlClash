@@ -37,14 +37,16 @@ class TrackerSpeedRanker {
       _positions = const {};
       return trackerInfos;
     }
-    final samples = <String, _SpeedSample>{
+    final samples = {
       for (final trackerInfo in trackerInfos)
         trackerInfo.id: _sample(trackerInfo, now),
     };
-    _samples
-      ..clear()
-      ..addAll(samples);
+    _samples.removeWhere((id, _) => !samples.containsKey(id));
+    for (final entry in samples.entries) {
+      _samples[entry.key] = entry.value;
+    }
 
+    // All idle: sort by traffic once, then keep the resulting order stable.
     var anyActive = false;
     for (final sample in samples.values) {
       if (sample.rankSpeed >= 1) {
@@ -53,13 +55,23 @@ class TrackerSpeedRanker {
       }
     }
     if (!anyActive) {
-      final ranked = [
-        for (final trackerInfo in trackerInfos)
-          trackerInfo.copyWith(
-            uploadSpeed: samples[trackerInfo.id]!.uploadSpeed,
-            downloadSpeed: samples[trackerInfo.id]!.downloadSpeed,
-          ),
-      ];
+      final ranked =
+          [
+            for (final trackerInfo in trackerInfos)
+              trackerInfo.copyWith(
+                uploadSpeed: samples[trackerInfo.id]!.uploadSpeed,
+                downloadSpeed: samples[trackerInfo.id]!.downloadSpeed,
+              ),
+          ]..sort((a, b) {
+            final traffic = (b.upload + b.download).compareTo(
+              a.upload + a.download,
+            );
+            if (traffic != 0) {
+              return traffic;
+            }
+            final start = b.start.compareTo(a.start);
+            return start != 0 ? start : a.id.compareTo(b.id);
+          });
       _positions = {
         for (final (index, trackerInfo) in ranked.indexed) trackerInfo.id: index,
       };

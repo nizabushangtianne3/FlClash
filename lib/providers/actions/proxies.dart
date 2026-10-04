@@ -138,18 +138,18 @@ class ProxiesAction extends _$ProxiesAction {
 
   Future<void> updateGroups() async {
     try {
+      final sortType = ref.read(
+        proxiesStyleSettingProvider.select((state) => state.sortType),
+      );
+      final delayMap = ref.read(delayDataSourceProvider);
+      final testUrl = ref.read(
+        appSettingProvider.select((state) => state.testUrl),
+      );
+      final selectedMap = ref.read(
+        currentProfileProvider.select((state) => state?.selectedMap ?? {}),
+      );
       final next = await retry(
         task: () async {
-          final sortType = ref.read(
-            proxiesStyleSettingProvider.select((state) => state.sortType),
-          );
-          final delayMap = ref.read(delayDataSourceProvider);
-          final testUrl = ref.read(
-            appSettingProvider.select((state) => state.testUrl),
-          );
-          final selectedMap = ref.read(
-            currentProfileProvider.select((state) => state?.selectedMap ?? {}),
-          );
           try {
             return await _core.getProxiesGroups(
               selectedMap: selectedMap,
