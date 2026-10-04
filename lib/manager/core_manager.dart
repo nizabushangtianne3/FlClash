@@ -145,15 +145,11 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     // Only delay-based sorting needs a full groups rebuild after probes.
     // none/name order is independent of latency, and hide-timeout uses
     // delaysAtLastTestBatch + sortNum instead.
-    debouncer.call(FunctionTag.updateDelay, () async {
-      final sortType = ref.read(
-        proxiesStyleSettingProvider.select((state) => state.sortType),
-      );
-      if (sortType != ProxiesSortType.delay) {
-        return;
-      }
-      proxiesAction.updateGroupsDebounce();
-    }, duration: const Duration(milliseconds: 5000));
+    // Delay tests only change sort order — re-sort the cached groups without
+    // a full Core getProxies (critical for large subscriptions).
+    proxiesAction.resortGroupsByDelayDebounce(
+      const Duration(milliseconds: 5000),
+    );
   }
 
   @override
@@ -230,6 +226,9 @@ class _CoreContainerState extends ConsumerState<CoreManager>
       if (!mounted) {
         return;
       }
+      // Provider load changes the proxy tree; drop the host cache so the next
+      // getProxies is full (Core generation also advances).
+      ref.read(coreHandlerProvider).invalidateProxiesCache();
       ref.read(proxiesActionProvider.notifier).updateGroupsDebounce();
     }, duration: const Duration(milliseconds: 5000));
     super.onLoaded(providerName);
