@@ -106,10 +106,15 @@ class ProxiesAction extends _$ProxiesAction {
         String groupName,
         String proxyName,
       ) async {
-        await changeProxy(groupName: groupName, proxyName: proxyName);
-        // selectedMap already updated the UI; a full groups refetch is
-        // expensive and not needed to complete the switch.
-        updateGroupsDebounce(const Duration(seconds: 1));
+        final switched = await changeProxy(
+          groupName: groupName,
+          proxyName: proxyName,
+        );
+        // selectedMap already updated the UI; only refetch groups when Core
+        // actually changed the selection (syncs now/type metadata).
+        if (switched) {
+          updateGroupsDebounce(const Duration(seconds: 1));
+        }
       },
       args: [groupName, proxyName],
       duration: const Duration(milliseconds: 150),
@@ -122,7 +127,7 @@ class ProxiesAction extends _$ProxiesAction {
 
   Future<void> updateGroups() async {
     try {
-      ref.read(groupsProvider.notifier).value = await retry(
+      final next = await retry(
         task: () async {
           final sortType = ref.read(
             proxiesStyleSettingProvider.select((state) => state.sortType),
@@ -151,6 +156,8 @@ class ProxiesAction extends _$ProxiesAction {
         },
         retryIf: (res) => res.isEmpty,
       );
+      // Isolate rebuild + provider fan-out is expensive; skip when unchanged.
+      ref.read(groupsProvider.notifier).update((_) => next);
     } catch (e) {
       // The Core failure path already runs inside the retry task above; a
       // throw here only means ref.read hit a disposed container or the
@@ -183,7 +190,7 @@ class ProxiesAction extends _$ProxiesAction {
     _scheduleDelayFlush();
   }
 
-  Future<void> changeProxy({
+  Future<bool> changeProxy({
     required String groupName,
     required String proxyName,
   }) async {
@@ -210,10 +217,10 @@ class ProxiesAction extends _$ProxiesAction {
         currentAppLocalizations.changeProxyFailedTip,
         level: MessageLevel.error,
       );
-      return;
+      return false;
     }
     if (!result.changed) {
-      return;
+      return false;
     }
     // Do not await connection cleanup: on a dead node, closeConnections can
     // sit on timed-out sockets and make the switch feel multi-second slow.
@@ -232,6 +239,7 @@ class ProxiesAction extends _$ProxiesAction {
         );
       }
     }());
+    return true;
   }
 
   Future<String> updateProvider(
