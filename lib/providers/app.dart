@@ -164,6 +164,12 @@ class Traffics extends _$Traffics with AutoDisposeNotifierMixin {
     if (!ref.mounted) {
       return;
     }
+    // Idle links produce identical rate samples; skip the FixedList write
+    // so chart listeners and painters do not wake every tick.
+    final list = state.list;
+    if (list.isNotEmpty && list.last == value) {
+      return;
+    }
     this.value = state.append(value);
   }
 
