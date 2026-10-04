@@ -110,6 +110,20 @@ const _unprobeableProxyTypes = {
   'Dns',
 };
 
+Map<String, String>? _proxyTypesCache;
+List<Group>? _proxyTypesSource;
+
+Map<String, String> _proxyTypesFor(List<Group> allGroups) {
+  if (identical(allGroups, _proxyTypesSource) && _proxyTypesCache != null) {
+    return _proxyTypesCache!;
+  }
+  _proxyTypesSource = allGroups;
+  return _proxyTypesCache = {
+    for (final group in allGroups)
+      for (final proxy in group.all) proxy.name: proxy.type,
+  };
+}
+
 List<Group> computeHideTimeout({
   required List<Group> groups,
   required List<Group> allGroups,
@@ -119,10 +133,7 @@ List<Group> computeHideTimeout({
 }) {
   final realStates = <String, SelectedProxyState>{};
   final groupsByName = {for (final group in allGroups) group.name: group};
-  final proxyTypes = {
-    for (final group in allGroups)
-      for (final proxy in group.all) proxy.name: proxy.type,
-  };
+  final proxyTypes = _proxyTypesFor(allGroups);
   return groups.map((group) {
     final groupTestUrl = group.testUrl.takeFirstValid([defaultTestUrl]);
     final groupWithNow = groupsByName[group.name] ?? group;
