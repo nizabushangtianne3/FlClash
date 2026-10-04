@@ -110,10 +110,21 @@ class ProxiesAction extends _$ProxiesAction {
           groupName: groupName,
           proxyName: proxyName,
         );
-        // selectedMap already updated the UI; only refetch groups when Core
-        // actually changed the selection (syncs now/type metadata).
+        // selectedMap already updated the UI; patch group.now locally so the
+        // proxies page does not need a getProxies round-trip for a single switch.
         if (switched) {
-          updateGroupsDebounce(const Duration(seconds: 1));
+          final groups = ref.read(groupsProvider);
+          if (groups.isNotEmpty) {
+            ref.read(groupsProvider.notifier).update(
+              (list) => [
+                for (final group in list)
+                  if (group.name == groupName)
+                    group.copyWith(now: proxyName)
+                  else
+                    group,
+              ],
+            );
+          }
         }
       },
       args: [groupName, proxyName],
