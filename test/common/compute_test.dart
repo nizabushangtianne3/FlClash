@@ -342,6 +342,31 @@ void main() {
       expect(result[0].all.map((p) => p.name).toList(), ['proxy-b', 'proxy-a']);
       expect(result[1].all.map((p) => p.name).toList(), ['proxy-a', 'proxy-b']);
     });
+
+    test('keeps the source groups when sorting does not change the order', () {
+      const proxyA = Proxy(name: 'proxy-a', type: 'ss');
+      const proxyB = Proxy(name: 'proxy-b', type: 'ss');
+      const group = Group(
+        name: 'group-a',
+        type: GroupType.Selector,
+        testUrl: 'http://a.test',
+        all: [proxyA, proxyB],
+      );
+      final result = computeSort(
+        groups: [group],
+        sortType: ProxiesSortType.delay,
+        delayMap: {
+          'http://a.test': {'proxy-a': 50, 'proxy-b': 100},
+        },
+        selectedMap: {},
+        defaultTestUrl: 'http://default.test',
+      );
+      expect(identical(result.single, group), isTrue);
+      expect(result.single.all.map((proxy) => proxy.name).toList(), [
+        'proxy-a',
+        'proxy-b',
+      ]);
+    });
   });
 
   group('Group.getCurrentSelectedName', () {

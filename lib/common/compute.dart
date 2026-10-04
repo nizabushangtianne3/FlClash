@@ -47,21 +47,24 @@ List<Group> computeSort({
           realState: realStateFor(proxy.name),
         ),
     };
-    return List.of(proxies)
-      ..sort((a, b) => delayStates[a.name]!.compareTo(delayStates[b.name]!));
+    final sorted =
+        List.of(proxies)
+          ..sort((a, b) => delayStates[a.name]!.compareTo(delayStates[b.name]!));
+    return _sameOrder(sorted, proxies) ? proxies : sorted;
   }
 
   List<Proxy> sortOfName(List<Proxy> proxies) {
-    return List.of(proxies)..sort((a, b) => a.name.compareTo(b.name));
+    final sorted = List.of(proxies)..sort((a, b) => a.name.compareTo(b.name));
+    return _sameOrder(sorted, proxies) ? proxies : sorted;
   }
 
-  return [
+  final sortedGroups = [
     for (final group in groups)
       if (group.all.length <= 1)
         group
       else
-        group.copyWith(
-          all: switch (sortType) {
+        () {
+          final List<Proxy> sortedAll = switch (sortType) {
             ProxiesSortType.none => group.all,
             ProxiesSortType.delay => sortOfDelay(
               groups: groups,
@@ -71,9 +74,29 @@ List<Group> computeSort({
               testUrl: group.testUrl.takeFirstValid([defaultTestUrl]),
             ),
             ProxiesSortType.name => sortOfName(group.all),
-          },
-        ),
+          };
+          return _withSortedAll(group, sortedAll);
+        }(),
   ];
+  return _sameGroups(sortedGroups, groups) ? groups : sortedGroups;
+}
+
+Group _withSortedAll(Group group, List<Proxy> sorted) {
+  return _sameOrder(sorted, group.all) ? group : group.copyWith(all: sorted);
+}
+
+bool _sameOrder(List<Proxy> sorted, List<Proxy> proxies) {
+  for (var i = 0; i < proxies.length; i++) {
+    if (sorted[i].name != proxies[i].name) return false;
+  }
+  return true;
+}
+
+bool _sameGroups(List<Group> sorted, List<Group> groups) {
+  for (var i = 0; i < groups.length; i++) {
+    if (sorted[i] != groups[i]) return false;
+  }
+  return true;
 }
 
 /// Built-in adapters whose delay probe always fails, so a timeout says nothing.
