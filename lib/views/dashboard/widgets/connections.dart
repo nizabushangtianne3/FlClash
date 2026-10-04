@@ -28,7 +28,7 @@ class _ConnectionsCardState extends ConsumerState<ConnectionsCard>
   CoreController get _core => ref.read(coreHandlerProvider);
 
   @override
-  Duration get pollInterval => const Duration(seconds: 2);
+  Duration get pollInterval => const Duration(seconds: 3);
 
   @override
   void dispose() {
