@@ -97,10 +97,10 @@ class SetupAction extends _$SetupAction {
       _stopRuntimeTicker();
       return;
     }
-    // Window visible: 1s for dashboard charts. Tray-only title: 2s is enough
-    // and halves Core IPC + provider rebuilds while the app sits in the menu bar.
+    // Window visible: 1.5s keeps the chart live without 1Hz IPC. Tray-only
+    // title: 2s halves Core work while the app sits in the menu bar.
     final interval = ref.read(appVisibleProvider)
-        ? const Duration(seconds: 1)
+        ? const Duration(milliseconds: 1500)
         : const Duration(seconds: 2);
     if (_runtimeTimer != null) {
       // Restart when the required interval changes (show/hide window).
