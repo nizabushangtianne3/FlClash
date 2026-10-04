@@ -8,6 +8,10 @@ mixin AutoDisposeNotifierMixin<T> on AnyNotifier<T, T> {
   T get value => state;
 
   set value(T value) {
+    // Skip no-op emits; list/map deep equality is cheaper than UI fan-out.
+    if (state == value) {
+      return;
+    }
     state = value;
   }
 
