@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	messageBatchInterval = 32 * time.Millisecond
-	messageBatchSize     = 48
+	messageBatchInterval = 48 * time.Millisecond
+	messageBatchSize     = 64
 	messageQueueSize     = 256
 	messagePriorityBurst = 8
 	messageEvictAttempts = 4
