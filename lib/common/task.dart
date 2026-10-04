@@ -88,6 +88,9 @@ Future<List<Group>> buildGroups(ComputeGroupsState state) async {
         : const [];
     groups.add(Group.fromJson(group));
   }
+  if (sortType == ProxiesSortType.none) {
+    return groups;
+  }
   return computeSort(
     groups: groups,
     sortType: sortType,
