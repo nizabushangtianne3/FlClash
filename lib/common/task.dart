@@ -54,7 +54,15 @@ String? _readTextFile(String path) {
   return utf8.decode(file.readAsBytesSync());
 }
 
+/// Below this many proxy map entries, isolate spawn costs more than the work.
+const _groupsComputeIsolateThreshold = 80;
+
 Future<List<Group>> toGroupsTask(ComputeGroupsState data) async {
+  // Large subscriptions benefit from an isolate; small trees pay more for
+  // spawn + copy than for Group.fromJson on the UI isolate.
+  if (data.proxiesData.proxies.length < _groupsComputeIsolateThreshold) {
+    return buildGroups(data);
+  }
   return compute<ComputeGroupsState, List<Group>>(buildGroups, data);
 }
 
