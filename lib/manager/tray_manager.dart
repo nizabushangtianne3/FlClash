@@ -29,7 +29,7 @@ class _TrayManagerState extends ConsumerState<TrayManager> {
   /// Throttle for macOS title updates so NSStatusItem is not hit every traffic tick.
   Timer? _titleThrottle;
   TrayTitleState? _pendingTitle;
-  static const _titleThrottleInterval = Duration(milliseconds: 1500);
+  static const _titleThrottleInterval = Duration(milliseconds: 2000);
 
   /// Delay-test results change per proxy; rebuilding the whole menu for each
   /// batch is expensive on macOS. Coalesce to at most one rebuild / 2s.
