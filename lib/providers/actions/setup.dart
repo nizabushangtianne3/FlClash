@@ -21,6 +21,7 @@ class SetupAction extends _$SetupAction {
   CoreController get _core => ref.read(coreHandlerProvider);
 
   Timer? _runtimeTimer;
+  Duration? _runtimeInterval;
   final _setupScheduler = SerialTaskScheduler();
   final _listenerScheduler = SerialTaskScheduler();
   _RunRequest? _latestRunRequest;
@@ -96,19 +97,27 @@ class SetupAction extends _$SetupAction {
       _stopRuntimeTicker();
       return;
     }
+    // Window visible: 1s for dashboard charts. Tray-only title: 2s is enough
+    // and halves Core IPC + provider rebuilds while the app sits in the menu bar.
+    final interval = ref.read(appVisibleProvider)
+        ? const Duration(seconds: 1)
+        : const Duration(seconds: 2);
     if (_runtimeTimer != null) {
-      return;
+      // Restart when the required interval changes (show/hide window).
+      if (_runtimeInterval == interval) {
+        return;
+      }
+      _stopRuntimeTicker();
     }
+    _runtimeInterval = interval;
     _refreshRunningState();
-    _runtimeTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => _refreshRunningState(),
-    );
+    _runtimeTimer = Timer.periodic(interval, (_) => _refreshRunningState());
   }
 
   void _stopRuntimeTicker() {
     _runtimeTimer?.cancel();
     _runtimeTimer = null;
+    _runtimeInterval = null;
   }
 
   void _refreshRunningState() {

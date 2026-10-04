@@ -129,15 +129,21 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   void onRequest(TrackerInfo trackerInfo) async {
-    ref.read(requestsProvider.notifier).addRequest(trackerInfo);
-    ref.read(requestCountProvider.notifier).update((count) => count + 1);
+    // Connections history is only useful while the UI is visible; dropping
+    // events in the background avoids FixedList rebuild storms on busy links.
+    if (ref.read(appVisibleProvider)) {
+      ref.read(requestsProvider.notifier).addRequest(trackerInfo);
+      ref.read(requestCountProvider.notifier).update((count) => count + 1);
+    }
     super.onRequest(trackerInfo);
   }
 
   @override
   void onDns(DnsQuery dnsQuery) {
-    ref.read(dnsQueriesProvider.notifier).addQuery(dnsQuery);
-    ref.read(dnsQueryCountProvider.notifier).update((count) => count + 1);
+    if (ref.read(appVisibleProvider)) {
+      ref.read(dnsQueriesProvider.notifier).addQuery(dnsQuery);
+      ref.read(dnsQueryCountProvider.notifier).update((count) => count + 1);
+    }
     super.onDns(dnsQuery);
   }
 

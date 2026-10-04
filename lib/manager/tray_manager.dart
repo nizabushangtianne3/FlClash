@@ -31,6 +31,11 @@ class _TrayManagerState extends ConsumerState<TrayManager> {
   TrayTitleState? _pendingTitle;
   static const _titleThrottleInterval = Duration(milliseconds: 1500);
 
+  /// Delay-test results change per proxy; rebuilding the whole menu for each
+  /// batch is expensive on macOS. Coalesce to at most one rebuild / 2s.
+  Timer? _delaysThrottle;
+  static const _delaysThrottleInterval = Duration(seconds: 2);
+
   @override
   void initState() {
     super.initState();
@@ -47,9 +52,18 @@ class _TrayManagerState extends ConsumerState<TrayManager> {
     });
     if (system.isMacOS) {
       ref.listenManual(trayDelaysProvider, (prev, next) {
-        if (!const DeepCollectionEquality().equals(prev, next)) {
-          _requestUpdate();
+        if (const DeepCollectionEquality().equals(prev, next)) {
+          return;
         }
+        if (_delaysThrottle?.isActive ?? false) {
+          return;
+        }
+        _requestUpdate();
+        _delaysThrottle = Timer(_delaysThrottleInterval, () {
+          if (mounted) {
+            _requestUpdate();
+          }
+        });
       });
       ref.listenManual(trayTitleStateProvider, (prev, next) {
         if (prev == next) {
@@ -150,6 +164,7 @@ class _TrayManagerState extends ConsumerState<TrayManager> {
   @override
   void dispose() {
     _titleThrottle?.cancel();
+    _delaysThrottle?.cancel();
     _subscription?.cancel();
     super.dispose();
   }

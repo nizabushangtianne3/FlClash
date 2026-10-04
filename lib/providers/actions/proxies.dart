@@ -98,13 +98,20 @@ class ProxiesAction extends _$ProxiesAction {
     ref
         .read(profilesActionProvider.notifier)
         .updateCurrentSelectedMap(groupName, proxyName);
-    debouncer.call((FunctionTag.changeProxy, groupName), (
-      String groupName,
-      String proxyName,
-    ) async {
-      await changeProxy(groupName: groupName, proxyName: proxyName);
-      updateGroupsDebounce();
-    }, args: [groupName, proxyName]);
+    // Keep the wait short so a dead node does not feel laggy when the user
+    // rapidly picks a replacement; 150ms still coalesces double-taps.
+    debouncer.call(
+      (FunctionTag.changeProxy, groupName),
+      (
+        String groupName,
+        String proxyName,
+      ) async {
+        await changeProxy(groupName: groupName, proxyName: proxyName);
+        updateGroupsDebounce();
+      },
+      args: [groupName, proxyName],
+      duration: const Duration(milliseconds: 150),
+    );
   }
 
   String _currentSelectedName(String groupName) {
@@ -206,18 +213,23 @@ class ProxiesAction extends _$ProxiesAction {
     if (!result.changed) {
       return;
     }
-    try {
-      if (ref.read(appSettingProvider).closeConnections) {
-        await _core.closeConnections();
-      } else {
-        await _core.resetConnections();
+    // Do not await connection cleanup: on a dead node, closeConnections can
+    // sit on timed-out sockets and make the switch feel multi-second slow.
+    // The Core still runs the work; the UI moves on immediately.
+    unawaited(() async {
+      try {
+        if (ref.read(appSettingProvider).closeConnections) {
+          await _core.closeConnections();
+        } else {
+          await _core.resetConnections();
+        }
+      } catch (error) {
+        commonPrint.log(
+          'changeProxy($groupName -> $proxyName) connection reset failed: $error',
+          logLevel: coreFailureLogLevel(error),
+        );
       }
-    } catch (error) {
-      commonPrint.log(
-        'changeProxy($groupName -> $proxyName) connection reset failed: $error',
-        logLevel: coreFailureLogLevel(error),
-      );
-    }
+    }());
   }
 
   Future<String> updateProvider(
