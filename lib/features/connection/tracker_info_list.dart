@@ -21,15 +21,28 @@ class TrackerInfoListController extends ValueNotifier<TrackerInfosState> {
     if (identical(trackerInfos, value.trackerInfos)) {
       return;
     }
-    value = value.copyWith(
-      trackerInfos: value.autoScrollToEnd
-          ? trackerInfos
-          : retainTrimmedHead(
-              value.trackerInfos,
-              trackerInfos,
-              pausedMaxRequestsLength,
-            ),
-    );
+    final next = value.autoScrollToEnd
+        ? trackerInfos
+        : retainTrimmedHead(
+            value.trackerInfos,
+            trackerInfos,
+            pausedMaxRequestsLength,
+          );
+    // Freezed equality: skip notifier work when live speeds/traffic are unchanged.
+    final current = value.trackerInfos;
+    if (current.length == next.length) {
+      var same = true;
+      for (var i = 0; i < current.length; i++) {
+        if (current[i] != next[i]) {
+          same = false;
+          break;
+        }
+      }
+      if (same) {
+        return;
+      }
+    }
+    value = value.copyWith(trackerInfos: next);
   }
 
   void setAutoScrollToEnd(bool autoScrollToEnd) {
