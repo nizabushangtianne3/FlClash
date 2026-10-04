@@ -32,6 +32,11 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   final List<DnsQuery> _bufferedDns = [];
   int _bufferedRequestCount = 0;
   int _bufferedDnsCount = 0;
+  // Cap in-flight buffers so a 400ms flood cannot allocate unbounded lists
+  // before the next flush (FixedList still truncates on the provider side).
+  static const _maxBufferedLogs = 400;
+  static const _maxBufferedRequests = 300;
+  static const _maxBufferedDns = 300;
 
   @override
   Widget build(BuildContext context) {
@@ -154,6 +159,9 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   @override
   void onLog(Log log) {
     _bufferedLogs.add(log);
+    if (_bufferedLogs.length > _maxBufferedLogs) {
+      _bufferedLogs.removeRange(0, _bufferedLogs.length - _maxBufferedLogs);
+    }
     _scheduleFeedFlush();
     if (log.logLevel == LogLevel.error) {
       throttler.call(
@@ -186,6 +194,12 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     // events in the background avoids FixedList rebuild storms on busy links.
     if (ref.read(appVisibleProvider)) {
       _bufferedRequests.add(trackerInfo);
+      if (_bufferedRequests.length > _maxBufferedRequests) {
+        _bufferedRequests.removeRange(
+          0,
+          _bufferedRequests.length - _maxBufferedRequests,
+        );
+      }
       _bufferedRequestCount++;
       _scheduleFeedFlush();
     }
@@ -196,6 +210,9 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   void onDns(DnsQuery dnsQuery) {
     if (ref.read(appVisibleProvider)) {
       _bufferedDns.add(dnsQuery);
+      if (_bufferedDns.length > _maxBufferedDns) {
+        _bufferedDns.removeRange(0, _bufferedDns.length - _maxBufferedDns);
+      }
       _bufferedDnsCount++;
       _scheduleFeedFlush();
     }
