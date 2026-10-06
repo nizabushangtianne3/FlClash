@@ -225,6 +225,7 @@ set readRemoteIcon(Stream<Uint8List> Function(String src)? value) {
   _readRemoteIcon = value ?? _readCachedIcon;
 }
 final _iconPrecachePool = TaskPool(maxConcurrentIconLoads);
+final _iconPrefetchesInFlight = <String>{};
 
 Stream<Uint8List> _loadRemoteIcon(String src) {
   return _readRemoteIcon(src).map((bytes) {
@@ -253,28 +254,33 @@ Future<void> _decodeAhead(Uint8List bytes) {
   return completer.future;
 }
 
+Future<void> _precacheIcon(String src) async {
+  try {
+    await for (final bytes in _loadRemoteIcon(src)) {
+      if (!src.isSvg) {
+        await _decodeAhead(bytes);
+      }
+    }
+  } catch (error) {
+    commonPrint.log('Failed to precache icon $src: $error');
+  }
+}
+
 Future<void> precacheTargetIcons(Iterable<String> srcs) async {
-  final pending = srcs
-      .toSet()
-      .where(
-        (src) =>
-            src.isNotEmpty &&
-            !src.contains('base64,') &&
-            !_remoteIcons.contains(src),
-      )
-      .map(
-        (src) => _iconPrecachePool.run(() async {
-          try {
-            await for (final bytes in _loadRemoteIcon(src)) {
-              if (!src.isSvg) {
-                await _decodeAhead(bytes);
-              }
-            }
-          } catch (error) {
-            commonPrint.log('Failed to precache icon $src: $error');
-          }
-        }),
-      );
+  final pending = <Future<void>>[];
+  for (final src in srcs.toSet()) {
+    if (src.isEmpty ||
+        src.contains('base64,') ||
+        _remoteIcons.contains(src) ||
+        !_iconPrefetchesInFlight.add(src)) {
+      continue;
+    }
+    pending.add(
+      _iconPrecachePool.run(() => _precacheIcon(src)).whenComplete(() {
+        _iconPrefetchesInFlight.remove(src);
+      }),
+    );
+  }
   await Future.wait(pending);
 }
 
