@@ -97,10 +97,10 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     // Every Core process starts without a log stream.
     ref.listenManual(coreStatusProvider, (prev, next) {
       if (next == CoreStatus.connected && prev != CoreStatus.connected) {
-        _syncLogStream();
+        _syncMessageStreams();
       }
     });
-    ref.listenManual(appVisibleProvider, (_, _) => _syncLogStream());
+    ref.listenManual(appVisibleProvider, (_, _) => _syncMessageStreams());
   }
 
   void _syncLogStream() {
@@ -114,10 +114,26 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     }
   }
 
+  void _syncMessageStreams() {
+    _syncLogStream();
+    if (ref.read(coreStatusProvider) != CoreStatus.connected) {
+      return;
+    }
+    if (ref.read(appVisibleProvider)) {
+      _core.startRequestMessages();
+      _core.startDnsMessages();
+    } else {
+      _core.stopRequestMessages();
+      _core.stopDnsMessages();
+    }
+  }
+
   @override
   void dispose() {
     _feedFlushTimer?.cancel();
     _flushFeeds();
+    _coreController.stopRequestMessages();
+    _coreController.stopDnsMessages();
     coreEventManager.removeListener(this);
     super.dispose();
   }

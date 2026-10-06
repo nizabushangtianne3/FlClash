@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,10 +18,41 @@ var (
 	stateMessageQueue    = make(chan Message, messageQueueSize)
 	priorityMessageQueue = make(chan Message, messageQueueSize)
 	bulkMessageQueue     = make(chan Message, messageQueueSize)
+	requestMessages      atomic.Bool
+	dnsMessages          atomic.Bool
 )
 
 func init() {
+	requestMessages.Store(true)
+	dnsMessages.Store(true)
 	go runMessageBatcher(stateMessageQueue, priorityMessageQueue, bulkMessageQueue, sendMessageBatch)
+}
+
+func handleStartRequestMessages() {
+	requestMessages.Store(true)
+}
+
+func handleStopRequestMessages() {
+	requestMessages.Store(false)
+}
+
+func handleStartDnsMessages() {
+	dnsMessages.Store(true)
+}
+
+func handleStopDnsMessages() {
+	dnsMessages.Store(false)
+}
+
+func messageInterestEnabled(messageType MessageType) bool {
+	switch messageType {
+	case RequestMessage:
+		return requestMessages.Load()
+	case DnsMessage:
+		return dnsMessages.Load()
+	default:
+		return true
+	}
 }
 
 type messageClass int
@@ -50,7 +82,7 @@ func classOfMessage(message Message) messageClass {
 // Request and DNS events fire per connection and per query for as long as the
 // Android service runs, engine or not; unheard, they are not worth encoding.
 func sendMessage(messageType MessageType, data any) {
-	if !hasEventListener() {
+	if !hasEventListener() || !messageInterestEnabled(messageType) {
 		return
 	}
 	message := Message{Type: messageType, Data: data}

@@ -133,6 +133,20 @@ void main() {
       CoreMethod.stopLog,
     ]);
   });
+
+  test('request and DNS interest calls reach the Core methods', () {
+    core.startRequestMessages();
+    core.stopRequestMessages();
+    core.startDnsMessages();
+    core.stopDnsMessages();
+
+    expect(core.invoked, [
+      CoreMethod.startRequestMessages,
+      CoreMethod.stopRequestMessages,
+      CoreMethod.startDnsMessages,
+      CoreMethod.stopDnsMessages,
+    ]);
+  });
 }
 
 class _DisconnectedCore extends _SilentCore {

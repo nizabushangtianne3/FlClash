@@ -331,6 +331,22 @@ class CoreController {
     _interface.stopLog();
   }
 
+  void startRequestMessages() {
+    _interface.startRequestMessages();
+  }
+
+  void stopRequestMessages() {
+    _interface.stopRequestMessages();
+  }
+
+  void startDnsMessages() {
+    _interface.startDnsMessages();
+  }
+
+  void stopDnsMessages() {
+    _interface.stopDnsMessages();
+  }
+
   Future<void> requestGc() async {
     await _interface.forceGc();
   }

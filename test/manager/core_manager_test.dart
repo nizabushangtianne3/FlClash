@@ -92,6 +92,10 @@ _MockCoreHandlerInterface _coreInterface() {
   final coreInterface = _MockCoreHandlerInterface();
   when(() => coreInterface.startLog()).thenAnswer((_) {});
   when(() => coreInterface.stopLog()).thenAnswer((_) {});
+  when(() => coreInterface.startRequestMessages()).thenAnswer((_) {});
+  when(() => coreInterface.stopRequestMessages()).thenAnswer((_) {});
+  when(() => coreInterface.startDnsMessages()).thenAnswer((_) {});
+  when(() => coreInterface.stopDnsMessages()).thenAnswer((_) {});
   return coreInterface;
 }
 

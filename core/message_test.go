@@ -73,6 +73,23 @@ func TestClassOfMessageRoutesEachTier(t *testing.T) {
 	}
 }
 
+func TestMessageInterestTogglesRequestAndDnsEvents(t *testing.T) {
+	handleStartRequestMessages()
+	handleStartDnsMessages()
+	if !messageInterestEnabled(RequestMessage) || !messageInterestEnabled(DnsMessage) {
+		t.Fatal("starting request and DNS messages did not enable their events")
+	}
+
+	handleStopRequestMessages()
+	handleStopDnsMessages()
+	if messageInterestEnabled(RequestMessage) || messageInterestEnabled(DnsMessage) {
+		t.Fatal("stopping request and DNS messages did not disable their events")
+	}
+	if !messageInterestEnabled(LogMessage) || !messageInterestEnabled(DelayMessage) {
+		t.Fatal("request and DNS interests must not affect other event types")
+	}
+}
+
 func TestEnqueueStateNeverEvictsAQueuedEvent(t *testing.T) {
 	queue := make(chan Message, 2)
 	for i := 0; i < 5; i++ {
