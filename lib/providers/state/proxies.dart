@@ -113,14 +113,14 @@ GroupsState filterGroupsState(Ref ref, String query) {
   if (searchQuery.isEmpty) {
     return currentGroups;
   }
-  final matches = <Proxy, bool>{};
   final groups = currentGroups.value
       .map((group) {
         return group.copyWith(
           all: group.all
-              .where(
-                (proxy) =>
-                    matches[proxy] ??= searchQuery.matches(proxy.searchFields),
+              .whereMatches(
+                searchQuery,
+                (proxy) => proxy.searchFields,
+                texts: _proxySearchTexts,
               )
               .toList(),
         );
@@ -287,6 +287,8 @@ String? selectedProxyName(Ref ref, String groupName) {
   );
   return group?.getCurrentSelectedName(proxyName ?? '');
 }
+
+final _proxySearchTexts = Expando<String>('proxySearchTexts');
 
 @riverpod
 String proxyDesc(Ref ref, Proxy proxy) {
