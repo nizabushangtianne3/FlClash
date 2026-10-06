@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fl_clash/common/boot_guard.dart';
 import 'package:fl_clash/common/boot_record.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -69,6 +71,40 @@ void main() {
       expect(probes, 1);
     },
   );
+
+  test('reads boot inputs concurrently', () async {
+    final record = Completer<BootRecord?>();
+    final exitInfo = Completer<AppExitInfo?>();
+    final crashReport = Completer<bool>();
+    final started = <String>[];
+    final guard = BootGuard(
+      supported: true,
+      readRecord: () {
+        started.add('record');
+        return record.future;
+      },
+      writeRecord: (_) async {},
+      readExitInfo: () {
+        started.add('exitInfo');
+        return exitInfo.future;
+      },
+      readCrashReport: () {
+        started.add('crashReport');
+        return crashReport.future;
+      },
+      now: () => 5000,
+    );
+
+    final run = guard.evaluate(profileId: 7, crashlyticsEnabled: true);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(started, containsAll(['record', 'exitInfo', 'crashReport']));
+
+    record.complete(null);
+    exitInfo.complete(null);
+    crashReport.complete(false);
+    await run;
+  });
 
   test('an interrupted launch is carried into the next boot record', () async {
     final store = _RecordStore()

@@ -41,9 +41,14 @@ class BootGuard {
     if (!_supported) {
       return _decision;
     }
-    final record = await _readRecord();
-    final exitInfo = await _readExitInfo();
-    final crashReported = crashlyticsEnabled && await _readCrashReport();
+    final recordFuture = _readRecord();
+    final exitInfoFuture = _readExitInfo();
+    final crashReportFuture = crashlyticsEnabled
+        ? _readCrashReport()
+        : Future<bool>.value(false);
+    final record = await recordFuture;
+    final exitInfo = await exitInfoFuture;
+    final crashReported = await crashReportFuture;
     final decision = resolveBootDecision(
       record: record,
       exitInfo: exitInfo,
