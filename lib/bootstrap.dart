@@ -50,8 +50,10 @@ class Bootstrap {
   Future<DynamicColorSeeds> _initDynamicColor() async {
     TonalPalette? primaryPalette;
     Color? accentColor;
+    final primaryPaletteFuture = _getSystemPrimaryPalette();
+    final accentColorFuture = DynamicColorPlugin.getAccentColor();
     try {
-      primaryPalette = await _getSystemPrimaryPalette();
+      primaryPalette = await primaryPaletteFuture;
     } catch (error) {
       commonPrint.log(
         'Failed to get core palette: $error',
@@ -59,7 +61,7 @@ class Bootstrap {
       );
     }
     try {
-      accentColor = await DynamicColorPlugin.getAccentColor();
+      accentColor = await accentColorFuture;
     } catch (error) {
       commonPrint.log(
         'Failed to get accent color: $error',
