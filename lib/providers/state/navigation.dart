@@ -2,7 +2,9 @@ part of '../state.dart';
 
 @riverpod
 NavigationItemsState navigationItemsState(Ref ref) {
-  final openLogs = ref.watch(appSettingProvider).openLogs;
+  final openLogs = ref.watch(
+    appSettingProvider.select((state) => state.openLogs),
+  );
   final hasProfiles = ref.watch(
     profilesProvider.select((state) => state.isNotEmpty),
   );
@@ -59,7 +61,7 @@ NavigationState navigationState(Ref ref) {
   final pageLabel = ref.watch(shownPageLabelProvider);
   final navigationItems = ref.watch(currentNavigationItemsStateProvider).value;
   final viewMode = ref.watch(viewModeProvider);
-  final locale = ref.watch(appSettingProvider).locale;
+  final locale = ref.watch(appSettingProvider.select((state) => state.locale));
   final index = navigationItems.lastIndexWhere(
     (element) => element.label == pageLabel,
   );
