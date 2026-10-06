@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class Preferences {
   static Preferences? _instance;
+  String? _lastSavedConfig;
   Completer<SharedPreferences?> sharedPreferencesCompleter = Completer();
   Completer<bool> isInitCompleter = Completer();
 
@@ -51,8 +52,10 @@ class Preferences {
     try {
       final preferences = await sharedPreferencesCompleter.future;
       final configString = preferences?.getString(configKey);
+      _lastSavedConfig = null;
       if (configString == null) return null;
       final Map<String, Object?>? configMap = json.decode(configString);
+      _lastSavedConfig = configString;
       return configMap;
     } catch (e) {
       commonPrint.log(
@@ -102,7 +105,15 @@ class Preferences {
 
   Future<bool> saveConfig(Config config) async {
     final preferences = await sharedPreferencesCompleter.future;
-    return preferences?.setString(configKey, json.encode(config)) ?? false;
+    final encoded = json.encode(config);
+    if (_lastSavedConfig == encoded) {
+      return true;
+    }
+    final saved = await preferences?.setString(configKey, encoded) ?? false;
+    if (saved) {
+      _lastSavedConfig = encoded;
+    }
+    return saved;
   }
 
   Future<SystemDnsRecord?> getSystemDnsRecord() async {
@@ -160,6 +171,7 @@ class Preferences {
   Future<void> clearPreferences() async {
     final sharedPreferencesIns = await sharedPreferencesCompleter.future;
     await sharedPreferencesIns?.clear();
+    _lastSavedConfig = null;
   }
 }
 
