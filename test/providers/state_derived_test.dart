@@ -422,6 +422,26 @@ void main() {
     expect(container.read(filterGroupsStateProvider('hk jp')).value, isEmpty);
   });
 
+  test('proxy search preserves group identity when every proxy matches', () {
+    const group = Group(
+      name: 'Group A',
+      type: GroupType.Selector,
+      hidden: false,
+      all: [
+        Proxy(name: 'HK 01', type: 'Vmess'),
+        Proxy(name: 'JP 01', type: 'Trojan'),
+      ],
+    );
+    container.read(groupsProvider.notifier).update((_) => const [group]);
+    container
+        .read(patchClashConfigProvider.notifier)
+        .update((state) => state.copyWith(mode: Mode.rule));
+
+    final result = container.read(filterGroupsStateProvider('01')).value;
+
+    expect(identical(result.single, group), isTrue);
+  });
+
   test('runtime, VPN, tray, and DNS states follow live state', () async {
     container
         .read(runTimeProvider.notifier)

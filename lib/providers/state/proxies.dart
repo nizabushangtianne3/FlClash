@@ -113,20 +113,24 @@ GroupsState filterGroupsState(Ref ref, String query) {
   if (searchQuery.isEmpty) {
     return currentGroups;
   }
-  final groups = currentGroups.value
-      .map((group) {
-        return group.copyWith(
-          all: group.all
-              .whereMatches(
-                searchQuery,
-                (proxy) => proxy.searchFields,
-                texts: _proxySearchTexts,
-              )
-              .toList(),
-        );
-      })
-      .where((group) => group.all.isNotEmpty)
-      .toList();
+  final groups = <Group>[];
+  for (final group in currentGroups.value) {
+    final visible = <Proxy>[];
+    for (final proxy in group.all) {
+      final text = _proxySearchTexts[proxy] ??= SearchQuery.textOf(
+        proxy.searchFields,
+      );
+      if (searchQuery.matchesText(text)) {
+        visible.add(proxy);
+      }
+    }
+    if (visible.isEmpty) {
+      continue;
+    }
+    groups.add(
+      visible.length == group.all.length ? group : group.copyWith(all: visible),
+    );
+  }
   return currentGroups.copyWith(value: groups);
 }
 
