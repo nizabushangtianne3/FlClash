@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:collection/collection.dart';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/common/tray.dart';
 import 'package:fl_clash/common/window.dart';
@@ -51,8 +50,8 @@ class _TrayManagerState extends ConsumerState<TrayManager> {
       }
     });
     if (system.isMacOS) {
-      ref.listenManual(trayDelaysProvider, (prev, next) {
-        if (const DeepCollectionEquality().equals(prev, next)) {
+      ref.listenManual(delayDataSourceProvider, (prev, next) {
+        if (identical(prev, next)) {
           return;
         }
         if (_delaysThrottle?.isActive ?? false) {
