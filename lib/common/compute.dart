@@ -50,15 +50,36 @@ List<Group> computeSort({
           realState: realStateFor(proxy.name),
         ),
     };
-    final sorted =
-        List.of(proxies)
-          ..sort((a, b) => delayStates[a.name]!.compareTo(delayStates[b.name]!));
-    return _sameOrder(sorted, proxies) ? proxies : sorted;
+    var ordered = true;
+    for (var index = 1; index < proxies.length; index++) {
+      final previous = delayStates[proxies[index - 1].name]!;
+      final current = delayStates[proxies[index].name]!;
+      if (previous.compareTo(current) > 0) {
+        ordered = false;
+        break;
+      }
+    }
+    if (ordered) {
+      return proxies;
+    }
+    // Ties keep their configured position instead of reshuffling each batch.
+    final order = List<int>.generate(proxies.length, (index) => index)
+      ..sort((a, b) {
+        final compared = delayStates[proxies[a].name]!.compareTo(
+          delayStates[proxies[b].name]!,
+        );
+        return compared != 0 ? compared : a.compareTo(b);
+      });
+    return [for (final index in order) proxies[index]];
   }
 
   List<Proxy> sortOfName(List<Proxy> proxies) {
-    final sorted = List.of(proxies)..sort((a, b) => a.name.compareTo(b.name));
-    return _sameOrder(sorted, proxies) ? proxies : sorted;
+    for (var index = 1; index < proxies.length; index++) {
+      if (proxies[index - 1].name.compareTo(proxies[index].name) > 0) {
+        return List.of(proxies)..sort((a, b) => a.name.compareTo(b.name));
+      }
+    }
+    return proxies;
   }
 
   final sortedGroups = [

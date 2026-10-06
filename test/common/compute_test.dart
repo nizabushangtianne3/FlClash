@@ -392,6 +392,66 @@ void main() {
         'proxy-b',
       ]);
     });
+
+    test('keeps large equal-delay groups in configuration order', () {
+      final proxies = [
+        for (var index = 0; index < 64; index++)
+          Proxy(name: 'proxy-${index.toString().padLeft(2, '0')}', type: 'ss'),
+      ];
+      final group = Group(
+        name: 'group-a',
+        type: GroupType.Selector,
+        testUrl: 'http://a.test',
+        all: proxies,
+      );
+      final result = computeSort(
+        groups: [group],
+        sortType: ProxiesSortType.delay,
+        delayMap: {
+          'http://a.test': {for (final proxy in proxies) proxy.name: 50},
+        },
+        selectedMap: {},
+        defaultTestUrl: 'http://default.test',
+      );
+      expect(identical(result.single, group), isTrue);
+      expect(
+        result.single.all.map((proxy) => proxy.name).toList(),
+        proxies.map((proxy) => proxy.name).toList(),
+      );
+    });
+
+    test('re-sorting an already ordered group keeps its identity', () {
+      const proxyA = Proxy(name: 'proxy-a', type: 'ss');
+      const proxyB = Proxy(name: 'proxy-b', type: 'ss');
+      const group = Group(
+        name: 'group-a',
+        type: GroupType.Selector,
+        testUrl: 'http://a.test',
+        all: [proxyA, proxyB],
+      );
+      final delayMap = {
+        'http://a.test': {'proxy-a': 100, 'proxy-b': 50},
+      };
+      final first = computeSort(
+        groups: [group],
+        sortType: ProxiesSortType.delay,
+        delayMap: delayMap,
+        selectedMap: {},
+        defaultTestUrl: 'http://default.test',
+      );
+      expect(first.single.all.map((proxy) => proxy.name).toList(), [
+        'proxy-b',
+        'proxy-a',
+      ]);
+      final second = computeSort(
+        groups: first,
+        sortType: ProxiesSortType.delay,
+        delayMap: delayMap,
+        selectedMap: {},
+        defaultTestUrl: 'http://default.test',
+      );
+      expect(identical(second, first), isTrue);
+    });
   });
 
   group('Group.getCurrentSelectedName', () {
