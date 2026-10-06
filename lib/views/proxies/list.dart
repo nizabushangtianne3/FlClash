@@ -99,22 +99,25 @@ class _ProxiesListViewState extends ConsumerState<ProxiesListView> {
 
   Widget _buildProxyRow({
     required Group group,
-    required List<Proxy> proxies,
     required int rowIndex,
     required int columns,
     required ProxyCardType cardType,
   }) {
     final groupName = group.name;
     final enterAnimated = _enterGroupName == groupName;
+    final proxies = group.all;
+    final first = rowIndex * columns;
+    final last = min(first + columns, proxies.length);
     final children = List<Widget>.generate(columns * 2 - 1, (index) {
       if (index.isOdd) {
         return const SizedBox(width: 8);
       }
       final columnIndex = index ~/ 2;
-      if (columnIndex >= proxies.length) {
+      final proxyIndex = first + columnIndex;
+      if (proxyIndex >= last) {
         return const Flexible(child: SizedBox());
       }
-      final proxy = proxies[columnIndex];
+      final proxy = proxies[proxyIndex];
       final card = SizedBox(
         height: getItemHeight(cardType),
         child: ProxyCard(
@@ -153,9 +156,7 @@ class _ProxiesListViewState extends ConsumerState<ProxiesListView> {
   }) {
     final groupName = group.name;
     final isExpand = currentUnfoldSet.contains(groupName);
-    final rows = isExpand
-        ? group.all.chunks(columns).toList()
-        : const <List<Proxy>>[];
+    final rowCount = isExpand ? (group.all.length + columns - 1) ~/ columns : 0;
     return SliverMainAxisGroup(
       slivers: [
         PinnedHeaderSliver(
@@ -184,12 +185,11 @@ class _ProxiesListViewState extends ConsumerState<ProxiesListView> {
             delegate: SliverChildBuilderDelegate(
               (_, index) => _buildProxyRow(
                 group: group,
-                proxies: rows[index],
                 rowIndex: index,
                 columns: columns,
                 cardType: cardType,
               ),
-              childCount: rows.length,
+              childCount: rowCount,
             ),
           ),
       ],
