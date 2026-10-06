@@ -14,7 +14,7 @@ List<Group> computeSort({
     return groups;
   }
 
-  final groupsByName = {for (final group in groups) group.name: group};
+  final groupsByName = _indexGroups(groups);
   final realStateCache = <String, SelectedProxyState>{};
   SelectedProxyState realStateFor(String proxyName) {
     return realStateCache.putIfAbsent(
@@ -134,8 +134,8 @@ List<Group> computeHideTimeout({
   required Map<String, String> selectedMap,
   required String defaultTestUrl,
 }) {
+  final groupsByName = _indexGroups(allGroups);
   final realStates = <String, SelectedProxyState>{};
-  final groupsByName = {for (final group in allGroups) group.name: group};
   final proxyTypes = _proxyTypesFor(allGroups);
   return groups.map((group) {
     final groupTestUrl = group.testUrl.takeFirstValid([defaultTestUrl]);
@@ -152,8 +152,8 @@ List<Group> computeHideTimeout({
         () => computeRealSelectedProxyState(
           proxy.name,
           groups: allGroups,
-          selectedMap: selectedMap,
           groupsByName: groupsByName,
+          selectedMap: selectedMap,
         ),
       );
       if (_unprobeableProxyTypes.contains(proxyTypes[state.proxyName])) {
@@ -173,13 +173,13 @@ List<Group> computeHideTimeout({
 SelectedProxyState getRealSelectedProxyState(
   SelectedProxyState state, {
   required List<Group> groups,
-  required Map<String, String> selectedMap,
   Map<String, Group>? groupsByName,
+  required Map<String, String> selectedMap,
 }) {
   if (state.proxyName.isEmpty) return state;
+  final groupIndex = groupsByName ?? _indexGroups(groups);
+  final group = groupIndex[state.proxyName];
   final newState = state.copyWith(group: true);
-  final group =
-      groupsByName?[state.proxyName] ?? groups.getGroup(state.proxyName);
   if (group == null) return newState;
   final currentSelectedName = group.getCurrentSelectedName(
     selectedMap[newState.proxyName] ?? '',
@@ -190,23 +190,31 @@ SelectedProxyState getRealSelectedProxyState(
   return getRealSelectedProxyState(
     newState.copyWith(proxyName: currentSelectedName, testUrl: group.testUrl),
     groups: groups,
+    groupsByName: groupIndex,
     selectedMap: selectedMap,
-    groupsByName: groupsByName,
   );
 }
 
 SelectedProxyState computeRealSelectedProxyState(
   String proxyName, {
   required List<Group> groups,
-  required Map<String, String> selectedMap,
   Map<String, Group>? groupsByName,
+  required Map<String, String> selectedMap,
 }) {
   return getRealSelectedProxyState(
     SelectedProxyState(proxyName: proxyName),
     groups: groups,
-    selectedMap: selectedMap,
     groupsByName: groupsByName,
+    selectedMap: selectedMap,
   );
+}
+
+Map<String, Group> _indexGroups(List<Group> groups) {
+  final indexed = <String, Group>{};
+  for (final group in groups) {
+    indexed.putIfAbsent(group.name, () => group);
+  }
+  return indexed;
 }
 
 String delayTestKey(String testUrl, String proxyName) {
@@ -227,8 +235,8 @@ DelayState computeProxyDelayState({
       computeRealSelectedProxyState(
         proxyName,
         groups: groups,
-        selectedMap: selectedMap,
         groupsByName: groupsByName,
+        selectedMap: selectedMap,
       );
   final currentDelayMap =
       delayMap[state.testUrl.takeFirstValid([testUrl])] ?? {};

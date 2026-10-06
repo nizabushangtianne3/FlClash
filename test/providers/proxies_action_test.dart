@@ -346,6 +346,87 @@ void main() {
         debouncer.cancel((FunctionTag.changeProxy, 'Proxy'));
       },
     );
+
+    test('a stale completion cannot overwrite the newest switch', () async {
+      final first = Completer<ChangeProxyResult>();
+      final second = Completer<ChangeProxyResult>();
+      when(() => core.changeProxy(any())).thenAnswer((invocation) {
+        final params =
+            invocation.positionalArguments.single as ChangeProxyParams;
+        return params.proxyName == 'HK-01' ? first.future : second.future;
+      });
+      final container = buildContainer(profile: _selectedProfile('HK-00'));
+      container.read(groupsProvider.notifier).value = [
+        _group('Proxy', const [
+          Proxy(name: 'HK-01', type: 'ss'),
+          Proxy(name: 'HK-02', type: 'ss'),
+        ]),
+      ];
+      final action = actionOf(container);
+
+      final firstRun = action.changeProxy(
+        groupName: 'Proxy',
+        proxyName: 'HK-01',
+      );
+      final secondRun = action.changeProxy(
+        groupName: 'Proxy',
+        proxyName: 'HK-02',
+      );
+
+      first.complete(const ChangeProxyResult(changed: true));
+      await firstRun;
+      expect(container.read(currentProfileProvider)?.selectedMap, {
+        'Proxy': 'HK-02',
+      });
+
+      second.completeError(StateError('second switch failed'));
+      await secondRun;
+      expect(container.read(currentProfileProvider)?.selectedMap, {
+        'Proxy': 'HK-01',
+      });
+    });
+
+    test(
+      'a stale success cannot overwrite an already applied switch',
+      () async {
+        final first = Completer<ChangeProxyResult>();
+        final second = Completer<ChangeProxyResult>();
+        when(() => core.changeProxy(any())).thenAnswer((invocation) {
+          final params =
+              invocation.positionalArguments.single as ChangeProxyParams;
+          return params.proxyName == 'HK-01' ? first.future : second.future;
+        });
+        final container = buildContainer(profile: _selectedProfile('HK-00'));
+        container.read(groupsProvider.notifier).value = [
+          _group('Proxy', const [
+            Proxy(name: 'HK-01', type: 'ss'),
+            Proxy(name: 'HK-02', type: 'ss'),
+          ]),
+        ];
+        final action = actionOf(container);
+
+        final firstRun = action.changeProxy(
+          groupName: 'Proxy',
+          proxyName: 'HK-01',
+        );
+        final secondRun = action.changeProxy(
+          groupName: 'Proxy',
+          proxyName: 'HK-02',
+        );
+
+        second.complete(const ChangeProxyResult(changed: true));
+        await secondRun;
+        expect(container.read(groupsProvider).single.now, 'HK-02');
+
+        first.complete(const ChangeProxyResult(changed: true));
+        await firstRun;
+
+        expect(container.read(currentProfileProvider)?.selectedMap, {
+          'Proxy': 'HK-02',
+        });
+        expect(container.read(groupsProvider).single.now, 'HK-02');
+      },
+    );
   });
 
   group('proxyDelayTest', () {
@@ -406,6 +487,17 @@ void main() {
   });
 
   group('delayTest', () {
+    test('coalesces repeated buffered values for the same target', () async {
+      final container = _delayContainer(buildContainer);
+      final action = actionOf(container);
+
+      action.setDelay(const Delay(name: 'HK-01', url: _testUrl, value: 120));
+      action.setDelay(const Delay(name: 'HK-01', url: _testUrl, value: 80));
+      await Future<void>.delayed(renderThrottleDuration * 2);
+
+      expect(container.read(delayDataSourceProvider)[_testUrl], {'HK-01': 80});
+    });
+
     test('measures every proxy and bumps the sort counter', () async {
       when(() => core.asyncTestDelay(_testUrl, any())).thenAnswer(
         (invocation) async => Delay(

@@ -30,7 +30,7 @@ class ProxiesAction extends _$ProxiesAction {
 
   final List<_DelayTestJob> _delayTestJobs = [];
 
-  final List<Delay> _bufferedDelays = [];
+  final Map<String, Delay> _bufferedDelays = {};
 
   final List<String> _bufferedStarts = [];
 
@@ -39,6 +39,10 @@ class ProxiesAction extends _$ProxiesAction {
   Timer? _delayFlushTimer;
 
   final Map<String, String> _pendingSelectedRollback = {};
+  final Map<String, String> _appliedSelected = {};
+  final Map<String, int> _appliedSelectedIntent = {};
+  final Map<String, int> _selectedIntent = {};
+  final Map<String, Set<int>> _activeSelectedIntents = {};
 
   @override
   void build() {
@@ -71,7 +75,7 @@ class ProxiesAction extends _$ProxiesAction {
     _delayFlushTimer?.cancel();
     _delayFlushTimer = null;
     if (_bufferedDelays.isNotEmpty) {
-      final delays = List.of(_bufferedDelays);
+      final delays = _bufferedDelays.values.toList(growable: false);
       _bufferedDelays.clear();
       ref.read(delayDataSourceProvider.notifier).setDelays(delays);
     }
@@ -91,6 +95,7 @@ class ProxiesAction extends _$ProxiesAction {
   }
 
   void changeProxyDebounce(String groupName, String proxyName) {
+    final intent = _beginSelectedIntent(groupName);
     _pendingSelectedRollback.putIfAbsent(
       groupName,
       () => _currentSelectedName(groupName),
@@ -102,34 +107,28 @@ class ProxiesAction extends _$ProxiesAction {
     // rapidly picks a replacement; 150ms still coalesces double-taps.
     debouncer.call(
       (FunctionTag.changeProxy, groupName),
-      (
-        String groupName,
-        String proxyName,
-      ) async {
-        final switched = await changeProxy(
+      (String groupName, String proxyName) async {
+        await changeProxy(
           groupName: groupName,
           proxyName: proxyName,
+          intent: intent,
         );
-        // selectedMap already updated the UI; patch group.now locally so the
-        // proxies page does not need a getProxies round-trip for a single switch.
-        if (switched) {
-          final groups = ref.read(groupsProvider);
-          if (groups.isNotEmpty) {
-            ref.read(groupsProvider.notifier).update(
-              (list) => [
-                for (final group in list)
-                  if (group.name == groupName)
-                    group.copyWith(now: proxyName)
-                  else
-                    group,
-              ],
-            );
-          }
-        }
       },
       args: [groupName, proxyName],
       duration: const Duration(milliseconds: 150),
     );
+  }
+
+  int _beginSelectedIntent(String groupName) {
+    return _selectedIntent.update(
+      groupName,
+      (intent) => intent + 1,
+      ifAbsent: () => 1,
+    );
+  }
+
+  bool _isLatestSelectedIntent(String groupName, int intent) {
+    return _selectedIntent[groupName] == intent;
   }
 
   String _currentSelectedName(String groupName) {
@@ -197,28 +196,76 @@ class ProxiesAction extends _$ProxiesAction {
   }
 
   void setDelay(Delay delay) {
-    _bufferedDelays.add(delay);
+    _bufferedDelays[delayTestKey(delay.url, delay.name)] = delay;
     _scheduleDelayFlush();
   }
 
   Future<bool> changeProxy({
     required String groupName,
     required String proxyName,
+    int? intent,
   }) async {
+    final selectedIntent = intent ?? _beginSelectedIntent(groupName);
+    final activeIntents = _activeSelectedIntents.putIfAbsent(
+      groupName,
+      () => {},
+    );
+    activeIntents.add(selectedIntent);
+    _pendingSelectedRollback.putIfAbsent(
+      groupName,
+      () => _currentSelectedName(groupName),
+    );
     final profilesAction = ref.read(profilesActionProvider.notifier);
-    final rollbackName =
-        _pendingSelectedRollback.remove(groupName) ??
-        _currentSelectedName(groupName);
     profilesAction.updateCurrentSelectedMap(groupName, proxyName);
-    final ChangeProxyResult result;
     try {
-      result = await _core.changeProxy(
+      final result = await _core.changeProxy(
         ChangeProxyParams(groupName: groupName, proxyName: proxyName),
       );
       if (result.message.isNotEmpty) {
         throw MessageException(result.message);
       }
+      if (!result.changed) {
+        return false;
+      }
+      final isNewestApplied =
+          selectedIntent > (_appliedSelectedIntent[groupName] ?? 0);
+      if (isNewestApplied) {
+        _appliedSelected[groupName] = proxyName;
+        _appliedSelectedIntent[groupName] = selectedIntent;
+      }
+      final hasNewerIntent = activeIntents.any(
+        (active) => active > selectedIntent,
+      );
+      if (isNewestApplied && !hasNewerIntent) {
+        _pendingSelectedRollback.remove(groupName);
+        _patchSelectedProxy(groupName, proxyName);
+      }
+      // Do not await connection cleanup: on a dead node, closeConnections can
+      // sit on timed-out sockets and make the switch feel multi-second slow.
+      // The Core still runs the work; the UI moves on immediately.
+      unawaited(() async {
+        try {
+          if (ref.read(appSettingProvider).closeConnections) {
+            await _core.closeConnections();
+          } else {
+            await _core.resetConnections();
+          }
+        } catch (error) {
+          commonPrint.log(
+            'changeProxy($groupName -> $proxyName) connection reset failed: $error',
+            logLevel: coreFailureLogLevel(error),
+          );
+        }
+      }());
+      return true;
     } catch (error) {
+      if (!_isLatestSelectedIntent(groupName, selectedIntent)) {
+        return false;
+      }
+      final rollbackName =
+          _appliedSelected[groupName] ??
+          _pendingSelectedRollback.remove(groupName) ??
+          _currentSelectedName(groupName);
       commonPrint.log(
         'changeProxy($groupName -> $proxyName) failed: $error',
         logLevel: coreFailureLogLevel(error),
@@ -229,28 +276,31 @@ class ProxiesAction extends _$ProxiesAction {
         level: MessageLevel.error,
       );
       return false;
-    }
-    if (!result.changed) {
-      return false;
-    }
-    // Do not await connection cleanup: on a dead node, closeConnections can
-    // sit on timed-out sockets and make the switch feel multi-second slow.
-    // The Core still runs the work; the UI moves on immediately.
-    unawaited(() async {
-      try {
-        if (ref.read(appSettingProvider).closeConnections) {
-          await _core.closeConnections();
-        } else {
-          await _core.resetConnections();
-        }
-      } catch (error) {
-        commonPrint.log(
-          'changeProxy($groupName -> $proxyName) connection reset failed: $error',
-          logLevel: coreFailureLogLevel(error),
-        );
+    } finally {
+      activeIntents.remove(selectedIntent);
+      if (activeIntents.isEmpty) {
+        _activeSelectedIntents.remove(groupName);
       }
-    }());
-    return true;
+    }
+  }
+
+  void _patchSelectedProxy(String groupName, String proxyName) {
+    final groups = ref.read(groupsProvider);
+    if (groups.isEmpty) {
+      return;
+    }
+    ref
+        .read(groupsProvider.notifier)
+        .update(
+          (list) => [
+            for (final group in list)
+              if (group.name == groupName)
+                group.copyWith(now: proxyName)
+              else
+                group,
+          ],
+        );
+    _core.patchCachedGroupNow(groupName, proxyName);
   }
 
   Future<String> updateProvider(
@@ -363,6 +413,10 @@ class ProxiesAction extends _$ProxiesAction {
     List<_DelayTestBatch> batches,
   ) {
     final groups = ref.read(groupsProvider);
+    final groupsByName = <String, Group>{};
+    for (final group in groups) {
+      groupsByName.putIfAbsent(group.name, () => group);
+    }
     final realStates = <String, SelectedProxyState>{};
     final selectedMap = ref.read(
       currentProfileProvider.select((state) => state?.selectedMap ?? {}),
@@ -377,6 +431,7 @@ class ProxiesAction extends _$ProxiesAction {
           () => computeRealSelectedProxyState(
             proxy.name,
             groups: groups,
+            groupsByName: groupsByName,
             selectedMap: selectedMap,
           ),
         );

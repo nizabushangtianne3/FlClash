@@ -132,6 +132,31 @@ void main() {
       );
       expect(state.proxyName, 'proxy-b');
     });
+
+    test('duplicate group names keep the first group', () {
+      final groups = [
+        const Group(
+          name: 'duplicate',
+          type: GroupType.URLTest,
+          now: 'first',
+          all: [Proxy(name: 'first', type: 'ss')],
+        ),
+        const Group(
+          name: 'duplicate',
+          type: GroupType.URLTest,
+          now: 'second',
+          all: [Proxy(name: 'second', type: 'ss')],
+        ),
+      ];
+
+      final state = computeRealSelectedProxyState(
+        'duplicate',
+        groups: groups,
+        selectedMap: {},
+      );
+
+      expect(state.proxyName, 'first');
+    });
   });
 
   group('computeProxyDelayState', () {
