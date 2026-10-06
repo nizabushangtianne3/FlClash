@@ -333,6 +333,11 @@ class Groups extends _$Groups with AutoDisposeNotifierMixin {
   List<Group> build() {
     return [];
   }
+
+  @override
+  bool updateShouldNotify(List<Group> previous, List<Group> next) {
+    return !groupListEquality.equals(previous, next);
+  }
 }
 
 @Riverpod(keepAlive: true)

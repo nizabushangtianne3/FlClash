@@ -165,6 +165,7 @@ const proxyGroupsEquality = ListEquality<ProxyGroup>();
 const customProxiesEquality = ListEquality<CustomProxy>();
 const clashProviderListEquality = ListEquality<ClashProvider>();
 const iconSetListEquality = ListEquality<IconSet>();
+const groupListEquality = ListEquality<Group>();
 const hotKeyActionListEquality = ListEquality<HotKeyAction>();
 const stringAndStringMapEntryListEquality =
     ListEquality<MapEntry<String, String>>();
