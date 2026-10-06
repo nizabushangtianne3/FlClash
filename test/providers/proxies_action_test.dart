@@ -498,6 +498,77 @@ void main() {
       expect(container.read(delayDataSourceProvider)[_testUrl], {'HK-01': 80});
     });
 
+    test('shares an in-flight delay probe across overlapping runs', () async {
+      var calls = 0;
+      final answer = Completer<Delay?>();
+      when(() => core.asyncTestDelay(_testUrl, 'HK-01')).thenAnswer((_) {
+        calls++;
+        return answer.future;
+      });
+      final container = _delayContainer(buildContainer);
+      final action = actionOf(container);
+
+      final first = action.proxyDelayTest(_proxy);
+      final second = action.proxyDelayTest(_proxy);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(calls, 1);
+      answer.complete(const Delay(name: 'HK-01', url: _testUrl, value: 24));
+      await Future.wait([first, second]);
+      await Future<void>.delayed(renderThrottleDuration * 2);
+
+      expect(container.read(delayDataSourceProvider)[_testUrl], {'HK-01': 24});
+    });
+
+    test('interactive probes start before queued bulk probes', () async {
+      final firstBatch = {
+        for (var index = 0; index < maxConcurrentDelayTests; index++)
+          'HK-$index': Completer<Delay?>(),
+      };
+      final urgent = Completer<Delay?>();
+      final started = <String>[];
+      when(() => core.asyncTestDelay(any(), 'URGENT')).thenAnswer((_) {
+        started.add('URGENT');
+        return urgent.future;
+      });
+      when(() => core.asyncTestDelay(_testUrl, any())).thenAnswer((invocation) {
+        final name = invocation.positionalArguments[1] as String;
+        started.add(name);
+        final gate = firstBatch[name];
+        if (gate != null) {
+          return gate.future;
+        }
+        return Future.value(Delay(name: name, url: _testUrl, value: 8));
+      });
+      final container = _delayContainer(buildContainer);
+      final action = actionOf(container);
+      final bulk = action.delayTest([
+        for (var index = 0; index < maxConcurrentDelayTests + 8; index++)
+          Proxy(name: 'HK-$index', type: 'ss'),
+      ]);
+      await Future<void>.delayed(Duration.zero);
+
+      final interactive = action.proxyDelayTest(
+        const Proxy(name: 'URGENT', type: 'ss'),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(started, isNot(contains('URGENT')));
+      expect(started, isNot(contains('HK-32')));
+
+      firstBatch['HK-0']!.complete(null);
+      await Future<void>.delayed(renderThrottleDuration * 2);
+      expect(started, contains('URGENT'));
+      expect(started, isNot(contains('HK-32')));
+
+      urgent.complete(const Delay(name: 'URGENT', url: _testUrl, value: 6));
+      for (final gate in firstBatch.values) {
+        if (!gate.isCompleted) {
+          gate.complete(null);
+        }
+      }
+      await Future.wait([bulk, interactive]);
+    });
+
     test('measures every proxy and bumps the sort counter', () async {
       when(() => core.asyncTestDelay(_testUrl, any())).thenAnswer(
         (invocation) async => Delay(

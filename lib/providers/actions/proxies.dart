@@ -32,6 +32,8 @@ class ProxiesAction extends _$ProxiesAction {
 
   final Map<String, Delay> _bufferedDelays = {};
 
+  final Map<String, Future<Delay?>> _delayTestFutures = {};
+
   final List<String> _bufferedStarts = [];
 
   final List<String> _bufferedFinishes = [];
@@ -62,6 +64,7 @@ class ProxiesAction extends _$ProxiesAction {
     _delayFlushTimer?.cancel();
     _delayFlushTimer = null;
     _bufferedDelays.clear();
+    _delayTestFutures.clear();
     _bufferedStarts.clear();
     _bufferedFinishes.clear();
     ref.read(pendingDelayTestsProvider.notifier).clear();
@@ -369,7 +372,7 @@ class ProxiesAction extends _$ProxiesAction {
   Future<void> proxyDelayTest(Proxy proxy, [String? testUrl]) {
     return _runDelayTests([
       (proxies: [proxy], testUrl: testUrl),
-    ]);
+    ], priority: true);
   }
 
   Future<void> delayTest(List<Proxy> proxies, [String? testUrl]) async {
@@ -400,10 +403,15 @@ class ProxiesAction extends _$ProxiesAction {
       final query = SearchQuery(
         matchSearch ? ref.read(queryProvider(QueryTag.proxies)) : '',
       );
-      await delayTest(
-        group.all.whereMatches(query, (proxy) => proxy.searchFields).toList(),
-        group.testUrl,
-      );
+      await _runDelayTests([
+        (
+          proxies: group.all
+              .whereMatches(query, (proxy) => proxy.searchFields)
+              .toList(),
+          testUrl: group.testUrl,
+        ),
+      ], priority: true);
+      ref.read(sortNumProvider.notifier).add();
     } finally {
       testing.stop(groupName);
     }
@@ -455,7 +463,10 @@ class ProxiesAction extends _$ProxiesAction {
     return targets;
   }
 
-  Future<void> _runDelayTests(List<_DelayTestBatch> batches) async {
+  Future<void> _runDelayTests(
+    List<_DelayTestBatch> batches, {
+    bool priority = false,
+  }) async {
     final targets = _resolveDelayTestTargets(batches);
     if (targets.isEmpty) {
       return;
@@ -471,7 +482,10 @@ class ProxiesAction extends _$ProxiesAction {
     try {
       await Future.wait(
         targets.map(
-          (target) => _delayTestPool.run(() => _runDelayTest(job, target)),
+          (target) => _delayTestPool.run(
+            () => _runDelayTest(job, target),
+            priority: priority,
+          ),
         ),
       );
     } finally {
@@ -497,7 +511,7 @@ class ProxiesAction extends _$ProxiesAction {
       _scheduleDelayFlush();
     }
     try {
-      final delay = await _core.getDelay(target.testUrl, target.proxyName);
+      final delay = await _runCoreDelayTest(target);
       if (delay != null && !job.cancelled) {
         setDelay(delay);
       }
@@ -515,5 +529,19 @@ class ProxiesAction extends _$ProxiesAction {
         _scheduleDelayFlush();
       }
     }
+  }
+
+  Future<Delay?> _runCoreDelayTest(_DelayTestTarget target) {
+    final active = _delayTestFutures[target.key];
+    if (active != null) {
+      return active;
+    }
+    late final Future<Delay?> future;
+    future = _core.getDelay(target.testUrl, target.proxyName).whenComplete(() {
+      if (identical(_delayTestFutures[target.key], future)) {
+        _delayTestFutures.remove(target.key);
+      }
+    });
+    return _delayTestFutures[target.key] = future;
   }
 }

@@ -60,4 +60,26 @@ void main() {
     expect(await pool.run(() async => 'next'), 'next');
     expect(pool.activeCount, 0);
   });
+
+  test('runs priority tasks before queued normal tasks', () async {
+    final pool = TaskPool(1);
+    final order = <int>[];
+    final blocker = Completer<void>();
+    final first = pool.run(() async {
+      order.add(0);
+      await blocker.future;
+    });
+    await Future<void>.delayed(Duration.zero);
+    final normal = pool.run(() async {
+      order.add(2);
+    });
+    final priority = pool.run(() async {
+      order.add(1);
+    }, priority: true);
+
+    blocker.complete();
+    await Future.wait([first, normal, priority]);
+
+    expect(order, [0, 1, 2]);
+  });
 }
