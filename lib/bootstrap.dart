@@ -43,8 +43,23 @@ class Bootstrap {
     windowPort = window;
     trayPort = appTray;
     navigationPort = navigation;
-    final dynamicColor = await _initDynamicColor();
-    return _initData(version, dynamicColor, viewSize);
+    final packageInfoFuture = PackageInfo.fromPlatform();
+    final config = await migration.run();
+    // Only an adaptive theme needs the system palette.
+    final dynamicColor = config.themeProps.primaryColor == null
+        ? await _initDynamicColor()
+        : const (
+            lightSeed: null,
+            darkSeed: null,
+            accentColor: Color(defaultPrimaryColor),
+          );
+    return _initData(
+      version,
+      config,
+      dynamicColor,
+      packageInfoFuture,
+      viewSize,
+    );
   }
 
   Future<DynamicColorSeeds> _initDynamicColor() async {
@@ -99,12 +114,14 @@ class Bootstrap {
 
   Future<ProviderContainer> _initData(
     int version,
+    Config initialConfig,
     DynamicColorSeeds dynamicColor,
+    Future<PackageInfo> packageInfoFuture,
     Size? viewSize,
   ) async {
     await _claimDataDirectory();
-    globalState.packageInfo = await PackageInfo.fromPlatform();
-    var config = await migration.run();
+    globalState.packageInfo = await packageInfoFuture;
+    var config = initialConfig;
     _bootDecision = await bootGuard.evaluate(
       profileId: config.currentProfileId,
       crashlyticsEnabled: config.appSettingProps.crashlytics,
