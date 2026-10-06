@@ -35,7 +35,7 @@ class Bootstrap {
 
   BootDecision _bootDecision = const BootDecision();
 
-  Future<ProviderContainer> init(int version) async {
+  Future<ProviderContainer> init(int version, {Size? viewSize}) async {
     globalState.appEnv = const String.fromEnvironment(
       'APP_ENV',
       defaultValue: 'pre',
@@ -44,7 +44,7 @@ class Bootstrap {
     trayPort = appTray;
     navigationPort = navigation;
     final dynamicColor = await _initDynamicColor();
-    return _initData(version, dynamicColor);
+    return _initData(version, dynamicColor, viewSize);
   }
 
   Future<DynamicColorSeeds> _initDynamicColor() async {
@@ -98,6 +98,7 @@ class Bootstrap {
   Future<ProviderContainer> _initData(
     int version,
     DynamicColorSeeds dynamicColor,
+    Size? viewSize,
   ) async {
     await _claimDataDirectory();
     globalState.packageInfo = await PackageInfo.fromPlatform();
@@ -118,7 +119,7 @@ class Bootstrap {
     final appState = AppState(
       brightness: WidgetsBinding.instance.platformDispatcher.platformBrightness,
       version: version,
-      viewSize: Size.zero,
+      viewSize: viewSize ?? Size.zero,
       requests: FixedList(maxRequestsLength),
       logs: FixedList(maxLogsLength),
       traffics: FixedList(trafficSampleLength),
