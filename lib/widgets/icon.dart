@@ -224,6 +224,7 @@ var _readRemoteIcon = _readCachedIcon;
 set readRemoteIcon(Stream<Uint8List> Function(String src)? value) {
   _readRemoteIcon = value ?? _readCachedIcon;
 }
+final _iconPrecachePool = TaskPool(maxConcurrentIconLoads);
 
 Stream<Uint8List> _loadRemoteIcon(String src) {
   return _readRemoteIcon(src).map((bytes) {
@@ -261,17 +262,19 @@ Future<void> precacheTargetIcons(Iterable<String> srcs) async {
             !src.contains('base64,') &&
             !_remoteIcons.contains(src),
       )
-      .map((src) async {
-        try {
-          await for (final bytes in _loadRemoteIcon(src)) {
-            if (!src.isSvg) {
-              await _decodeAhead(bytes);
+      .map(
+        (src) => _iconPrecachePool.run(() async {
+          try {
+            await for (final bytes in _loadRemoteIcon(src)) {
+              if (!src.isSvg) {
+                await _decodeAhead(bytes);
+              }
             }
+          } catch (error) {
+            commonPrint.log('Failed to precache icon $src: $error');
           }
-        } catch (error) {
-          commonPrint.log('Failed to precache icon $src: $error');
-        }
-      });
+        }),
+      );
   await Future.wait(pending);
 }
 

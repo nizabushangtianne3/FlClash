@@ -231,20 +231,24 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   Future<void> onLoaded(String providerName) async {
-    final provider = await _core.getExternalProvider(providerName);
     if (!mounted) {
       return;
     }
-    ref.read(providersProvider.notifier).setProvider(provider);
+    // Provider load advances the Core generation immediately; drop the host
+    // cache now so a concurrent getProxies cannot serve the previous tree.
+    _core.invalidateProxiesCache();
+    final providerFuture = _core.getExternalProvider(providerName);
     debouncer.call(FunctionTag.loadedProvider, () async {
       if (!mounted) {
         return;
       }
-      // Provider load changes the proxy tree; drop the host cache so the next
-      // getProxies is full (Core generation also advances).
-      ref.read(coreHandlerProvider).invalidateProxiesCache();
       ref.read(proxiesActionProvider.notifier).updateGroupsDebounce();
-    }, duration: const Duration(milliseconds: 5000));
+    }, duration: const Duration(seconds: 1));
+    final provider = await providerFuture;
+    if (!mounted) {
+      return;
+    }
+    ref.read(providersProvider.notifier).setProvider(provider);
     super.onLoaded(providerName);
   }
 

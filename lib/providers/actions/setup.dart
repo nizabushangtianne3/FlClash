@@ -39,10 +39,12 @@ class SetupAction extends _$SetupAction {
       appSettingProvider.select((state) => state.showTrayTitle),
       (_, _) => _syncRuntimeTicker(),
     );
+    ref.listen(currentPageLabelProvider, (_, _) => _syncRuntimeTicker());
   }
 
   bool get _isTrafficShown =>
-      ref.read(appVisibleProvider) ||
+      (ref.read(appVisibleProvider) &&
+          ref.read(currentPageLabelProvider) == PageLabel.dashboard) ||
       (system.isMacOS &&
           !ref.read(safeModeProvider) &&
           ref.read(appSettingProvider).showTrayTitle);

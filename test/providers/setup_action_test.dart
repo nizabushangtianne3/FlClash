@@ -344,6 +344,26 @@ void main() {
       await setup.setRunning(false);
     });
 
+    testWidgets('pauses traffic polling away from the dashboard', (
+      tester,
+    ) async {
+      final setup = buildScoped();
+      await setup.setRunning(true);
+      expect(trafficUpdates(), 1);
+
+      scoped.read(currentPageLabelProvider.notifier).toPage(PageLabel.proxies);
+      await tester.pump(const Duration(seconds: 4));
+      expect(trafficUpdates(), 1);
+
+      scoped
+          .read(currentPageLabelProvider.notifier)
+          .toPage(PageLabel.dashboard);
+      await tester.pump();
+      expect(trafficUpdates(), 2);
+
+      await setup.setRunning(false);
+    });
+
     testWidgets('a start while hidden waits for the app to be shown', (
       tester,
     ) async {
