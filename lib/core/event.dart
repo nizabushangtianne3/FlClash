@@ -22,6 +22,10 @@ List<CoreEvent> coreEventsFromData(Object? data) {
 }
 
 abstract mixin class CoreEventListener {
+  bool get wantsRequestEvents => true;
+
+  bool get wantsDnsEvents => true;
+
   void onLog(Log log) {}
 
   void onDelay(Delay delay) {}
@@ -110,7 +114,21 @@ class CoreEventManager {
   }
 
   void sendEvent(CoreEvent event) {
+    if (event.type == CoreEventType.request && !_hasRequestListener) {
+      return;
+    }
+    if (event.type == CoreEventType.dns && !_hasDnsListener) {
+      return;
+    }
     _controller.add(event);
+  }
+
+  bool get _hasRequestListener {
+    return _listeners.any((listener) => listener.wantsRequestEvents);
+  }
+
+  bool get _hasDnsListener {
+    return _listeners.any((listener) => listener.wantsDnsEvents);
   }
 
   void addListener(CoreEventListener listener) {

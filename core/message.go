@@ -114,10 +114,10 @@ func runMessageBatcher(
 			}
 		}
 		deadline = nil
-		// Copy out so send can run without racing the reused buffer.
-		current := append([]Message(nil), batch...)
+		// send must consume or copy the batch before returning; the batcher
+		// reuses this slice for the next batch.
+		send(batch)
 		batch = batch[:0]
-		send(current)
 	}
 	// A closed queue is set to nil so it never wins a select again.
 	take := func(queue *<-chan Message, message Message, open bool) bool {

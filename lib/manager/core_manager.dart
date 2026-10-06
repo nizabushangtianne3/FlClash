@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/core.dart';
@@ -27,9 +28,9 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   CoreController get _core => ref.read(coreHandlerProvider);
 
   Timer? _feedFlushTimer;
-  final List<Log> _bufferedLogs = [];
-  final List<TrackerInfo> _bufferedRequests = [];
-  final List<DnsQuery> _bufferedDns = [];
+  final ListQueue<Log> _bufferedLogs = ListQueue();
+  final ListQueue<TrackerInfo> _bufferedRequests = ListQueue();
+  final ListQueue<DnsQuery> _bufferedDns = ListQueue();
   int _bufferedRequestCount = 0;
   int _bufferedDnsCount = 0;
   late final Logs _logsNotifier;
@@ -37,6 +38,13 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   late final DnsQueries _dnsNotifier;
   late final RequestCount _requestCountNotifier;
   late final DnsQueryCount _dnsCountNotifier;
+
+  @override
+  bool get wantsRequestEvents => mounted && ref.read(appVisibleProvider);
+
+  @override
+  bool get wantsDnsEvents => mounted && ref.read(appVisibleProvider);
+
   // Cap in-flight buffers so a 400ms flood cannot allocate unbounded lists
   // before the next flush (FixedList still truncates on the provider side).
   static const _maxBufferedLogs = 400;
@@ -122,17 +130,17 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     _feedFlushTimer?.cancel();
     _feedFlushTimer = null;
     if (_bufferedLogs.isNotEmpty) {
-      final logs = List<Log>.of(_bufferedLogs);
+      final logs = _bufferedLogs.toList(growable: false);
       _bufferedLogs.clear();
       _logsNotifier.addAll(logs);
     }
     if (_bufferedRequests.isNotEmpty) {
-      final requests = List<TrackerInfo>.of(_bufferedRequests);
+      final requests = _bufferedRequests.toList(growable: false);
       _bufferedRequests.clear();
       _requestsNotifier.addRequests(requests);
     }
     if (_bufferedDns.isNotEmpty) {
-      final queries = List<DnsQuery>.of(_bufferedDns);
+      final queries = _bufferedDns.toList(growable: false);
       _bufferedDns.clear();
       _dnsNotifier.addQueries(queries);
     }
@@ -165,10 +173,7 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   void onLog(Log log) {
-    _bufferedLogs.add(log);
-    if (_bufferedLogs.length > _maxBufferedLogs) {
-      _bufferedLogs.removeRange(0, _bufferedLogs.length - _maxBufferedLogs);
-    }
+    _appendBounded(_bufferedLogs, log, _maxBufferedLogs);
     _scheduleFeedFlush();
     if (log.logLevel == LogLevel.error) {
       throttler.call(
@@ -200,13 +205,7 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     // Connections history is only useful while the UI is visible; dropping
     // events in the background avoids FixedList rebuild storms on busy links.
     if (ref.read(appVisibleProvider)) {
-      _bufferedRequests.add(trackerInfo);
-      if (_bufferedRequests.length > _maxBufferedRequests) {
-        _bufferedRequests.removeRange(
-          0,
-          _bufferedRequests.length - _maxBufferedRequests,
-        );
-      }
+      _appendBounded(_bufferedRequests, trackerInfo, _maxBufferedRequests);
       _bufferedRequestCount++;
       _scheduleFeedFlush();
     }
@@ -216,14 +215,18 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   @override
   void onDns(DnsQuery dnsQuery) {
     if (ref.read(appVisibleProvider)) {
-      _bufferedDns.add(dnsQuery);
-      if (_bufferedDns.length > _maxBufferedDns) {
-        _bufferedDns.removeRange(0, _bufferedDns.length - _maxBufferedDns);
-      }
+      _appendBounded(_bufferedDns, dnsQuery, _maxBufferedDns);
       _bufferedDnsCount++;
       _scheduleFeedFlush();
     }
     super.onDns(dnsQuery);
+  }
+
+  void _appendBounded<T>(ListQueue<T> queue, T value, int maxLength) {
+    queue.addLast(value);
+    if (queue.length > maxLength) {
+      queue.removeFirst();
+    }
   }
 
   @override

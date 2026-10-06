@@ -14,7 +14,10 @@ type batchCollector struct {
 func (collector *batchCollector) send(messages []Message) {
 	collector.mu.Lock()
 	defer collector.mu.Unlock()
-	collector.batches = append(collector.batches, messages)
+	collector.batches = append(
+		collector.batches,
+		append([]Message(nil), messages...),
+	)
 }
 
 func (collector *batchCollector) snapshot() [][]Message {

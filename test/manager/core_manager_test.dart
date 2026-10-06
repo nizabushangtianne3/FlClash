@@ -409,6 +409,40 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('background request and dns events are dropped early', (
+    tester,
+  ) async {
+    final coreInterface = _coreInterface();
+    final container = await _pumpCoreManager(tester, coreInterface);
+    container.read(appVisibleProvider.notifier).value = false;
+
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.request,
+        data: {'id': 'connection-1', 'metadata': <String, Object?>{}},
+      ),
+    );
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.dns,
+        data: {
+          'domain': 'background.test',
+          'type': 'A',
+          'time': '2026-09-18T04:30:01Z',
+        },
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(container.read(requestsProvider).list, isEmpty);
+    expect(container.read(dnsQueriesProvider).list, isEmpty);
+    expect(container.read(requestCountProvider), 0);
+    expect(container.read(dnsQueryCountProvider), 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('geo events are forwarded to the geo resource action', (
     tester,
   ) async {
