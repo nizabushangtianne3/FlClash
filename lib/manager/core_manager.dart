@@ -125,6 +125,13 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     } else {
       _core.stopRequestMessages();
       _core.stopDnsMessages();
+      // A flush queued just before hiding would still publish one batch.
+      _feedFlushTimer?.cancel();
+      _feedFlushTimer = null;
+      _bufferedRequests.clear();
+      _bufferedDns.clear();
+      _bufferedRequestCount = 0;
+      _bufferedDnsCount = 0;
     }
   }
 
