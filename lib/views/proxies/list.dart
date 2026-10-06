@@ -106,40 +106,41 @@ class _ProxiesListViewState extends ConsumerState<ProxiesListView> {
   }) {
     final groupName = group.name;
     final enterAnimated = _enterGroupName == groupName;
-    final children = proxies.indexed
-        .map<Widget>((entry) {
-          final (columnIndex, proxy) = entry;
-          final card = SizedBox(
-            height: getItemHeight(cardType),
-            child: ProxyCard(
-              testUrl: group.testUrl,
-              type: cardType,
-              groupType: group.type,
-              key: ValueKey('$groupName.${proxy.name}'),
-              proxy: proxy,
-              groupName: groupName,
-            ),
-          );
-          if (!enterAnimated) {
-            return Flexible(child: card);
-          }
-          final stagger = min(
-            rowIndex * columns + columnIndex,
-            _enterStaggerLimit,
-          );
-          return Flexible(
-            child: FadeSlideEnterBox(
-              delay: _enterStaggerStep * stagger,
-              distance: _enterSlideBase + _enterSlideStep * stagger,
-              child: card,
-            ),
-          );
-        })
-        .fill(columns, filler: (_) => const Flexible(child: SizedBox()))
-        .separated(const SizedBox(width: 8));
+    final children = List<Widget>.generate(columns * 2 - 1, (index) {
+      if (index.isOdd) {
+        return const SizedBox(width: 8);
+      }
+      final columnIndex = index ~/ 2;
+      if (columnIndex >= proxies.length) {
+        return const Flexible(child: SizedBox());
+      }
+      final proxy = proxies[columnIndex];
+      final card = SizedBox(
+        height: getItemHeight(cardType),
+        child: ProxyCard(
+          testUrl: group.testUrl,
+          type: cardType,
+          groupType: group.type,
+          key: ValueKey('$groupName.${proxy.name}'),
+          proxy: proxy,
+          groupName: groupName,
+        ),
+      );
+      if (!enterAnimated) {
+        return Flexible(child: card);
+      }
+      final stagger = min(rowIndex * columns + columnIndex, _enterStaggerLimit);
+      return Flexible(
+        child: FadeSlideEnterBox(
+          delay: _enterStaggerStep * stagger,
+          distance: _enterSlideBase + _enterSlideStep * stagger,
+          child: card,
+        ),
+      );
+    });
     return Padding(
       padding: const EdgeInsets.only(left: 18, right: 18, bottom: 8),
-      child: Row(children: children.toList()),
+      child: Row(children: children),
     );
   }
 
