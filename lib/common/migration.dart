@@ -76,8 +76,12 @@ class Migration {
   static const currentVersion = 1;
 
   Future<Config> run() async {
-    final configMap = await _store.getConfigMap();
-    var oldVersion = await _store.getVersion();
+    final initial = await Future.wait<Object?>([
+      _store.getConfigMap(),
+      _store.getVersion(),
+    ]);
+    final configMap = initial[0] as Map<String, Object?>?;
+    var oldVersion = initial[1] as int;
     Config? config;
     if (oldVersion > currentVersion) {
       throw StateError(
