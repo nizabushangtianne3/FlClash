@@ -111,8 +111,12 @@ class Database extends _$Database {
             customProxies.emptyOptions,
           );
         }
-      }),
-      beforeOpen: (_) => customStatement('PRAGMA foreign_keys = ON'),
+      },
+      beforeOpen: (_) async {
+        await customStatement('PRAGMA foreign_keys = ON');
+        await customStatement('PRAGMA busy_timeout = 5000');
+        await customSelect('PRAGMA journal_mode = WAL').get();
+      },
     );
   }
 
