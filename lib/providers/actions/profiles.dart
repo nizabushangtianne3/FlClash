@@ -4,6 +4,8 @@ part of '../action.dart';
 class ProfilesAction extends _$ProfilesAction {
   CoreController get _core => ref.read(coreHandlerProvider);
 
+  Future<void>? _autoUpdateOperation;
+
   @override
   void build() {}
 
@@ -39,7 +41,19 @@ class ProfilesAction extends _$ProfilesAction {
     return _core.validateConfigWithData(data);
   }
 
-  Future<void> autoUpdateProfiles() async {
+  /// Startup and the periodic task can both fire before the first run ends;
+  /// sharing one future keeps a slow subscription from being fetched twice.
+  Future<void> autoUpdateProfiles() {
+    final running = _autoUpdateOperation;
+    if (running != null) {
+      return running;
+    }
+    return _autoUpdateOperation = _runAutoUpdateProfiles().whenComplete(() {
+      _autoUpdateOperation = null;
+    });
+  }
+
+  Future<void> _runAutoUpdateProfiles() async {
     for (final profile in ref.read(profilesProvider)) {
       if (!profile.autoUpdate) continue;
       final isNotNeedUpdate = profile.lastUpdateDate
