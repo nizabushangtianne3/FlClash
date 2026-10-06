@@ -141,13 +141,19 @@ class Bootstrap {
           darkSeed: dynamicColor.darkSeed,
           accentColor: dynamicColor.accentColor,
         );
-    final profiles = await database.profilesDao.query().get();
+    final locale =
+        getLocaleForString(config.appSettingProps.locale) ??
+        WidgetsBinding.instance.platformDispatcher.locale;
+    final profilesFuture = database.profilesDao.query().get();
+    final localizationFuture = AppLocalizations.load(locale);
+    final windowFuture =
+        window?.init(version, config.windowProps) ?? Future<void>.value();
+    final (profiles, _, _) = await (
+      profilesFuture,
+      localizationFuture,
+      windowFuture,
+    ).wait;
     container.read(profilesProvider.notifier).reorder(profiles);
-    await AppLocalizations.load(
-      getLocaleForString(config.appSettingProps.locale) ??
-          WidgetsBinding.instance.platformDispatcher.locale,
-    );
-    await window?.init(version, config.windowProps);
     if (system.isAndroid) {
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
