@@ -46,6 +46,7 @@ class ProxiesAction extends _$ProxiesAction {
   final Map<String, int> _selectedIntent = {};
   final Map<String, Set<int>> _activeSelectedIntents = {};
   Future<void>? _connectionCleanup;
+  bool _connectionCleanupPending = false;
 
   @override
   void build() {
@@ -141,37 +142,46 @@ class ProxiesAction extends _$ProxiesAction {
 
   Future<void> updateGroups() async {
     try {
-      final sortType = ref.read(
-        proxiesStyleSettingProvider.select((state) => state.sortType),
-      );
-      final delayMap = ref.read(delayDataSourceProvider);
-      final testUrl = ref.read(
-        appSettingProvider.select((state) => state.testUrl),
-      );
-      final selectedMap = ref.read(
-        currentProfileProvider.select((state) => state?.selectedMap ?? {}),
-      );
-      final next = await retry(
+      final next = await retry<({List<Group> groups, bool publish})>(
         task: () async {
+          final sortType = ref.read(
+            proxiesStyleSettingProvider.select((state) => state.sortType),
+          );
+          final delayMap = ref.read(delayDataSourceProvider);
+          final testUrl = ref.read(
+            appSettingProvider.select((state) => state.testUrl),
+          );
+          final selectedMap = ref.read(
+            currentProfileProvider.select((state) => state?.selectedMap ?? {}),
+          );
           try {
-            return await _core.getProxiesGroups(
-              selectedMap: selectedMap,
-              sortType: sortType,
-              delayMap: delayMap,
-              defaultTestUrl: testUrl,
+            return (
+              groups: await _core.getProxiesGroups(
+                selectedMap: selectedMap,
+                sortType: sortType,
+                delayMap: delayMap,
+                defaultTestUrl: testUrl,
+              ),
+              publish: true,
             );
           } catch (e) {
             commonPrint.log(
               'updateGroups error: $e',
               logLevel: coreFailureLogLevel(e),
             );
-            return [];
+            return (
+              groups: const <Group>[],
+              publish: e is! CoreMethodException || !e.isDeterministic,
+            );
           }
         },
-        retryIf: (res) => res.isEmpty,
+        retryIf: (res) => res.publish && res.groups.isEmpty,
       );
+      if (!next.publish) {
+        return;
+      }
       // Isolate rebuild + provider fan-out is expensive; skip when unchanged.
-      ref.read(groupsProvider.notifier).update((_) => next);
+      ref.read(groupsProvider.notifier).update((_) => next.groups);
     } catch (e) {
       // The Core failure path already runs inside the retry task above; a
       // throw here only means ref.read hit a disposed container or the
@@ -209,6 +219,9 @@ class ProxiesAction extends _$ProxiesAction {
     required String proxyName,
     int? intent,
   }) async {
+    if (intent == null) {
+      debouncer.cancel((FunctionTag.changeProxy, groupName));
+    }
     final selectedIntent = intent ?? _beginSelectedIntent(groupName);
     final activeIntents = _activeSelectedIntents.putIfAbsent(
       groupName,
@@ -244,7 +257,7 @@ class ProxiesAction extends _$ProxiesAction {
         _pendingSelectedRollback.remove(groupName);
         _patchSelectedProxy(groupName, proxyName);
       }
-      unawaited(_runConnectionCleanup());
+      _requestConnectionCleanup();
       return true;
     } catch (error) {
       if (!_isLatestSelectedIntent(groupName, selectedIntent)) {
@@ -272,38 +285,46 @@ class ProxiesAction extends _$ProxiesAction {
     }
   }
 
-  Future<void> _runConnectionCleanup() {
-    final previous = _connectionCleanup;
-    final task = () async {
-      if (previous != null) {
-        try {
-          await previous;
-        } catch (_) {
-          // The previous task already logged its own failure.
-        }
-      }
-      try {
-        if (ref.read(appSettingProvider).closeConnections) {
-          await _core.closeConnections();
-        } else {
-          await _core.resetConnections();
-        }
-      } catch (error) {
-        commonPrint.log(
-          'changeProxy connection cleanup failed: $error',
-          logLevel: coreFailureLogLevel(error),
-        );
-      }
-    }();
+  void _requestConnectionCleanup() {
+    if (_connectionCleanup != null) {
+      _connectionCleanupPending = true;
+      return;
+    }
+    final task = _drainConnectionCleanups();
     _connectionCleanup = task;
     unawaited(
       task.whenComplete(() {
-        if (identical(_connectionCleanup, task)) {
-          _connectionCleanup = null;
+        if (!identical(_connectionCleanup, task)) {
+          return;
+        }
+        _connectionCleanup = null;
+        if (_connectionCleanupPending) {
+          _requestConnectionCleanup();
         }
       }),
     );
-    return task;
+  }
+
+  Future<void> _drainConnectionCleanups() async {
+    do {
+      _connectionCleanupPending = false;
+      await _performConnectionCleanup();
+    } while (_connectionCleanupPending);
+  }
+
+  Future<void> _performConnectionCleanup() async {
+    try {
+      if (ref.read(appSettingProvider).closeConnections) {
+        await _core.closeConnections();
+      } else {
+        await _core.resetConnections();
+      }
+    } catch (error) {
+      commonPrint.log(
+        'changeProxy connection cleanup failed: $error',
+        logLevel: coreFailureLogLevel(error),
+      );
+    }
   }
 
   void _patchSelectedProxy(String groupName, String proxyName) {

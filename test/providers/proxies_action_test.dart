@@ -22,6 +22,25 @@ import '../helpers/test_profiles.dart';
 
 class MockCoreHandlerInterface extends Mock implements CoreHandlerInterface {}
 
+class _RecordingCoreController extends CoreController {
+  _RecordingCoreController(this.onGetProxiesGroups)
+    : super.scoped(MockCoreHandlerInterface());
+
+  final Future<List<Group>> Function(Map<String, String> selectedMap)
+  onGetProxiesGroups;
+
+  @override
+  Future<List<Group>> getProxiesGroups({
+    required ProxiesSortType sortType,
+    required DelayMap delayMap,
+    required Map<String, String> selectedMap,
+    required String defaultTestUrl,
+    bool forceFull = false,
+  }) {
+    return onGetProxiesGroups(selectedMap);
+  }
+}
+
 const _testUrl = 'http://delay.test';
 
 Group _group(String name, List<Proxy> all) =>
@@ -68,10 +87,15 @@ void main() {
 
   setUp(() => reset(core));
 
-  ProviderContainer buildContainer({Profile? profile}) {
+  ProviderContainer buildContainer({
+    Profile? profile,
+    CoreController? coreController,
+  }) {
     final container = ProviderContainer(
       overrides: [
-        coreHandlerProvider.overrideWithValue(CoreController.scoped(core)),
+        coreHandlerProvider.overrideWithValue(
+          coreController ?? CoreController.scoped(core),
+        ),
         profilesProvider.overrideWith(() => TestProfiles([?profile])),
         currentProfileIdProvider.overrideWithBuild((_, _) => profile?.id),
       ],
@@ -173,6 +197,69 @@ void main() {
         verify(core.getProxies).called(3);
       },
     );
+
+    test('retries with the latest selection state', () async {
+      final seenSelections = <Map<String, String>>[];
+      late ProviderContainer container;
+      final coreController = _RecordingCoreController((selectedMap) async {
+        seenSelections.add(Map.of(selectedMap));
+        if (seenSelections.length == 1) {
+          final profile = container.read(currentProfileProvider)!;
+          container
+              .read(profilesProvider.notifier)
+              .put(profile.copyWith(selectedMap: {'Proxy': 'HK-01'}));
+          return const <Group>[];
+        }
+        return [
+          _group('Proxy', const [_proxy]),
+        ];
+      });
+      container = buildContainer(
+        profile: _selectedProfile('HK-00'),
+        coreController: coreController,
+      );
+
+      await actionOf(container).updateGroups();
+
+      expect(seenSelections, [
+        {'Proxy': 'HK-00'},
+        {'Proxy': 'HK-01'},
+      ]);
+      expect(container.read(groupsProvider).single.name, 'Proxy');
+    });
+
+    test('does not retry a deterministic Core error', () async {
+      var calls = 0;
+      final coreController = _RecordingCoreController((_) async {
+        calls++;
+        throw const CoreMethodException(code: 'unsupported', message: 'no');
+      });
+      final container = buildContainer(coreController: coreController);
+      container.read(groupsProvider.notifier).value = [
+        _group('Stale', const []),
+      ];
+
+      await actionOf(container).updateGroups();
+
+      expect(calls, 1);
+      expect(container.read(groupsProvider).single.name, 'Stale');
+    });
+
+    test('still retries a transient Core error', () async {
+      var calls = 0;
+      final coreController = _RecordingCoreController((_) async {
+        calls++;
+        throw const CoreMethodException(
+          code: 'internal_error',
+          message: 'temporary',
+        );
+      });
+      final container = buildContainer(coreController: coreController);
+
+      await actionOf(container).updateGroups();
+
+      expect(calls, 3);
+    });
 
     test('a core status change alone does not clear the groups', () {
       final container = buildContainer();
@@ -277,6 +364,54 @@ void main() {
       gate.complete();
       await Future<void>.delayed(Duration.zero);
       expect(cleanupCalls, 2);
+    });
+
+    test('coalesces a burst of connection cleanups', () async {
+      final gate = Completer<void>();
+      var cleanupCalls = 0;
+      when(core.closeConnections).thenAnswer((_) async {
+        cleanupCalls++;
+        if (cleanupCalls == 1) {
+          await gate.future;
+        }
+        return true;
+      });
+      final container = runningContainer();
+      container.read(appSettingProvider.notifier).value = const AppSettingProps(
+        closeConnections: true,
+      );
+      final action = actionOf(container);
+
+      for (var index = 0; index < 5; index++) {
+        await action.changeProxy(groupName: 'Proxy', proxyName: 'HK-0$index');
+      }
+      await Future<void>.delayed(Duration.zero);
+      expect(cleanupCalls, 1);
+
+      gate.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(cleanupCalls, 2);
+    });
+
+    test('a direct switch cancels a pending debounced switch', () async {
+      addTearDown(() => debouncer.cancel((FunctionTag.changeProxy, 'Proxy')));
+      final container = buildContainer(profile: _selectedProfile('HK-00'));
+      final action = actionOf(container);
+
+      action.changeProxyDebounce('Proxy', 'HK-01');
+      await action.changeProxy(groupName: 'Proxy', proxyName: 'HK-02');
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      verify(
+        () => core.changeProxy(
+          const ChangeProxyParams(groupName: 'Proxy', proxyName: 'HK-02'),
+        ),
+      ).called(1);
+      verifyNever(
+        () => core.changeProxy(
+          const ChangeProxyParams(groupName: 'Proxy', proxyName: 'HK-01'),
+        ),
+      );
     });
 
     test('skips the connection reset when the switch itself fails', () async {

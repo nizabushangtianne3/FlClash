@@ -4,6 +4,17 @@ import 'package:fl_clash/models/models.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('reuses the group index while the group list identity is stable', () {
+    const group = Group(name: 'selector', type: GroupType.Selector);
+    final groups = [group];
+
+    expect(identical(groupsByNameFor(groups), groupsByNameFor(groups)), isTrue);
+    expect(
+      identical(groupsByNameFor(groups), groupsByNameFor(List.of(groups))),
+      isFalse,
+    );
+  });
+
   group('computeRealSelectedProxyState', () {
     test('returns state unchanged when proxyName is empty', () {
       final state = computeRealSelectedProxyState(

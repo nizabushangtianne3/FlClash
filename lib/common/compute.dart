@@ -146,7 +146,7 @@ List<Group>? _proxyTypesSource;
 Map<String, Group>? _groupsByNameCache;
 List<Group>? _groupsByNameSource;
 
-Map<String, Group> _groupsByNameFor(List<Group> allGroups) {
+Map<String, Group> groupsByNameFor(List<Group> allGroups) {
   if (identical(allGroups, _groupsByNameSource) && _groupsByNameCache != null) {
     return _groupsByNameCache!;
   }
@@ -172,7 +172,7 @@ List<Group> computeHideTimeout({
   required Map<String, String> selectedMap,
   required String defaultTestUrl,
 }) {
-  final groupsByName = _groupsByNameFor(allGroups);
+  final groupsByName = groupsByNameFor(allGroups);
   final realStates = <String, SelectedProxyState>{};
   final proxyTypes = _proxyTypesFor(allGroups);
   return groups.map((group) {

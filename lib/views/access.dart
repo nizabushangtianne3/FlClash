@@ -205,19 +205,22 @@ class _AccessViewState extends ConsumerState<AccessView>
   }
 
   AccessControlProps _getRealAccessControlProps(
-    AccessControlProps accessControl,
-  ) {
+    AccessControlProps accessControl, {
+    Set<String>? visiblePackageNames,
+  }) {
     final packages = ref.read(packagesProvider);
     if (packages.isEmpty) {
       return accessControl;
     }
-    final viewPackageNames = packages
-        .whereVisible(
-          isFilterSystemApp: accessControl.isFilterSystemApp,
-          isFilterNonInternetApp: accessControl.isFilterNonInternetApp,
-        )
-        .map((item) => item.packageName)
-        .toSet();
+    final viewPackageNames =
+        visiblePackageNames ??
+        packages
+            .whereVisible(
+              isFilterSystemApp: accessControl.isFilterSystemApp,
+              isFilterNonInternetApp: accessControl.isFilterNonInternetApp,
+            )
+            .map((item) => item.packageName)
+            .toSet();
     return accessControl.copyWithNewList(
       accessControl.currentList
           .where((item) => viewPackageNames.contains(item))
@@ -428,7 +431,6 @@ class _AccessViewState extends ConsumerState<AccessView>
 
   void _onSearch(String value) {
     ref.read(queryProvider(QueryTag.access).notifier).value = value;
-    _pinList();
   }
 
   @override
@@ -437,6 +439,13 @@ class _AccessViewState extends ConsumerState<AccessView>
     final query = SearchQuery(ref.watch(queryProvider(QueryTag.access)));
     final packages = ref.watch(packagesProvider);
     final accessControl = ref.watch(accessControlStateProvider);
+    final viewPackageNames = packages
+        .whereVisible(
+          isFilterSystemApp: accessControl.isFilterSystemApp,
+          isFilterNonInternetApp: accessControl.isFilterNonInternetApp,
+        )
+        .map((item) => item.packageName)
+        .toSet();
     final viewPackages = packages
         .getViewList(
           pinedList: _pinedList ?? [],
@@ -461,13 +470,18 @@ class _AccessViewState extends ConsumerState<AccessView>
             allValueList: viewPackageNameList,
           )
         : null;
-    final hasChanges = ref.watch(
-      vpnSettingProvider.select(
-        (state) =>
-            _getRealAccessControlProps(state.accessControlProps) !=
-            _getRealAccessControlProps(accessControl),
-      ),
+    final savedAccessControl = ref.watch(
+      vpnSettingProvider.select((state) => state.accessControlProps),
     );
+    final hasChanges =
+        _getRealAccessControlProps(
+          savedAccessControl,
+          visiblePackageNames: viewPackageNames,
+        ) !=
+        _getRealAccessControlProps(
+          accessControl,
+          visiblePackageNames: viewPackageNames,
+        );
     return CommonPopScope(
       onPop: hasChanges
           ? (_) {

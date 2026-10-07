@@ -65,7 +65,8 @@ class CoreEventManager {
         );
         return;
       }
-      for (final CoreEventListener listener in List.of(_listeners)) {
+      final listeners = _listenerSnapshot ??= List.unmodifiable(_listeners);
+      for (final listener in listeners) {
         _sendToListener(listener, event, payload);
       }
     });
@@ -75,6 +76,7 @@ class CoreEventManager {
 
   final ObserverList<CoreEventListener> _listeners =
       ObserverList<CoreEventListener>();
+  List<CoreEventListener>? _listenerSnapshot;
 
   bool get hasListeners {
     return _listeners.isNotEmpty;
@@ -100,10 +102,12 @@ class CoreEventManager {
 
   void addListener(CoreEventListener listener) {
     _listeners.add(listener);
+    _listenerSnapshot = null;
   }
 
   void removeListener(CoreEventListener listener) {
     _listeners.remove(listener);
+    _listenerSnapshot = null;
   }
 
   Object? _parseEventPayload(CoreEvent event) {

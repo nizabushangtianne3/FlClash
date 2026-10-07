@@ -274,6 +274,7 @@ SelectedProxyState realSelectedProxyState(Ref ref, String proxyName) {
   return computeRealSelectedProxyState(
     proxyName,
     groups: groups,
+    groupsByName: groupsByNameFor(groups),
     selectedMap: selectedMap,
   );
 }

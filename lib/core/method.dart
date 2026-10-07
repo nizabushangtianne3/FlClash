@@ -156,6 +156,15 @@ class CoreMethodException implements Exception {
   bool get isCoreUnavailable =>
       const {'transport_disconnected', 'transport_error'}.contains(code);
 
+  /// Errors that describe a rejected request or an unsupported capability;
+  /// retrying the same call cannot make them succeed.
+  bool get isDeterministic => const {
+    'unsupported',
+    'invalid_arguments',
+    'invalid_method_call',
+    'provider_not_found',
+  }.contains(code);
+
   @override
   String toString() => 'CoreMethodException($code, $message, $details)';
 }
