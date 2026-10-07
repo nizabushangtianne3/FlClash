@@ -338,6 +338,30 @@ void main() {
       },
     );
 
+    test('setAndReorder replaces the whole list', () async {
+      notifier.put(profile(1, label: 'One'));
+      await pumpEventQueue();
+
+      notifier.setAndReorder([profile(2, label: 'Two', order: 0)]);
+      expect(read().map((item) => item.id), [2]);
+      await pumpEventQueue();
+
+      final rows = await testDatabase.profilesDao.query().get();
+      expect(rows.map((item) => item.id), [2]);
+    });
+
+    test('setInitial updates memory without rewriting the database', () async {
+      notifier.put(profile(1, label: 'One'));
+      await pumpEventQueue();
+
+      notifier.setInitial([profile(2, label: 'Two', order: 0)]);
+      expect(read().map((item) => item.id), [2]);
+      await pumpEventQueue();
+
+      final rows = await testDatabase.profilesDao.query().get();
+      expect(rows.map((item) => item.id), [1]);
+    });
+
     test('reorder only writes the rows whose order actually changed', () async {
       notifier
         ..put(profile(1, label: 'One', order: 0))

@@ -312,6 +312,10 @@ class Profiles extends _$Profiles {
     _optimistic(next, () => _serial(() => _putLatest([profileId])));
   }
 
+  void setInitial(List<Profile> profiles) {
+    state = List<Profile>.from(profiles);
+  }
+
   void reorder(List<Profile> profiles) {
     final next = List<Profile>.from(profiles);
     final moved = <int>[];
