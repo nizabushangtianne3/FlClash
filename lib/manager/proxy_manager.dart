@@ -16,7 +16,8 @@ class ProxyManager extends ConsumerStatefulWidget {
 }
 
 class _ProxyManagerState extends ConsumerState<ProxyManager> {
-  Future<void> _pendingUpdate = Future.value();
+  Future<void>? _activeUpdate;
+  ProxyState? _pendingState;
 
   Future<void> _updateProxy(ProxyState proxyState) async {
     final isStart = proxyState.isStart;
@@ -34,14 +35,34 @@ class _ProxyManagerState extends ConsumerState<ProxyManager> {
   }
 
   void _scheduleUpdateProxy(ProxyState proxyState) {
-    _pendingUpdate = _pendingUpdate
-        .then((_) => _updateProxy(proxyState))
-        .catchError((Object error) {
+    _pendingState = proxyState;
+    _activeUpdate ??= _drainUpdates();
+  }
+
+  Future<void> _drainUpdates() async {
+    try {
+      while (true) {
+        final state = _pendingState;
+        if (state == null) {
+          return;
+        }
+        _pendingState = null;
+        try {
+          await _updateProxy(state);
+        } catch (error) {
           commonPrint.log(
             'update system proxy failed: $error',
             logLevel: LogLevel.warning,
           );
-        });
+        }
+      }
+    } finally {
+      _activeUpdate = null;
+      final pending = _pendingState;
+      if (pending != null) {
+        _scheduleUpdateProxy(pending);
+      }
+    }
   }
 
   @override

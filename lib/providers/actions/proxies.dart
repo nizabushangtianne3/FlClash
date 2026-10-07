@@ -99,6 +99,50 @@ class ProxiesAction extends _$ProxiesAction {
     debouncer.call(FunctionTag.updateGroups, updateGroups, duration: duration);
   }
 
+  /// Re-sort existing groups with the current delay map — no Core getProxies.
+  /// Used after latency tests when sortType is delay.
+  void resortGroupsByDelayDebounce([Duration? duration]) {
+    final sortType = ref.read(
+      proxiesStyleSettingProvider.select((state) => state.sortType),
+    );
+    if (sortType != ProxiesSortType.delay) {
+      return;
+    }
+    debouncer.call(
+      FunctionTag.updateDelay,
+      resortGroupsByDelay,
+      duration: duration,
+    );
+  }
+
+  Future<void> resortGroupsByDelay() async {
+    final groups = ref.read(groupsProvider);
+    if (groups.isEmpty) {
+      return;
+    }
+    final sortType = ref.read(
+      proxiesStyleSettingProvider.select((state) => state.sortType),
+    );
+    if (sortType != ProxiesSortType.delay) {
+      return;
+    }
+    final delayMap = ref.read(delayDataSourceProvider);
+    final testUrl = ref.read(
+      appSettingProvider.select((state) => state.testUrl),
+    );
+    final selectedMap = ref.read(
+      currentProfileProvider.select((state) => state?.selectedMap ?? {}),
+    );
+    final next = computeSort(
+      groups: groups,
+      sortType: sortType,
+      delayMap: delayMap,
+      selectedMap: selectedMap,
+      defaultTestUrl: testUrl,
+    );
+    ref.read(groupsProvider.notifier).update((_) => next);
+  }
+
   void changeProxyDebounce(String groupName, String proxyName) {
     final intent = _beginSelectedIntent(groupName);
     _pendingSelectedRollback.putIfAbsent(
@@ -256,8 +300,8 @@ class ProxiesAction extends _$ProxiesAction {
       if (isNewestApplied && !hasNewerIntent) {
         _pendingSelectedRollback.remove(groupName);
         _patchSelectedProxy(groupName, proxyName);
+        _requestConnectionCleanup();
       }
-      _requestConnectionCleanup();
       return true;
     } catch (error) {
       if (!_isLatestSelectedIntent(groupName, selectedIntent)) {
@@ -474,6 +518,9 @@ class ProxiesAction extends _$ProxiesAction {
     for (final batch in batches) {
       final fallbackTestUrl = ref.read(realTestUrlProvider(batch.testUrl));
       for (final proxy in batch.proxies) {
+        if (isUnprobeableProxyType(proxy.type)) {
+          continue;
+        }
         final state = realStates.putIfAbsent(
           proxy.name,
           () => computeRealSelectedProxyState(

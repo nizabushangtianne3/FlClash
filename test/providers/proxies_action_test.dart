@@ -15,6 +15,7 @@ import 'package:fl_clash/providers/state.dart';
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:mocktail/mocktail.dart';
 import 'package:riverpod/riverpod.dart';
 
@@ -38,6 +39,15 @@ class _RecordingCoreController extends CoreController {
     bool forceFull = false,
   }) {
     return onGetProxiesGroups(selectedMap);
+  }
+}
+
+class _CountingProxiesAction extends ProxiesAction {
+  int resortCalls = 0;
+
+  @override
+  Future<void> resortGroupsByDelay() async {
+    resortCalls++;
   }
 }
 
@@ -90,6 +100,7 @@ void main() {
   ProviderContainer buildContainer({
     Profile? profile,
     CoreController? coreController,
+    List<Override> extraOverrides = const [],
   }) {
     final container = ProviderContainer(
       overrides: [
@@ -98,6 +109,7 @@ void main() {
         ),
         profilesProvider.overrideWith(() => TestProfiles([?profile])),
         currentProfileIdProvider.overrideWithBuild((_, _) => profile?.id),
+        ...extraOverrides,
       ],
     );
     addTearDown(container.dispose);
@@ -115,6 +127,26 @@ void main() {
   }
 
   group('updateGroups', () {
+    test('does not schedule a delay resort for non-delay sorting', () async {
+      addTearDown(() => debouncer.cancel(FunctionTag.updateDelay));
+      final container = buildContainer(
+        extraOverrides: [
+          proxiesActionProvider.overrideWith(_CountingProxiesAction.new),
+        ],
+      );
+      container
+          .read(proxiesStyleSettingProvider.notifier)
+          .update((state) => state.copyWith(sortType: ProxiesSortType.name));
+      final action =
+          container.read(proxiesActionProvider.notifier)
+              as _CountingProxiesAction;
+
+      action.resortGroupsByDelayDebounce(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(action.resortCalls, 0);
+    });
+
     test('publishes the groups derived from core proxy data', () async {
       when(core.getProxies).thenAnswer(
         (_) async => ProxiesData(
@@ -586,6 +618,45 @@ void main() {
         expect(container.read(groupsProvider).single.now, 'HK-02');
       },
     );
+
+    test('a stale success does not clean up connections again', () async {
+      final first = Completer<ChangeProxyResult>();
+      final second = Completer<ChangeProxyResult>();
+      when(() => core.changeProxy(any())).thenAnswer((invocation) {
+        final params =
+            invocation.positionalArguments.single as ChangeProxyParams;
+        return params.proxyName == 'HK-01' ? first.future : second.future;
+      });
+      var cleanupCalls = 0;
+      when(core.closeConnections).thenAnswer((_) async {
+        cleanupCalls++;
+        return true;
+      });
+      final container = buildContainer(profile: _selectedProfile('HK-00'));
+      container.read(appSettingProvider.notifier).value = const AppSettingProps(
+        closeConnections: true,
+      );
+      final action = actionOf(container);
+
+      final firstRun = action.changeProxy(
+        groupName: 'Proxy',
+        proxyName: 'HK-01',
+      );
+      final secondRun = action.changeProxy(
+        groupName: 'Proxy',
+        proxyName: 'HK-02',
+      );
+
+      second.complete(const ChangeProxyResult(changed: true));
+      await secondRun;
+      await Future<void>.delayed(Duration.zero);
+      expect(cleanupCalls, 1);
+
+      first.complete(const ChangeProxyResult(changed: true));
+      await firstRun;
+      await Future<void>.delayed(Duration.zero);
+      expect(cleanupCalls, 1);
+    });
   });
 
   group('proxyDelayTest', () {
@@ -832,6 +903,25 @@ void main() {
       await actionOf(container).delayTest(const [_proxy, _proxy]);
 
       verify(() => core.asyncTestDelay(_testUrl, 'HK-01')).called(1);
+    });
+
+    test('skips built-in adapters that cannot be probed', () async {
+      when(() => core.asyncTestDelay(_testUrl, any())).thenAnswer(
+        (invocation) async => Delay(
+          name: invocation.positionalArguments[1] as String,
+          url: _testUrl,
+          value: 10,
+        ),
+      );
+      final container = _delayContainer(buildContainer);
+
+      await actionOf(container).delayTest(const [
+        Proxy(name: 'REJECT', type: 'Reject'),
+        Proxy(name: 'DIRECT', type: 'Direct'),
+      ]);
+
+      verify(() => core.asyncTestDelay(_testUrl, 'DIRECT')).called(1);
+      verifyNever(() => core.asyncTestDelay(_testUrl, 'REJECT'));
     });
 
     test('testing groups probes a shared node once per test URL', () async {

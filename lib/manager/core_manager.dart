@@ -27,6 +27,9 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     with CoreEventListener {
   CoreController get _core => ref.read(coreHandlerProvider);
 
+  late final CoreController _coreController;
+  bool _isVisible = true;
+
   Timer? _feedFlushTimer;
   final ListQueue<Log> _bufferedLogs = ListQueue();
   final ListQueue<TrackerInfo> _bufferedRequests = ListQueue();
@@ -40,10 +43,10 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   late final DnsQueryCount _dnsCountNotifier;
 
   @override
-  bool get wantsRequestEvents => mounted && ref.read(appVisibleProvider);
+  bool get wantsRequestEvents => mounted && _isVisible;
 
   @override
-  bool get wantsDnsEvents => mounted && ref.read(appVisibleProvider);
+  bool get wantsDnsEvents => mounted && _isVisible;
 
   // Cap in-flight buffers so a 400ms flood cannot allocate unbounded lists
   // before the next flush (FixedList still truncates on the provider side).
@@ -59,11 +62,13 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   @override
   void initState() {
     super.initState();
+    _coreController = _core;
     _logsNotifier = ref.read(logsProvider.notifier);
     _requestsNotifier = ref.read(requestsProvider.notifier);
     _dnsNotifier = ref.read(dnsQueriesProvider.notifier);
     _requestCountNotifier = ref.read(requestCountProvider.notifier);
     _dnsCountNotifier = ref.read(dnsQueryCountProvider.notifier);
+    _isVisible = ref.read(appVisibleProvider);
     coreEventManager.addListener(this);
     ref.read(updatingActionProvider.notifier);
     // A rejected profile stays selected on purpose: silently reverting to
@@ -107,7 +112,7 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     if (ref.read(coreStatusProvider) != CoreStatus.connected) {
       return;
     }
-    if (ref.read(appVisibleProvider) && ref.read(appSettingProvider).openLogs) {
+    if (_isVisible && ref.read(appSettingProvider).openLogs) {
       _core.startLog();
     } else {
       _core.stopLog();
@@ -115,11 +120,12 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   }
 
   void _syncMessageStreams() {
+    _isVisible = ref.read(appVisibleProvider);
     _syncLogStream();
     if (ref.read(coreStatusProvider) != CoreStatus.connected) {
       return;
     }
-    if (ref.read(appVisibleProvider)) {
+    if (_isVisible) {
       _core.startRequestMessages();
       _core.startDnsMessages();
     } else {
@@ -225,9 +231,12 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   void onRequest(TrackerInfo trackerInfo) async {
+    if (!mounted) {
+      return;
+    }
     // Connections history is only useful while the UI is visible; dropping
     // events in the background avoids FixedList rebuild storms on busy links.
-    if (ref.read(appVisibleProvider)) {
+    if (_isVisible) {
       _appendBounded(_bufferedRequests, trackerInfo, _maxBufferedRequests);
       _bufferedRequestCount++;
       _scheduleFeedFlush();
@@ -237,7 +246,10 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   void onDns(DnsQuery dnsQuery) {
-    if (ref.read(appVisibleProvider)) {
+    if (!mounted) {
+      return;
+    }
+    if (_isVisible) {
       _appendBounded(_bufferedDns, dnsQuery, _maxBufferedDns);
       _bufferedDnsCount++;
       _scheduleFeedFlush();

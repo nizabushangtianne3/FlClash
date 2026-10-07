@@ -99,6 +99,7 @@ const coreConnectionWaitDuration = Duration(seconds: 10);
 const maxConcurrentDelayTests = 32;
 const maxConcurrentImports = 4;
 const maxConcurrentIconLoads = 8;
+const maxTrayProxiesPerGroup = 30;
 const animateDuration = Duration(milliseconds: 100);
 const midDuration = Duration(milliseconds: 200);
 const commonDuration = Duration(milliseconds: 300);

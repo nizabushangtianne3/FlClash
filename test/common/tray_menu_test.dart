@@ -259,6 +259,70 @@ void main() {
     expect(calls.where((call) => call.method == 'show'), hasLength(1));
   });
 
+  test('rebuilds when only the delay distribution changes', () async {
+    container.dispose();
+    container = ProviderContainer(
+      overrides: [
+        trayDelaysProvider.overrideWithValue({
+          'Proxy': {'A': 10, 'B': 20},
+        }),
+      ],
+    );
+    await update(_trayState(groups: [_proxyGroup]));
+    final first = calls.where((call) => call.method == 'show').length;
+
+    container.dispose();
+    container = ProviderContainer(
+      overrides: [
+        trayDelaysProvider.overrideWithValue({
+          'Proxy': {'A': 20, 'B': 10},
+        }),
+      ],
+    );
+    await update(_trayState(groups: [_proxyGroup]));
+
+    expect(calls.where((call) => call.method == 'show'), hasLength(first + 1));
+  });
+
+  test('rebuilds when the proxy order changes', () async {
+    await update(_trayState(groups: [_proxyGroup]));
+    final first = calls.where((call) => call.method == 'show').length;
+    const reversed = Group(
+      name: 'Proxy',
+      type: GroupType.Selector,
+      all: [
+        Proxy(name: 'C', type: 'Direct'),
+        Proxy(name: 'B', type: 'Direct'),
+        Proxy(name: 'A', type: 'Direct'),
+      ],
+    );
+
+    await update(_trayState(groups: [reversed]));
+
+    expect(calls.where((call) => call.method == 'show'), hasLength(first + 1));
+  });
+
+  test('rebuilds when a hotkey binding changes', () async {
+    await update(
+      _trayState(
+        hotKeys: {
+          HotAction.view: _bind(HotAction.view, PhysicalKeyboardKey.keyV),
+        },
+      ),
+    );
+    final first = calls.where((call) => call.method == 'show').length;
+
+    await update(
+      _trayState(
+        hotKeys: {
+          HotAction.view: _bind(HotAction.view, PhysicalKeyboardKey.keyB),
+        },
+      ),
+    );
+
+    expect(calls.where((call) => call.method == 'show'), hasLength(first + 1));
+  });
+
   test('menu item ids are stable across identical rebuilds', () async {
     await update(_trayState());
     final first = _items(showCall()).map((item) => item['id']).toList();

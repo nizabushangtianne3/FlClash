@@ -13,8 +13,11 @@ List<Group> computeSort({
   if (sortType == ProxiesSortType.none) {
     return groups;
   }
+  if (sortType == ProxiesSortType.delay && delayMap.isEmpty) {
+    return groups;
+  }
 
-  final groupsByName = _indexGroups(groups);
+  final groupsByName = groupsByNameFor(groups);
   final realStateCache = <String, SelectedProxyState>{};
   final delayStateCache = <String, DelayState>{};
   SelectedProxyState realStateFor(String proxyName) {
@@ -140,6 +143,22 @@ const _unprobeableProxyTypes = {
   'Compatible',
   'Dns',
 };
+
+bool isUnprobeableProxyType(String type) =>
+    _unprobeableProxyTypes.contains(type);
+
+List<Proxy> visibleTrayProxies(Group group, String? selectedName) {
+  final all = group.all;
+  if (all.length <= maxTrayProxiesPerGroup) {
+    return all;
+  }
+  final selected = all.where((proxy) => proxy.name == selectedName);
+  final others = all.where((proxy) => proxy.name != selectedName);
+  return [
+    ...selected,
+    ...others.take(maxTrayProxiesPerGroup - selected.length),
+  ];
+}
 
 Map<String, String>? _proxyTypesCache;
 List<Group>? _proxyTypesSource;

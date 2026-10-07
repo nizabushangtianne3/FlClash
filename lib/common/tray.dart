@@ -13,9 +13,6 @@ import 'provider_reader.dart';
 import 'system.dart';
 import 'window.dart';
 
-/// Caps each proxy-group submenu so macOS status-item rebuilds stay cheap.
-const int _kMaxTrayProxiesPerGroup = 30;
-
 class AppTray implements TrayPort {
   static AppTray? _instance;
 
@@ -82,16 +79,21 @@ class AppTray implements TrayPort {
         .map((e) => '${e.key}=${e.value}:${delays[e.key]?[e.value] ?? ''}')
         .join(',');
     final groupSig = trayState.groups
-        .map((g) => '${g.name}:${g.all.length}')
+        .map((g) => '${g.name}:${g.all.map((p) => p.name).join(',')}')
+        .join(';');
+    final hotKeySig = trayState.hotKeys.entries
+        .map(
+          (entry) =>
+              '${entry.key.name}:${entry.value.key}:'
+              '${entry.value.modifiers.map((item) => item.name).join(',')}',
+        )
         .join(',');
-    var delayCount = 0;
-    var delaySum = 0;
-    for (final group in delays.values) {
-      delayCount += group.length;
-      for (final value in group.values) {
-        delaySum += value;
-      }
-    }
+    final delaySig = delays.entries
+        .map(
+          (entry) =>
+              '${entry.key}:${entry.value.entries.map((delay) => '${delay.key}=${delay.value}').join(',')}',
+        )
+        .join(';');
     return [
       trayState.isStart,
       trayState.tunEnable,
@@ -102,9 +104,8 @@ class AppTray implements TrayPort {
       trayState.showTrayTitle,
       selected,
       groupSig,
-      delayCount,
-      delaySum,
-      trayState.hotKeys.length,
+      delaySig,
+      hotKeySig,
     ].join('|');
   }
 
@@ -336,14 +337,14 @@ class AppTray implements TrayPort {
     final all = group.all;
     // Keep the selected proxy, then fill up to the cap with the rest.
     final List<Proxy> visible;
-    if (all.length <= _kMaxTrayProxiesPerGroup) {
+    if (all.length <= maxTrayProxiesPerGroup) {
       visible = all;
     } else {
       final selected = all.where((p) => p.name == selectedName);
       final others = all.where((p) => p.name != selectedName);
       visible = [
         ...selected,
-        ...others.take(_kMaxTrayProxiesPerGroup - selected.length),
+        ...others.take(maxTrayProxiesPerGroup - selected.length),
       ];
     }
 
@@ -359,7 +360,7 @@ class AppTray implements TrayPort {
         ),
     ];
 
-    if (all.length > _kMaxTrayProxiesPerGroup) {
+    if (all.length > maxTrayProxiesPerGroup) {
       items.add(
         TrayMenuAction(
           label: '… ${all.length - visible.length} more',

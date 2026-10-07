@@ -647,6 +647,35 @@ void main() {
     });
   });
 
+  test('tray delays resolve only the visible proxies', () {
+    const selected = 'p${maxTrayProxiesPerGroup + 4}';
+    final profile = Profile.normal().copyWith(selectedMap: {'Big': selected});
+    final group = Group(
+      name: 'Big',
+      type: GroupType.Selector,
+      hidden: false,
+      all: [
+        for (var index = 0; index < maxTrayProxiesPerGroup + 5; index++)
+          Proxy(name: 'p$index', type: 'ss'),
+      ],
+    );
+    _profiles(container).replace([profile]);
+    container.read(currentProfileIdProvider.notifier).update((_) => profile.id);
+    container
+        .read(patchClashConfigProvider.notifier)
+        .update((state) => state.copyWith(mode: Mode.rule));
+    container.read(groupsProvider.notifier).update((_) => [group]);
+    for (final proxy in group.all) {
+      container
+          .read(delayDataSourceProvider.notifier)
+          .setDelay(Delay(name: proxy.name, url: defaultTestUrl, value: 10));
+    }
+
+    final delays = container.read(trayDelaysProvider)['Big']!;
+    expect(delays, hasLength(maxTrayProxiesPerGroup));
+    expect(delays.keys, contains(selected));
+  });
+
   test('tray hotkeys leave out bindings that cannot fire', () {
     container.listen(trayStateProvider, (_, _) {});
     container
