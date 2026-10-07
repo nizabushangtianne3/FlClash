@@ -9,9 +9,24 @@ GroupsState currentGroupsState(Ref ref) {
   final shown = switch (mode) {
     Mode.direct => const <Group>[],
     Mode.global => groups,
-    Mode.rule => groups.where((item) => item.hidden == false),
+    Mode.rule =>
+      groups
+          .where(
+            (item) =>
+                item.hidden == false && item.name != GroupName.GLOBAL.name,
+          )
+          .toList(growable: false),
   };
-  return GroupsState(value: shown.map(_withoutSelection).toList());
+  final values = <Group>[];
+  var changed = false;
+  for (final group in shown) {
+    final next = _withoutSelection(group);
+    if (!identical(next, group)) {
+      changed = true;
+    }
+    values.add(next);
+  }
+  return GroupsState(value: changed ? values : shown);
 }
 
 Group _withoutSelection(Group group) {

@@ -116,6 +116,25 @@ void main() {
     expect(notified, 0);
   });
 
+  test('group derivation preserves groups when no selection is stripped', () {
+    const groups = [
+      Group(
+        name: 'Visible',
+        type: GroupType.Selector,
+        hidden: false,
+        all: [Proxy(name: 'Node', type: 'Direct')],
+      ),
+    ];
+    container
+        .read(patchClashConfigProvider.notifier)
+        .update((state) => state.copyWith(mode: Mode.global));
+    container.read(groupsProvider.notifier).update((_) => groups);
+
+    final state = container.read(currentGroupsStateProvider);
+
+    expect(state.value, groups);
+  });
+
   test('hiding timed-out nodes leaves the rest of the group alone', () {
     const testUrl = 'https://default.test';
     container
