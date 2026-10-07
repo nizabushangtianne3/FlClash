@@ -16,6 +16,7 @@ List<Group> computeSort({
 
   final groupsByName = _indexGroups(groups);
   final realStateCache = <String, SelectedProxyState>{};
+  final delayStateCache = <String, DelayState>{};
   SelectedProxyState realStateFor(String proxyName) {
     return realStateCache.putIfAbsent(
       proxyName,
@@ -38,18 +39,24 @@ List<Group> computeSort({
     if (delayMap.isEmpty) {
       return proxies;
     }
-    final delayStates = {
-      for (final proxy in proxies)
-        proxy.name: computeProxyDelayState(
+    final delayStates = <String, DelayState>{};
+    for (final proxy in proxies) {
+      final realState = realStateFor(proxy.name);
+      final stateTestUrl = realState.testUrl.takeFirstValid([testUrl]);
+      final cacheKey = delayTestKey(stateTestUrl, realState.proxyName);
+      delayStates[proxy.name] = delayStateCache.putIfAbsent(
+        cacheKey,
+        () => computeProxyDelayState(
           proxyName: proxy.name,
           testUrl: testUrl,
           groups: groups,
           selectedMap: selectedMap,
           delayMap: delayMap,
           groupsByName: groupsByName,
-          realState: realStateFor(proxy.name),
+          realState: realState,
         ),
-    };
+      );
+    }
     var ordered = true;
     for (var index = 1; index < proxies.length; index++) {
       final previous = delayStates[proxies[index - 1].name]!;
@@ -136,6 +143,16 @@ const _unprobeableProxyTypes = {
 
 Map<String, String>? _proxyTypesCache;
 List<Group>? _proxyTypesSource;
+Map<String, Group>? _groupsByNameCache;
+List<Group>? _groupsByNameSource;
+
+Map<String, Group> _groupsByNameFor(List<Group> allGroups) {
+  if (identical(allGroups, _groupsByNameSource) && _groupsByNameCache != null) {
+    return _groupsByNameCache!;
+  }
+  _groupsByNameSource = allGroups;
+  return _groupsByNameCache = _indexGroups(allGroups);
+}
 
 Map<String, String> _proxyTypesFor(List<Group> allGroups) {
   if (identical(allGroups, _proxyTypesSource) && _proxyTypesCache != null) {
@@ -155,7 +172,7 @@ List<Group> computeHideTimeout({
   required Map<String, String> selectedMap,
   required String defaultTestUrl,
 }) {
-  final groupsByName = _indexGroups(allGroups);
+  final groupsByName = _groupsByNameFor(allGroups);
   final realStates = <String, SelectedProxyState>{};
   final proxyTypes = _proxyTypesFor(allGroups);
   return groups.map((group) {

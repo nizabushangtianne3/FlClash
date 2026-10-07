@@ -80,9 +80,12 @@ DelayMap delaysAtLastTestBatch(Ref ref) {
   ) {
     if (isEmpty) ref.invalidateSelf();
   });
+  final delayDataSource = ref.read(delayDataSourceProvider);
+  if (delayDataSource.isEmpty) {
+    return const {};
+  }
   return {
-    for (final entry in ref.read(delayDataSourceProvider).entries)
-      entry.key: {...entry.value},
+    for (final entry in delayDataSource.entries) entry.key: {...entry.value},
   };
 }
 

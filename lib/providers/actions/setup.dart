@@ -39,7 +39,10 @@ class SetupAction extends _$SetupAction {
       appSettingProvider.select((state) => state.showTrayTitle),
       (_, _) => _syncRuntimeTicker(),
     );
-    ref.listen(currentPageLabelProvider, (_, _) => _syncRuntimeTicker());
+    ref.listen(
+      currentPageLabelProvider.select((state) => state == PageLabel.dashboard),
+      (_, _) => _syncRuntimeTicker(),
+    );
   }
 
   bool get _isTrafficShown =>

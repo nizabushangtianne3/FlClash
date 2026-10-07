@@ -255,6 +255,30 @@ void main() {
       });
     });
 
+    test('serializes connection cleanup across switches', () async {
+      final gate = Completer<void>();
+      var cleanupCalls = 0;
+      when(core.closeConnections).thenAnswer((_) async {
+        cleanupCalls++;
+        await gate.future;
+        return true;
+      });
+      final container = runningContainer();
+      container.read(appSettingProvider.notifier).value = const AppSettingProps(
+        closeConnections: true,
+      );
+      final action = actionOf(container);
+
+      await action.changeProxy(groupName: 'Proxy', proxyName: 'HK-01');
+      await action.changeProxy(groupName: 'Proxy', proxyName: 'HK-02');
+      await Future<void>.delayed(Duration.zero);
+      expect(cleanupCalls, 1);
+
+      gate.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(cleanupCalls, 2);
+    });
+
     test('skips the connection reset when the switch itself fails', () async {
       when(() => core.changeProxy(any())).thenThrow(StateError('core down'));
       final container = runningContainer();

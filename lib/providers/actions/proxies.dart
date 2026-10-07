@@ -45,6 +45,7 @@ class ProxiesAction extends _$ProxiesAction {
   final Map<String, int> _appliedSelectedIntent = {};
   final Map<String, int> _selectedIntent = {};
   final Map<String, Set<int>> _activeSelectedIntents = {};
+  Future<void>? _connectionCleanup;
 
   @override
   void build() {
@@ -243,23 +244,7 @@ class ProxiesAction extends _$ProxiesAction {
         _pendingSelectedRollback.remove(groupName);
         _patchSelectedProxy(groupName, proxyName);
       }
-      // Do not await connection cleanup: on a dead node, closeConnections can
-      // sit on timed-out sockets and make the switch feel multi-second slow.
-      // The Core still runs the work; the UI moves on immediately.
-      unawaited(() async {
-        try {
-          if (ref.read(appSettingProvider).closeConnections) {
-            await _core.closeConnections();
-          } else {
-            await _core.resetConnections();
-          }
-        } catch (error) {
-          commonPrint.log(
-            'changeProxy($groupName -> $proxyName) connection reset failed: $error',
-            logLevel: coreFailureLogLevel(error),
-          );
-        }
-      }());
+      unawaited(_runConnectionCleanup());
       return true;
     } catch (error) {
       if (!_isLatestSelectedIntent(groupName, selectedIntent)) {
@@ -285,6 +270,40 @@ class ProxiesAction extends _$ProxiesAction {
         _activeSelectedIntents.remove(groupName);
       }
     }
+  }
+
+  Future<void> _runConnectionCleanup() {
+    final previous = _connectionCleanup;
+    final task = () async {
+      if (previous != null) {
+        try {
+          await previous;
+        } catch (_) {
+          // The previous task already logged its own failure.
+        }
+      }
+      try {
+        if (ref.read(appSettingProvider).closeConnections) {
+          await _core.closeConnections();
+        } else {
+          await _core.resetConnections();
+        }
+      } catch (error) {
+        commonPrint.log(
+          'changeProxy connection cleanup failed: $error',
+          logLevel: coreFailureLogLevel(error),
+        );
+      }
+    }();
+    _connectionCleanup = task;
+    unawaited(
+      task.whenComplete(() {
+        if (identical(_connectionCleanup, task)) {
+          _connectionCleanup = null;
+        }
+      }),
+    );
+    return task;
   }
 
   void _patchSelectedProxy(String groupName, String proxyName) {

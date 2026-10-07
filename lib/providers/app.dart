@@ -41,7 +41,7 @@ class Logs extends _$Logs with AutoDisposeNotifierMixin {
     }
     final next = state.appendAll(values);
     if (!identical(next, state)) {
-      this.value = next;
+      value = next;
     }
   }
 
@@ -73,7 +73,7 @@ class Requests extends _$Requests with AutoDisposeNotifierMixin {
     }
     final next = state.appendAll(values);
     if (!identical(next, state)) {
-      this.value = next;
+      value = next;
     }
   }
 }
@@ -95,7 +95,7 @@ class DnsQueries extends _$DnsQueries with AutoDisposeNotifierMixin {
     }
     final next = state.appendAll(values);
     if (!identical(next, state)) {
-      this.value = next;
+      value = next;
     }
   }
 }
@@ -127,6 +127,7 @@ class Providers extends _$Providers with AutoDisposeNotifierMixin {
     if (provider == null) return;
     final index = value.indexWhere((item) => item.name == provider.name);
     if (index == -1) return;
+    if (identical(value[index], provider)) return;
     final newState = List<ExternalProvider>.from(value)..[index] = provider;
     value = newState;
   }
