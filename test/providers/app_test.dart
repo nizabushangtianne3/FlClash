@@ -371,6 +371,18 @@ void main() {
       });
     });
 
+    test('keeps a previously published delay snapshot immutable', () {
+      const url = 'https://test.example';
+      final notifier = container.read(delayDataSourceProvider.notifier);
+      notifier.setDelay(const Delay(name: 'A', url: url, value: 10));
+      final first = container.read(delayDataSourceProvider);
+
+      notifier.setDelay(const Delay(name: 'B', url: url, value: 20));
+
+      expect(first[url], {'A': 10});
+      expect(container.read(delayDataSourceProvider)[url], {'A': 10, 'B': 20});
+    });
+
     test('applies a batch of delays as one state change', () {
       const url = 'https://test.example';
       final changes = <DelayMap>[];

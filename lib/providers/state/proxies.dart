@@ -84,9 +84,7 @@ DelayMap delaysAtLastTestBatch(Ref ref) {
   if (delayDataSource.isEmpty) {
     return const {};
   }
-  return {
-    for (final entry in delayDataSource.entries) entry.key: {...entry.value},
-  };
+  return delayDataSource;
 }
 
 @riverpod

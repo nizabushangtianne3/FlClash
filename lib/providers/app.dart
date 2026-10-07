@@ -347,7 +347,8 @@ class Groups extends _$Groups with AutoDisposeNotifierMixin {
 
 @Riverpod(keepAlive: true)
 class DelayDataSource extends _$DelayDataSource with AutoDisposeNotifierMixin {
-  DelayMap? _owned;
+  DelayMap? _working;
+  Set<String> _detachedUrls = {};
   DelayMap? _published;
 
   @override
@@ -359,29 +360,50 @@ class DelayDataSource extends _$DelayDataSource with AutoDisposeNotifierMixin {
     setDelays([delay]);
   }
 
-  /// Publishes a live view, so a dependent that keeps the map must copy it.
+  /// Publishes copy-on-write snapshots so dependents can retain them safely.
   void setDelays(Iterable<Delay> delays) {
-    final delayMap = _ownedDelayMap();
-    var changed = false;
+    final delayMap = _workingDelayMap();
+    final changedUrls = <String>{};
     for (final delay in delays) {
       if (delayMap[delay.url]?[delay.name] == delay.value) {
         continue;
       }
-      (delayMap[delay.url] ??= {})[delay.name] = delay.value;
-      changed = true;
+      var values = delayMap[delay.url];
+      if (values == null) {
+        values = delayMap[delay.url] = <String, int?>{};
+        _detachedUrls.add(delay.url);
+      } else if (!_detachedUrls.contains(delay.url)) {
+        values = delayMap[delay.url] = Map<String, int?>.of(values);
+        _detachedUrls.add(delay.url);
+      }
+      values[delay.name] = delay.value;
+      changedUrls.add(delay.url);
     }
-    if (changed) {
-      value = _published = UnmodifiableMapView(delayMap);
+    if (changedUrls.isEmpty) {
+      return;
     }
+    final snapshot = <String, Map<String, int?>>{};
+    for (final entry in delayMap.entries) {
+      if (changedUrls.contains(entry.key)) {
+        snapshot[entry.key] = Map<String, int?>.unmodifiable(entry.value);
+        delayMap[entry.key] = Map<String, int?>.of(entry.value);
+      } else {
+        snapshot[entry.key] = entry.value;
+      }
+    }
+    _detachedUrls = changedUrls;
+    value = _published = UnmodifiableMapView(snapshot);
   }
 
-  DelayMap _ownedDelayMap() {
-    final owned = _owned;
-    if (owned != null && identical(state, _published)) {
-      return owned;
+  DelayMap _workingDelayMap() {
+    final working = _working;
+    if (working != null && identical(state, _published)) {
+      return working;
     }
-    return _owned = {
-      for (final entry in state.entries) entry.key: {...entry.value},
+    _detachedUrls = state.keys.toSet();
+    return _working = {
+      for (final entry in state.entries)
+        entry.key: Map<String, int?>.of(entry.value),
     };
   }
 }
