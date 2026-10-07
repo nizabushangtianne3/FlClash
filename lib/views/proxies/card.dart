@@ -245,15 +245,14 @@ class _DelayTextState extends ConsumerState<_DelayText> {
   @override
   Widget build(BuildContext context) {
     final measure = globalState.measure;
-    final delay = ref.watch(
-      delayProvider(proxyName: widget.proxy.name, testUrl: widget.testUrl),
-    );
-    final phase = ref.watch(
-      delayTestPhaseProvider(
+    final delayView = ref.watch(
+      delayViewProvider((
         proxyName: widget.proxy.name,
         testUrl: widget.testUrl,
-      ),
+      )),
     );
+    final delay = delayView.delay;
+    final phase = delayView.phase;
     return Actions(
       actions: {
         ActivateIntent: CallbackAction<ActivateIntent>(

@@ -599,6 +599,11 @@ void main() {
       'Leaf',
     );
     expect(container.read(delayProvider(proxyName: 'Selector')), 42);
+    final delayView = container.read(
+      delayViewProvider((proxyName: 'Selector', testUrl: null)),
+    );
+    expect(delayView.delay, 42);
+    expect(delayView.phase, isNull);
     expect(
       container.read(
         proxyDescProvider(const Proxy(name: 'Selector', type: 'Selector')),

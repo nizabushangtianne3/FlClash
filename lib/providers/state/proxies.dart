@@ -251,6 +251,32 @@ DelayTestPhase? delayTestPhase(
   return ref.watch(pendingDelayTestsProvider.select((state) => state[key]));
 }
 
+final delayViewProvider =
+    Provider.family<
+      ({int? delay, DelayTestPhase? phase}),
+      ({String proxyName, String? testUrl})
+    >((ref, args) {
+      final currentTestUrl = ref.watch(realTestUrlProvider(args.testUrl));
+      final proxyState = ref.watch(
+        realSelectedProxyStateProvider(args.proxyName),
+      );
+      final effectiveTestUrl = proxyState.testUrl.takeFirstValid([
+        currentTestUrl,
+      ]);
+      final effectiveProxyName = proxyState.proxyName;
+      final key = delayTestKey(effectiveTestUrl, effectiveProxyName);
+      return (
+        delay: ref.watch(
+          delayDataSourceProvider.select(
+            (state) => state[effectiveTestUrl]?[effectiveProxyName],
+          ),
+        ),
+        phase: ref.watch(
+          pendingDelayTestsProvider.select((state) => state[key]),
+        ),
+      );
+    });
+
 @riverpod
 Map<String, String> selectedMap(Ref ref) {
   final selectedMap = ref.watch(
