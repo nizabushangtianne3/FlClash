@@ -605,18 +605,30 @@ void main() {
     expect(delayView.delay, 42);
     expect(delayView.phase, isNull);
     expect(
-      container.read(
-        proxyDescProvider((name: 'Selector', type: 'Selector')),
-      ),
+      container.read(proxyDescProvider((name: 'Selector', type: 'Selector'))),
       'Selector(Leaf)',
     );
     expect(
-      container.read(
-        proxyDescProvider((name: 'Leaf', type: 'Direct')),
-      ),
+      container.read(proxyDescProvider((name: 'Leaf', type: 'Direct'))),
       'Direct',
     );
   });
+
+  test(
+    'delay view providers dispose after their card stops listening',
+    () async {
+      final provider = delayViewProvider((
+        proxyName: 'Selector',
+        testUrl: null,
+      ));
+      final subscription = container.listen(provider, (_, _) {});
+
+      subscription.close();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(container.exists(provider), isFalse);
+    },
+  );
 
   test('tray delays follow the listed groups and their test URLs', () {
     const probeUrl = 'https://probe.example/204';

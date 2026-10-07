@@ -249,8 +249,8 @@ DelayTestPhase? delayTestPhase(
   return ref.watch(pendingDelayTestsProvider.select((state) => state[key]));
 }
 
-final delayViewProvider =
-    Provider.family<
+final delayViewProvider = Provider.autoDispose
+    .family<
       ({int? delay, DelayTestPhase? phase}),
       ({String proxyName, String? testUrl})
     >((ref, args) {
