@@ -55,51 +55,18 @@ class CoreEventManager {
 
   CoreEventManager._() {
     _controller.stream.listen((event) {
+      Object? payload;
+      try {
+        payload = _parseEventPayload(event);
+      } catch (error) {
+        commonPrint.log(
+          'Unable to parse Core event ${event.type.name}: $error',
+          logLevel: LogLevel.error,
+        );
+        return;
+      }
       for (final CoreEventListener listener in List.of(_listeners)) {
-        try {
-          switch (event.type) {
-            case CoreEventType.log:
-              listener.onLog(Log.fromJson(event.data));
-              break;
-            case CoreEventType.delay:
-              listener.onDelay(Delay.fromJson(event.data));
-              break;
-            case CoreEventType.request:
-              listener.onRequest(TrackerInfo.fromJson(event.data));
-              break;
-            case CoreEventType.dns:
-              listener.onDns(DnsQuery.fromJson(event.data));
-              break;
-            case CoreEventType.loaded:
-              listener.onLoaded(event.data);
-              break;
-            case CoreEventType.crash:
-              listener.onCrash(event.data);
-              break;
-            case CoreEventType.geoUpdate:
-              final data = event.data as Map<String, dynamic>;
-              listener.onGeoUpdate(
-                data['type'] as String,
-                data['updating'] as bool,
-                data['skipped'] as bool? ?? false,
-                data['error'] as String?,
-              );
-              break;
-            case CoreEventType.routeChanged:
-              listener.onRouteChanged(
-                RouteSnapshot.fromJson(Map<String, Object?>.from(event.data)),
-              );
-              break;
-            case CoreEventType.dialerLoop:
-              listener.onDialerLoop(event.data as String);
-              break;
-          }
-        } catch (error) {
-          commonPrint.log(
-            'Unable to dispatch Core event ${event.type.name}: $error',
-            logLevel: LogLevel.error,
-          );
-        }
+        _sendToListener(listener, event, payload);
       }
     });
   }
@@ -138,6 +105,101 @@ class CoreEventManager {
   void removeListener(CoreEventListener listener) {
     _listeners.remove(listener);
   }
+
+  Object? _parseEventPayload(CoreEvent event) {
+    switch (event.type) {
+      case CoreEventType.log:
+        return Log.fromJson(Map<String, Object?>.from(event.data as Map));
+      case CoreEventType.delay:
+        return Delay.fromJson(Map<String, Object?>.from(event.data as Map));
+      case CoreEventType.request:
+        return TrackerInfo.fromJson(
+          Map<String, Object?>.from(event.data as Map),
+        );
+      case CoreEventType.dns:
+        return DnsQuery.fromJson(Map<String, Object?>.from(event.data as Map));
+      case CoreEventType.loaded:
+      case CoreEventType.crash:
+        return '${event.data}';
+      case CoreEventType.geoUpdate:
+        final data = Map<String, dynamic>.from(event.data as Map);
+        return _GeoUpdatePayload(
+          geoType: data['type'] as String,
+          updating: data['updating'] as bool,
+          skipped: data['skipped'] as bool? ?? false,
+          error: data['error'] as String?,
+        );
+      case CoreEventType.routeChanged:
+        return RouteSnapshot.fromJson(
+          Map<String, Object?>.from(event.data as Map),
+        );
+      case CoreEventType.dialerLoop:
+        return event.data as String;
+    }
+  }
+}
+
+void _sendToListener(
+  CoreEventListener listener,
+  CoreEvent event,
+  Object? payload,
+) {
+  try {
+    switch (event.type) {
+      case CoreEventType.log:
+        listener.onLog(payload as Log);
+        break;
+      case CoreEventType.delay:
+        listener.onDelay(payload as Delay);
+        break;
+      case CoreEventType.request:
+        listener.onRequest(payload as TrackerInfo);
+        break;
+      case CoreEventType.dns:
+        listener.onDns(payload as DnsQuery);
+        break;
+      case CoreEventType.loaded:
+        listener.onLoaded(payload as String);
+        break;
+      case CoreEventType.crash:
+        listener.onCrash(payload as String);
+        break;
+      case CoreEventType.geoUpdate:
+        final geoUpdate = payload as _GeoUpdatePayload;
+        listener.onGeoUpdate(
+          geoUpdate.geoType,
+          geoUpdate.updating,
+          geoUpdate.skipped,
+          geoUpdate.error,
+        );
+        break;
+      case CoreEventType.routeChanged:
+        listener.onRouteChanged(payload as RouteSnapshot);
+        break;
+      case CoreEventType.dialerLoop:
+        listener.onDialerLoop(payload as String);
+        break;
+    }
+  } catch (error) {
+    commonPrint.log(
+      'Unable to dispatch Core event ${event.type.name}: $error',
+      logLevel: LogLevel.error,
+    );
+  }
+}
+
+class _GeoUpdatePayload {
+  const _GeoUpdatePayload({
+    required this.geoType,
+    required this.updating,
+    required this.skipped,
+    this.error,
+  });
+
+  final String geoType;
+  final bool updating;
+  final bool skipped;
+  final String? error;
 }
 
 final coreEventManager = CoreEventManager.instance;

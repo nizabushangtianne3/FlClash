@@ -19,6 +19,7 @@ class _RecordingListener with CoreEventListener {
   final List<String> dialerLoops = [];
   final List<TrackerInfo> requests = [];
   final List<DnsQuery> dnsQueries = [];
+  final List<Log> logs = [];
 
   @override
   void onLoaded(String providerName) {
@@ -39,6 +40,11 @@ class _RecordingListener with CoreEventListener {
   @override
   void onDns(DnsQuery dnsQuery) {
     dnsQueries.add(dnsQuery);
+  }
+
+  @override
+  void onLog(Log log) {
+    logs.add(log);
   }
 }
 
@@ -118,5 +124,27 @@ void main() {
 
     expect(listener.requests, isEmpty);
     expect(listener.dnsQueries, isEmpty);
+  });
+
+  test('parses event data once when multiple listeners are registered', () {
+    final first = _RecordingListener();
+    final second = _RecordingListener();
+    coreEventManager.addListener(first);
+    coreEventManager.addListener(second);
+    addTearDown(() {
+      coreEventManager.removeListener(first);
+      coreEventManager.removeListener(second);
+    });
+
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.log,
+        data: {'LogLevel': 'info', 'Payload': 'shared-event'},
+      ),
+    );
+
+    expect(first.logs.single.payload, 'shared-event');
+    expect(second.logs.single.payload, 'shared-event');
+    expect(identical(first.logs.single, second.logs.single), isTrue);
   });
 }
