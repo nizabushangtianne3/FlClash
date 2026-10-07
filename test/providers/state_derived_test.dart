@@ -606,13 +606,13 @@ void main() {
     expect(delayView.phase, isNull);
     expect(
       container.read(
-        proxyDescProvider(const Proxy(name: 'Selector', type: 'Selector')),
+        proxyDescProvider((name: 'Selector', type: 'Selector')),
       ),
       'Selector(Leaf)',
     );
     expect(
       container.read(
-        proxyDescProvider(const Proxy(name: 'Leaf', type: 'Direct')),
+        proxyDescProvider((name: 'Leaf', type: 'Direct')),
       ),
       'Direct',
     );

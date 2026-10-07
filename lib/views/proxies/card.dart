@@ -320,7 +320,11 @@ class _ProxyDesc extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final desc = ref.watch(proxyDescProvider(proxy));
+    final desc = GroupTypeExtension.valueList.contains(proxy.type)
+        ? ref.watch(
+            proxyDescProvider((name: proxy.name, type: proxy.type)),
+          )
+        : proxy.type;
     return EmojiText(
       desc,
       overflow: TextOverflow.ellipsis,
