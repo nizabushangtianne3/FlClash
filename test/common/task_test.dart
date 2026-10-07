@@ -73,6 +73,35 @@ void main() {
     expect(groups.single.all.map((proxy) => proxy.name), ['Beta', 'Zulu']);
   });
 
+  test('sortGroupsTask sorts large delay trees off the main isolate', () async {
+    const testUrl = 'https://example.com/generate_204';
+    final proxies = List.generate(
+      301,
+      (index) =>
+          Proxy(name: 'p${index.toString().padLeft(3, '0')}', type: 'ss'),
+    );
+    final group = Group(
+      name: 'Selector',
+      type: GroupType.Selector,
+      all: proxies,
+    );
+    final groups = await sortGroupsTask((
+      groups: [group],
+      sortType: ProxiesSortType.delay,
+      delayMap: {
+        testUrl: {
+          for (final (index, proxy) in proxies.indexed)
+            proxy.name: 1000 - index,
+        },
+      },
+      selectedMap: const {},
+      defaultTestUrl: testUrl,
+    ));
+
+    expect(groups.single.all.first.name, 'p300');
+    expect(groups.single.all.last.name, 'p000');
+  });
+
   test(
     'clashConfigTask parses core config data off the main isolate',
     () async {

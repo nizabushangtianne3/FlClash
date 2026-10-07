@@ -22,9 +22,9 @@ List<CoreEvent> coreEventsFromData(Object? data) {
 }
 
 abstract mixin class CoreEventListener {
-  bool get wantsRequestEvents => true;
+  bool get wantsRequestEvents => false;
 
-  bool get wantsDnsEvents => true;
+  bool get wantsDnsEvents => false;
 
   void onLog(Log log) {}
 
@@ -66,8 +66,11 @@ class CoreEventManager {
         return;
       }
       final listeners = _listenerSnapshot ??= List.unmodifiable(_listeners);
+      final filter = _filterFor(event);
       for (final listener in listeners) {
-        _sendToListener(listener, event, payload);
+        if (filter == null || filter(listener)) {
+          _sendToListener(listener, event, payload);
+        }
       }
     });
   }
@@ -83,21 +86,21 @@ class CoreEventManager {
   }
 
   void sendEvent(CoreEvent event) {
-    if (event.type == CoreEventType.request && !_hasRequestListener) {
-      return;
-    }
-    if (event.type == CoreEventType.dns && !_hasDnsListener) {
+    final listeners = _listenerSnapshot ??= List.unmodifiable(_listeners);
+    final filter = _filterFor(event);
+    if (filter != null && !listeners.any(filter)) {
       return;
     }
     _controller.add(event);
   }
-
-  bool get _hasRequestListener {
-    return _listeners.any((listener) => listener.wantsRequestEvents);
   }
 
-  bool get _hasDnsListener {
-    return _listeners.any((listener) => listener.wantsDnsEvents);
+  bool Function(CoreEventListener listener)? _filterFor(CoreEvent event) {
+    return switch (event.type) {
+      CoreEventType.request => (listener) => listener.wantsRequestEvents,
+      CoreEventType.dns => (listener) => listener.wantsDnsEvents,
+      _ => null,
+    };
   }
 
   void addListener(CoreEventListener listener) {

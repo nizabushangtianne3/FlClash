@@ -152,7 +152,7 @@ class _ProxiesListViewState extends ConsumerState<ProxiesListView> {
           testUrl: group.testUrl,
           type: cardType,
           groupType: group.type,
-          key: ValueKey('$groupName.${proxy.name}'),
+          key: ValueKey((groupName, proxy.name)),
           proxy: proxy,
           groupName: groupName,
         ),

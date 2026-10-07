@@ -6,6 +6,16 @@ import 'package:super_sliver_list/super_sliver_list.dart';
 
 import 'tracker_info_item.dart';
 
+bool _sameTrackerInfo(TrackerInfo current, TrackerInfo next) {
+  if (current.upload != next.upload ||
+      current.download != next.download ||
+      current.uploadSpeed != next.uploadSpeed ||
+      current.downloadSpeed != next.downloadSpeed) {
+    return false;
+  }
+  return current == next;
+}
+
 class TrackerInfoListController extends ValueNotifier<TrackerInfosState> {
   TrackerInfoListController() : super(const TrackerInfosState());
 
@@ -33,7 +43,10 @@ class TrackerInfoListController extends ValueNotifier<TrackerInfosState> {
     if (current.length == next.length) {
       var same = true;
       for (var i = 0; i < current.length; i++) {
-        if (current[i] != next[i]) {
+        if (identical(current[i], next[i])) {
+          continue;
+        }
+        if (!_sameTrackerInfo(current[i], next[i])) {
           same = false;
           break;
         }

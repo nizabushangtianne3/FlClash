@@ -138,13 +138,16 @@ class ProxiesAction extends _$ProxiesAction {
     final selectedMap = ref.read(
       currentProfileProvider.select((state) => state?.selectedMap ?? {}),
     );
-    final next = computeSort(
+    final next = await sortGroupsTask((
       groups: groups,
       sortType: sortType,
       delayMap: delayMap,
       selectedMap: selectedMap,
       defaultTestUrl: testUrl,
-    );
+    ));
+    if (!ref.mounted) {
+      return;
+    }
     ref.read(groupsProvider.notifier).update((_) => next);
   }
 

@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 class _RecordingListener with CoreEventListener {
   _RecordingListener({
     this.onLoadedCallback,
-    this.wantsRequestEvents = true,
-    this.wantsDnsEvents = true,
+    this.wantsRequestEvents = false,
+    this.wantsDnsEvents = false,
   });
 
   final void Function()? onLoadedCallback;
@@ -108,7 +108,16 @@ void main() {
     coreEventManager.sendEvent(
       const CoreEvent(
         type: CoreEventType.request,
-        data: {'id': 'connection-1', 'metadata': <String, Object?>{}},
+        data: {
+          'id': 'connection-1',
+          'metadata': {'network': 'tcp'},
+          'upload': 0,
+          'download': 0,
+          'start': '2026-09-18T04:30:01Z',
+          'chains': <String>[],
+          'rule': 'MATCH',
+          'rulePayload': '',
+        },
       ),
     );
     coreEventManager.sendEvent(
@@ -126,7 +135,88 @@ void main() {
     expect(listener.dnsQueries, isEmpty);
   });
 
-  test('parses event data once when multiple listeners are registered', () {
+  test('listeners default to no request or DNS interest', () {
+    final listener = _RecordingListener();
+    coreEventManager.addListener(listener);
+    addTearDown(() => coreEventManager.removeListener(listener));
+
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.request,
+        data: {
+          'id': 'connection-1',
+          'metadata': {'network': 'tcp'},
+          'upload': 0,
+          'download': 0,
+          'start': '2026-09-18T04:30:01Z',
+          'chains': <String>[],
+          'rule': 'MATCH',
+          'rulePayload': '',
+        },
+      ),
+    );
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.dns,
+        data: {
+          'domain': 'example.test',
+          'type': 'A',
+          'time': '2026-09-18T04:30:01Z',
+        },
+      ),
+    );
+
+    expect(listener.requests, isEmpty);
+    expect(listener.dnsQueries, isEmpty);
+  });
+
+  test('request and DNS interest is filtered per listener', () async {
+    final interested = _RecordingListener(
+      wantsRequestEvents: true,
+      wantsDnsEvents: true,
+    );
+    final uninterested = _RecordingListener();
+    coreEventManager.addListener(interested);
+    coreEventManager.addListener(uninterested);
+    addTearDown(() {
+      coreEventManager.removeListener(interested);
+      coreEventManager.removeListener(uninterested);
+    });
+
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.request,
+        data: {
+          'id': 'connection-1',
+          'metadata': {'network': 'tcp'},
+          'upload': 0,
+          'download': 0,
+          'start': '2026-09-18T04:30:01Z',
+          'chains': <String>[],
+          'rule': 'MATCH',
+          'rulePayload': '',
+        },
+      ),
+    );
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.dns,
+        data: {
+          'domain': 'example.test',
+          'type': 'A',
+          'time': '2026-09-18T04:30:01Z',
+        },
+      ),
+    );
+    await pumpEventQueue();
+
+    expect(interested.requests, hasLength(1));
+    expect(interested.dnsQueries, hasLength(1));
+    expect(uninterested.requests, isEmpty);
+    expect(uninterested.dnsQueries, isEmpty);
+  });
+
+  test('parses event data once when multiple listeners are registered', () async {
     final first = _RecordingListener();
     final second = _RecordingListener();
     coreEventManager.addListener(first);
@@ -142,6 +232,7 @@ void main() {
         data: {'LogLevel': 'info', 'Payload': 'shared-event'},
       ),
     );
+    await pumpEventQueue();
 
     expect(first.logs.single.payload, 'shared-event');
     expect(second.logs.single.payload, 'shared-event');

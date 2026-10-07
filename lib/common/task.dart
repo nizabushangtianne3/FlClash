@@ -66,6 +66,43 @@ Future<List<Group>> toGroupsTask(ComputeGroupsState data) async {
   return compute<ComputeGroupsState, List<Group>>(buildGroups, data);
 }
 
+typedef SortGroupsState = ({
+  List<Group> groups,
+  ProxiesSortType sortType,
+  DelayMap delayMap,
+  Map<String, String> selectedMap,
+  String defaultTestUrl,
+});
+
+const _groupsSortIsolateThreshold = 300;
+
+Future<List<Group>> sortGroupsTask(SortGroupsState data) async {
+  var proxyCount = 0;
+  for (final group in data.groups) {
+    proxyCount += group.all.length;
+  }
+  if (proxyCount < _groupsSortIsolateThreshold) {
+    return computeSort(
+      groups: data.groups,
+      sortType: data.sortType,
+      delayMap: data.delayMap,
+      selectedMap: data.selectedMap,
+      defaultTestUrl: data.defaultTestUrl,
+    );
+  }
+  return compute<SortGroupsState, List<Group>>(_sortGroups, data);
+}
+
+List<Group> _sortGroups(SortGroupsState data) {
+  return computeSort(
+    groups: data.groups,
+    sortType: data.sortType,
+    delayMap: data.delayMap,
+    selectedMap: data.selectedMap,
+    defaultTestUrl: data.defaultTestUrl,
+  );
+}
+
 @visibleForTesting
 Future<List<Group>> buildGroups(ComputeGroupsState state) async {
   final proxiesData = state.proxiesData;
