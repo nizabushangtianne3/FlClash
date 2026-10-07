@@ -37,6 +37,14 @@ void main() {
     expect(ranked.map((trackerInfo) => trackerInfo.downloadSpeed), [0, 0]);
   });
 
+  test('reuses rows when the derived speed does not change', () {
+    final ranker = TrackerSpeedRanker();
+    final first = ranker.rank([_tracker('a', download: 100)], t0);
+    final second = ranker.rank(first, t0);
+
+    expect(identical(second.single, first.single), isTrue);
+  });
+
   test('derives speed from the delta over the elapsed time', () {
     final ranker = TrackerSpeedRanker();
     ranker.rank([_tracker('a', upload: 100, download: 1000)], t0);
