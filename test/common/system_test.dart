@@ -115,6 +115,16 @@ void main() {
   late _FakeProcesses processes;
   String? password;
 
+  test('linux init does not touch device info', () async {
+    final original = System.deviceInfoLoader;
+    addTearDown(() => System.deviceInfoLoader = original);
+    System.deviceInfoLoader = () async {
+      throw StateError('device info must not be read on Linux');
+    };
+
+    expect(await System().init(operatingSystem: 'linux'), 0);
+  });
+
   setUpAll(() {
     root = Directory.systemTemp.createTempSync('system_test');
     PathProviderPlatform.instance = _FakePathProvider(root.path);

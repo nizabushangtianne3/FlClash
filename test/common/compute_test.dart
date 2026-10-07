@@ -331,6 +331,35 @@ void main() {
       expect(names.indexOf('proxy-b'), lessThan(names.indexOf('proxy-a')));
     });
 
+    test('delay sorting puts measured nodes before untested nodes', () {
+      const group = Group(
+        name: 'mixed',
+        type: GroupType.Selector,
+        all: [
+          Proxy(name: 'untested', type: 'ss'),
+          Proxy(name: 'timeout', type: 'ss'),
+          Proxy(name: 'slow', type: 'ss'),
+          Proxy(name: 'fast', type: 'ss'),
+        ],
+      );
+      final result = computeSort(
+        groups: [group],
+        sortType: ProxiesSortType.delay,
+        delayMap: {
+          'http://test.com': {'slow': 200, 'fast': 50, 'timeout': -1},
+        },
+        selectedMap: {},
+        defaultTestUrl: 'http://test.com',
+      );
+
+      expect(result.single.all.map((proxy) => proxy.name).toList(), [
+        'fast',
+        'slow',
+        'timeout',
+        'untested',
+      ]);
+    });
+
     test('preserves group count in result', () {
       final multiGroups = [
         ...groups,

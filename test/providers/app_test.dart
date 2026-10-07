@@ -93,6 +93,25 @@ void main() {
 
       expect(container.read(providersProvider).single, provider);
     });
+
+    test('setProvider skips an equal snapshot', () {
+      final provider = ExternalProvider(
+        name: 'Proxy',
+        type: 'Proxy',
+        count: 1,
+        vehicleType: 'HTTP',
+        updateAt: DateTime(2026),
+      );
+      container.read(providersProvider.notifier).update((_) => [provider]);
+      var changes = 0;
+      container.listen(providersProvider, (_, _) => changes++);
+
+      container
+          .read(providersProvider.notifier)
+          .setProvider(provider.copyWith());
+
+      expect(changes, 0);
+    });
   });
 
   group('SystemBrightness provider', () {

@@ -171,5 +171,12 @@ void main() {
     }
 
     await expectLater(appPath.ensureProviderDirs(9), completes);
+    await expectLater(
+      Future.wait([
+        appPath.ensureProviderDirs(10),
+        appPath.ensureProviderDirs(10),
+      ]),
+      completes,
+    );
   });
 }

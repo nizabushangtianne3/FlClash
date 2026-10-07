@@ -47,6 +47,8 @@ class ProxiesAction extends _$ProxiesAction {
   final Map<String, Set<int>> _activeSelectedIntents = {};
   Future<void>? _connectionCleanup;
   bool _connectionCleanupPending = false;
+  Future<void>? _activeGroupsUpdate;
+  bool _pendingGroupsUpdate = false;
 
   @override
   void build() {
@@ -120,6 +122,9 @@ class ProxiesAction extends _$ProxiesAction {
     if (groups.isEmpty) {
       return;
     }
+    if (_delayTestJobs.isNotEmpty) {
+      return;
+    }
     final sortType = ref.read(
       proxiesStyleSettingProvider.select((state) => state.sortType),
     );
@@ -184,7 +189,32 @@ class ProxiesAction extends _$ProxiesAction {
     return ref.read(currentProfileProvider)?.selectedMap[groupName] ?? '';
   }
 
-  Future<void> updateGroups() async {
+  Future<void> updateGroups() {
+    final active = _activeGroupsUpdate;
+    if (active != null) {
+      _pendingGroupsUpdate = true;
+      return active;
+    }
+    final task = _drainGroupUpdates();
+    _activeGroupsUpdate = task;
+    return task;
+  }
+
+  Future<void> _drainGroupUpdates() async {
+    try {
+      do {
+        _pendingGroupsUpdate = false;
+        await _updateGroupsOnce();
+      } while (_pendingGroupsUpdate && ref.mounted);
+    } finally {
+      _activeGroupsUpdate = null;
+      if (_pendingGroupsUpdate && ref.mounted) {
+        unawaited(updateGroups());
+      }
+    }
+  }
+
+  Future<void> _updateGroupsOnce() async {
     try {
       final next = await retry<({List<Group> groups, bool publish})>(
         task: () async {
@@ -586,6 +616,11 @@ class ProxiesAction extends _$ProxiesAction {
           (key) => !job.startedOnDispatch.contains(key),
         ),
       );
+      if (_delayTestJobs.isEmpty) {
+        // A batch can outlive the per-result debounce; sort once from the
+        // completed map instead of exposing several partial orders.
+        unawaited(resortGroupsByDelay());
+      }
     }
   }
 

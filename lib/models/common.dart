@@ -1042,9 +1042,8 @@ abstract class DelayState with _$DelayState {
 extension DelayStateExt on DelayState {
   int get priority {
     if (delay > 0) return 0;
-    if (delay == 0) return 1;
-    if (delay == delayTimedOutValue) return 2;
-    return 3;
+    if (delay < 0) return 1;
+    return 2;
   }
 
   int compareTo(DelayState other) {

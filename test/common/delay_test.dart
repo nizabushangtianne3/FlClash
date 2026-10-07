@@ -8,16 +8,12 @@ void main() {
       expect(const DelayState(delay: 1, group: false).priority, 0);
     });
 
-    test('returns 1 for zero delay', () {
-      expect(const DelayState(delay: 0, group: false).priority, 1);
+    test('returns 2 for zero delay', () {
+      expect(const DelayState(delay: 0, group: false).priority, 2);
     });
 
-    test('returns 2 for a timed-out delay', () {
-      expect(const DelayState(delay: -1, group: false).priority, 2);
-    });
-
-    test('returns 3 for a delay test that failed outright', () {
-      expect(const DelayState(delay: -2, group: false).priority, 3);
+    test('returns 1 for negative delay', () {
+      expect(const DelayState(delay: -1, group: false).priority, 1);
     });
   });
 
@@ -29,18 +25,11 @@ void main() {
       expect(b.compareTo(a), greaterThan(0));
     });
 
-    test('zero delay comes before negative delay', () {
+    test('negative delay comes before zero delay', () {
       const a = DelayState(delay: 0, group: false);
       const b = DelayState(delay: -1, group: false);
-      expect(a.compareTo(b), lessThan(0));
-      expect(b.compareTo(a), greaterThan(0));
-    });
-
-    test('timed-out delay comes before a failed one', () {
-      const a = DelayState(delay: -1, group: false);
-      const b = DelayState(delay: -2, group: false);
-      expect(a.compareTo(b), lessThan(0));
-      expect(b.compareTo(a), greaterThan(0));
+      expect(a.compareTo(b), greaterThan(0));
+      expect(b.compareTo(a), lessThan(0));
     });
 
     test('positive delay comes before negative delay', () {
@@ -102,9 +91,9 @@ void main() {
         const DelayState(delay: 50, group: true),
         const DelayState(delay: 50, group: false),
         const DelayState(delay: 200, group: false),
+        const DelayState(delay: -1, group: false),
         const DelayState(delay: 0, group: true),
         const DelayState(delay: 0, group: false),
-        const DelayState(delay: -1, group: false),
       ]);
     });
   });

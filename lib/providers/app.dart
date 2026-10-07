@@ -7,6 +7,7 @@ import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/core.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/services.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -127,13 +128,16 @@ class Providers extends _$Providers with AutoDisposeNotifierMixin {
     if (provider == null) return;
     final index = value.indexWhere((item) => item.name == provider.name);
     if (index == -1) return;
-    if (identical(value[index], provider)) return;
+    final current = value[index];
+    if (current == provider) return;
     final newState = List<ExternalProvider>.from(value)..[index] = provider;
     value = newState;
   }
 
   Future<void> syncProviders() async {
-    value = await ref.read(coreHandlerProvider).getExternalProviders();
+    final next = await ref.read(coreHandlerProvider).getExternalProviders();
+    if (listEquals(next, value)) return;
+    value = next;
   }
 }
 

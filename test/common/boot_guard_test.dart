@@ -7,8 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 class _RecordStore {
   BootRecord? record;
   var writes = 0;
+  var reads = 0;
 
-  Future<BootRecord?> read() async => record;
+  Future<BootRecord?> read() async {
+    reads++;
+    return record;
+  }
 
   Future<void> write(BootRecord value) async {
     record = value;
@@ -187,6 +191,19 @@ void main() {
 
     expect(store.record?.stage, BootStage.running);
     expect(store.record?.failureCount, 0);
+  });
+
+  test('reuses the written record for lifecycle updates', () async {
+    final store = _RecordStore();
+    final guard = _guard(store);
+    await guard.evaluate(profileId: 7, crashlyticsEnabled: false);
+    final readsAfterEvaluate = store.reads;
+
+    await guard.markRunning();
+    await guard.markClosed();
+
+    expect(readsAfterEvaluate, 1);
+    expect(store.reads, readsAfterEvaluate);
   });
 
   test('a degraded launch keeps its failure count until a clean run', () async {

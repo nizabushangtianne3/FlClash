@@ -184,6 +184,10 @@ class CoreController {
     return result;
   }
 
+  void invalidateProxiesCache() {}
+
+  void patchCachedGroupNow(String groupName, String proxyName) {}
+
   Future<List<Group>> getProxiesGroups({
     required ProxiesSortType sortType,
     required DelayMap delayMap,

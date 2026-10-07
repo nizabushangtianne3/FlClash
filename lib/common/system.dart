@@ -20,6 +20,10 @@ class System {
   bool _isTV = false;
 
   @visibleForTesting
+  static Future<BaseDeviceInfo> Function() deviceInfoLoader = () =>
+      DeviceInfoPlugin().deviceInfo;
+
+  @visibleForTesting
   ProcessRunner runProcess = Process.run;
 
   System._internal();
@@ -41,8 +45,13 @@ class System {
 
   bool get isTV => _isTV;
 
-  Future<int> init() async {
-    final deviceInfo = await DeviceInfoPlugin().deviceInfo;
+  Future<int> init({String? operatingSystem}) async {
+    final os = operatingSystem ?? Platform.operatingSystem;
+    _isTV = false;
+    if (os == 'linux') {
+      return 0;
+    }
+    final deviceInfo = await deviceInfoLoader();
     _isTV = switch (deviceInfo) {
       AndroidDeviceInfo(:final systemFeatures) => systemFeatures.any(
         const {
@@ -52,7 +61,7 @@ class System {
       ),
       _ => false,
     };
-    return switch (Platform.operatingSystem) {
+    return switch (os) {
       'macos' => (deviceInfo as MacOsDeviceInfo).majorVersion,
       'android' => (deviceInfo as AndroidDeviceInfo).version.sdkInt,
       'windows' => (deviceInfo as WindowsDeviceInfo).majorVersion,

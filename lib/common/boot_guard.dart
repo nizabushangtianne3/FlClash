@@ -15,6 +15,7 @@ class BootGuard {
   final int Function() _now;
 
   BootDecision _decision = const BootDecision();
+  BootRecord? _lastRecord;
 
   BootGuard({
     bool? supported,
@@ -41,10 +42,10 @@ class BootGuard {
     if (!_supported) {
       return _decision;
     }
-    final recordFuture = _readRecord();
-    final exitInfoFuture = _readExitInfo();
+    final recordFuture = _readRecordSafely();
+    final exitInfoFuture = _readExitInfoSafely();
     final crashReportFuture = crashlyticsEnabled
-        ? _readCrashReport()
+        ? _readCrashReportSafely()
         : Future<bool>.value(false);
     final record = await recordFuture;
     final exitInfo = await exitInfoFuture;
@@ -60,7 +61,7 @@ class BootGuard {
         logLevel: LogLevel.warning,
       );
     }
-    await _writeRecord(
+    await _tryWriteRecord(
       BootRecord(
         stage: BootStage.starting,
         profileId: decision.recovery == BootRecovery.clearProfile
@@ -84,11 +85,11 @@ class BootGuard {
     if (!_supported) {
       return;
     }
-    final record = await _readRecord();
+    final record = _lastRecord ?? await _readRecordSafely();
     if (record == null) {
       return;
     }
-    await _writeRecord(
+    await _tryWriteRecord(
       BootRecord(
         stage: BootStage.running,
         profileId: record.profileId,
@@ -104,17 +105,60 @@ class BootGuard {
     if (!_supported) {
       return;
     }
-    final record = await _readRecord();
+    final record = _lastRecord ?? await _readRecordSafely();
     if (record == null) {
       return;
     }
-    await _writeRecord(
+    await _tryWriteRecord(
       BootRecord(
         profileId: record.profileId,
         startedAt: record.startedAt,
         lastFailedProfileId: record.lastFailedProfileId,
         handledExitAt: record.handledExitAt,
       ),
+    );
+  }
+
+  Future<BootRecord?> _readRecordSafely() async {
+    try {
+      return await _readRecord();
+    } catch (error) {
+      _logFailure('read record', error);
+      return null;
+    }
+  }
+
+  Future<AppExitInfo?> _readExitInfoSafely() async {
+    try {
+      return await _readExitInfo();
+    } catch (error) {
+      _logFailure('read exit info', error);
+      return null;
+    }
+  }
+
+  Future<bool> _readCrashReportSafely() async {
+    try {
+      return await _readCrashReport();
+    } catch (error) {
+      _logFailure('read crash report', error);
+      return false;
+    }
+  }
+
+  Future<void> _tryWriteRecord(BootRecord record) async {
+    try {
+      await _writeRecord(record);
+      _lastRecord = record;
+    } catch (error) {
+      _logFailure('write record', error);
+    }
+  }
+
+  void _logFailure(String action, Object error) {
+    commonPrint.log(
+      'Boot guard $action failed: $error',
+      logLevel: LogLevel.warning,
     );
   }
 }
