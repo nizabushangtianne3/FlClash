@@ -13,6 +13,27 @@ import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+typedef ProxiesRefreshState = ({
+  bool isProxies,
+  int sortNum,
+  ProxiesSortType sortType,
+});
+
+/// Leaving the page needs no rebuild; entering or a sort change does.
+@visibleForTesting
+bool needsProxiesRefresh(
+  ProxiesRefreshState? previous,
+  ProxiesRefreshState next,
+) {
+  if (previous == null || previous == next) {
+    return false;
+  }
+  return !(previous.isProxies &&
+      !next.isProxies &&
+      previous.sortNum == next.sortNum &&
+      previous.sortType == next.sortType);
+}
+
 class AppStateManager extends ConsumerStatefulWidget {
   final Widget child;
 
@@ -54,7 +75,7 @@ class _AppStateManagerState extends ConsumerState<AppStateManager>
       }
     });
     ref.listenManual(needUpdateGroupsProvider, (prev, next) {
-      if (prev != next) {
+      if (needsProxiesRefresh(prev, next)) {
         ref.read(proxiesActionProvider.notifier).updateGroupsDebounce();
       }
     });
