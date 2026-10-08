@@ -29,17 +29,29 @@ GroupsState currentGroupsState(Ref ref) {
   return GroupsState(value: changed ? values : shown);
 }
 
+final _needsSelectionStrip = Expando<bool>('needsSelectionStrip');
+final _withoutSelectionCache = Expando<Group>('withoutSelection');
+
 Group _withoutSelection(Group group) {
-  if ((group.now ?? '').isEmpty && !group.all.any(_hasSelection)) {
+  final stripped = _withoutSelectionCache[group];
+  if (stripped != null) {
+    return stripped;
+  }
+  // Immutable instances make the verdict and the stripped group stable.
+  final needsProxyStrip = _needsSelectionStrip[group] ??= group.all.any(
+    _hasSelection,
+  );
+  final needsGroupStrip = group.now?.isNotEmpty ?? false;
+  if (!needsGroupStrip && !needsProxyStrip) {
     return group;
   }
-  final all = group.all.any(_hasSelection)
+  final all = needsProxyStrip
       ? [
           for (final proxy in group.all)
             _hasSelection(proxy) ? proxy.copyWith(now: '') : proxy,
         ]
       : group.all;
-  return group.copyWith(now: '', all: all);
+  return _withoutSelectionCache[group] = group.copyWith(now: '', all: all);
 }
 
 bool _hasSelection(Proxy proxy) => proxy.now?.isNotEmpty ?? false;
@@ -133,9 +145,7 @@ GroupsState filterGroupsState(Ref ref, String query) {
   for (final group in currentGroups.value) {
     final visible = <Proxy>[];
     for (final proxy in group.all) {
-      final text = _proxySearchTexts[proxy] ??= SearchQuery.textOf(
-        proxy.searchFields,
-      );
+      final text = _searchTextOf(proxy);
       if (searchQuery.matchesText(text)) {
         visible.add(proxy);
       }
@@ -332,10 +342,70 @@ String? selectedProxyName(Ref ref, String groupName) {
   final group = ref.watch(
     groupsProvider.select((state) => state.getGroup(groupName)),
   );
-  return group?.getCurrentSelectedName(proxyName ?? '');
+  if (group == null) {
+    return null;
+  }
+
+  bool hasMember(String name) =>
+      name.isNotEmpty && group.all.any((proxy) => proxy.name == name);
+  if (group.type == GroupType.LoadBalance || group.type == GroupType.Relay) {
+    return hasMember(group.realNow) ? group.realNow : '';
+  }
+
+  final stored = proxyName ?? '';
+  final selected = group.getCurrentSelectedName(stored);
+  final live = group.realNow;
+  var hasSelected = false;
+  var hasLive = false;
+  var hasStored = false;
+  for (final proxy in group.all) {
+    final name = proxy.name;
+    if (selected.isNotEmpty && name == selected) {
+      hasSelected = true;
+    }
+    if (live.isNotEmpty && name == live) {
+      hasLive = true;
+    }
+    if (stored.isNotEmpty && name == stored) {
+      hasStored = true;
+    }
+    if (hasSelected && hasLive && hasStored) {
+      break;
+    }
+  }
+  if (hasSelected) {
+    return selected;
+  }
+  if (hasLive) {
+    return live;
+  }
+  if (hasStored) {
+    return stored;
+  }
+  if (stored.isEmpty) {
+    return '';
+  }
+  return group.all.firstOrNull?.name ?? '';
 }
 
 final _proxySearchTexts = Expando<String>('proxySearchTexts');
+final _proxySearchTextsByKey = <String, String>{};
+const _proxySearchTextCacheLimit = 20000;
+
+String _searchTextOf(Proxy proxy) {
+  final cached = _proxySearchTexts[proxy];
+  if (cached != null) {
+    return cached;
+  }
+  final key = '${proxy.name}\u0000${proxy.type}';
+  final text =
+      _proxySearchTextsByKey[key] ?? SearchQuery.textOf(proxy.searchFields);
+  if (_proxySearchTextsByKey.length >= _proxySearchTextCacheLimit) {
+    _proxySearchTextsByKey.clear();
+  }
+  _proxySearchTextsByKey[key] = text;
+  return _proxySearchTexts[proxy] = text;
+}
 
 @riverpod
 String proxyDesc(Ref ref, ({String name, String type}) proxy) {

@@ -77,6 +77,11 @@ typedef SortGroupsState = ({
 const _groupsSortIsolateThreshold = 300;
 
 Future<List<Group>> sortGroupsTask(SortGroupsState data) async {
+  // computeSort returns this list unchanged, so skip the isolate and its copy.
+  if (data.sortType == ProxiesSortType.none ||
+      (data.sortType == ProxiesSortType.delay && data.delayMap.isEmpty)) {
+    return data.groups;
+  }
   var proxyCount = 0;
   for (final group in data.groups) {
     proxyCount += group.all.length;
