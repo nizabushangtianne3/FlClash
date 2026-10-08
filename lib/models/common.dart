@@ -559,27 +559,32 @@ extension GroupExt on Group {
     final supportsSelection =
         type == GroupType.Selector || type.isComputedSelected;
     if (!supportsSelection) {
-      return realNow.isNotEmpty && all.any((proxy) => proxy.name == realNow)
-          ? realNow
-          : '';
+      for (final proxy in all) {
+        if (proxy.name == realNow) {
+          return realNow;
+        }
+      }
+      return '';
     }
 
-    bool hasMember(String name) =>
-        name.isNotEmpty && all.any((proxy) => proxy.name == name);
     final storedName = proxyName.isNotEmpty ? proxyName : realNow;
     final selected = type.isComputedSelected && realNow.isNotEmpty
         ? realNow
         : storedName;
-    if (hasMember(selected)) {
-      return selected;
+    String? fallback;
+    for (final proxy in all) {
+      final memberName = proxy.name;
+      if (memberName == selected) {
+        return selected;
+      }
+      if (memberName == realNow) {
+        fallback = realNow;
+      }
+      if (memberName == storedName) {
+        fallback ??= storedName;
+      }
     }
-    if (hasMember(realNow)) {
-      return realNow;
-    }
-    if (hasMember(storedName)) {
-      return storedName;
-    }
-    return all.firstOrNull?.name ?? '';
+    return fallback ?? all.firstOrNull?.name ?? '';
   }
 }
 
