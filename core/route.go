@@ -7,8 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
+	"github.com/metacubex/mihomo/config"
+	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/tunnel"
 )
 
@@ -91,10 +92,31 @@ func routeStamp() (epoch, picksVersion uint64) {
 	return currentRoute.epoch, currentRoute.picksVersion
 }
 
+// routeGroupNames prefers the parsed config list, falling back to the map for hosts that fill the tunnel without one.
+func routeGroupNames(proxies map[string]constant.Proxy) []string {
+	names := proxyGroupNames(config.GetProxyNameList(), func(name string) (constant.AdapterType, bool) {
+		proxy, ok := proxies[name]
+		if !ok || proxy == nil {
+			return 0, false
+		}
+		return proxy.Type(), true
+	})
+	if len(names) > 0 {
+		return names
+	}
+	for name, proxy := range proxies {
+		if proxy != nil && isProxyGroupType(proxy.Type()) {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 func readPicks() (map[string]string, map[string]uint32) {
+	proxies := tunnel.AllProxies()
 	picks := map[string]string{}
-	for name, proxy := range tunnel.AllProxies() {
-		if group, ok := adapterAs[pickableGroup](proxy); ok {
+	for _, name := range routeGroupNames(proxies) {
+		if group, ok := adapterAs[pickableGroup](proxies[name]); ok {
 			selected := group.Now()
 			if selected != "" {
 				picks[name] = selected
@@ -144,15 +166,17 @@ func refreshRouteLocked(structural bool) {
 		currentRoute.picksVersion++
 		changed = true
 	}
-	if !changed || !currentRoute.watched {
-		currentRoute.mu.Unlock()
-		return
+	var state RouteState
+	watched := currentRoute.watched
+	if changed && watched {
+		state = routeStateLocked()
 	}
-	state := routeStateLocked()
 	currentRoute.mu.Unlock()
-	publishRoute(state)
-}
 
+	if changed && watched {
+		publishRoute(state)
+	}
+}
 func refreshRoute() {
 	selectMu.Lock()
 	defer selectMu.Unlock()
@@ -166,6 +190,14 @@ func bumpRouteEpoch() {
 }
 
 func handleWatchRoute(watch bool, seq uint64) RouteState {
+	currentRoute.mu.Lock()
+	if seq < currentRoute.watchSeq {
+		state := routeStateLocked()
+		currentRoute.mu.Unlock()
+		return state
+	}
+	currentRoute.mu.Unlock()
+
 	refreshRoute()
 
 	currentRoute.mu.Lock()

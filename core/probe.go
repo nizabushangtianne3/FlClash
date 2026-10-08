@@ -86,11 +86,17 @@ func (d *probeDialer) dial(ctx context.Context, _ string, address string) (net.C
 // connection refused in that window would come back as a failure the host
 // still takes for the current route.
 func awaitTunnel(ctx context.Context) error {
+	if tunnel.Status() != tunnel.Suspend {
+		return nil
+	}
+	timer := time.NewTimer(probeTunnelPoll)
+	defer timer.Stop()
 	for tunnel.Status() == tunnel.Suspend {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(probeTunnelPoll):
+		case <-timer.C:
+			timer.Reset(probeTunnelPoll)
 		}
 	}
 	return nil
