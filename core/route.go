@@ -30,8 +30,21 @@ type routeTracker struct {
 
 var routeRefreshPending atomic.Bool
 
+func routeWatched() bool {
+	currentRoute.mu.Lock()
+	defer currentRoute.mu.Unlock()
+	return currentRoute.watched
+}
+
 func scheduleRouteRefresh() {
-	if !isRunning.Load() || !routeRefreshPending.CompareAndSwap(false, true) {
+	if !isRunning.Load() {
+		return
+	}
+	if !routeRefreshPending.CompareAndSwap(false, true) {
+		return
+	}
+	if !routeWatched() {
+		routeRefreshPending.Store(false)
 		return
 	}
 	safeGoDetached("route invalidate", func() {
