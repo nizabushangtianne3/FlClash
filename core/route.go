@@ -95,7 +95,10 @@ func readPicks() (map[string]string, map[string]uint32) {
 	picks := map[string]string{}
 	for name, proxy := range tunnel.AllProxies() {
 		if group, ok := adapterAs[pickableGroup](proxy); ok {
-			picks[name] = group.Now()
+			selected := group.Now()
+			if selected != "" {
+				picks[name] = selected
+			}
 		}
 	}
 	providers := tunnel.ProvidersSnapshot()
