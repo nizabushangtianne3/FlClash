@@ -49,6 +49,8 @@ class ProxiesAction extends _$ProxiesAction {
   bool _connectionCleanupPending = false;
   Future<void>? _activeGroupsUpdate;
   bool _pendingGroupsUpdate = false;
+  Future<void>? _activeDelaySort;
+  bool _pendingDelaySort = false;
 
   @override
   void build() {
@@ -117,7 +119,32 @@ class ProxiesAction extends _$ProxiesAction {
     );
   }
 
-  Future<void> resortGroupsByDelay() async {
+  Future<void> resortGroupsByDelay() {
+    final active = _activeDelaySort;
+    if (active != null) {
+      _pendingDelaySort = true;
+      return active;
+    }
+    final task = _drainDelaySorts();
+    _activeDelaySort = task;
+    return task;
+  }
+
+  Future<void> _drainDelaySorts() async {
+    try {
+      do {
+        _pendingDelaySort = false;
+        await _resortGroupsByDelayOnce();
+      } while (_pendingDelaySort && ref.mounted);
+    } finally {
+      _activeDelaySort = null;
+      if (_pendingDelaySort && ref.mounted) {
+        unawaited(resortGroupsByDelay());
+      }
+    }
+  }
+
+  Future<void> _resortGroupsByDelayOnce() async {
     final groups = ref.read(groupsProvider);
     if (groups.isEmpty) {
       return;
@@ -145,7 +172,10 @@ class ProxiesAction extends _$ProxiesAction {
       selectedMap: selectedMap,
       defaultTestUrl: testUrl,
     ));
-    if (!ref.mounted) {
+    // A groups update that landed during the sort owns the newer state.
+    if (!ref.mounted ||
+        identical(next, groups) ||
+        !identical(ref.read(groupsProvider), groups)) {
       return;
     }
     ref.read(groupsProvider.notifier).update((_) => next);
