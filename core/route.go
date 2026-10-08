@@ -14,7 +14,9 @@ import (
 
 // mihomo has no hook for a health check moving a URLTest or Fallback pick, so
 // the picks are re-read on this timer while the host watches.
-const routePollInterval = 2 * time.Second
+// Failover and group health checks invalidate the route immediately; this
+// slower poll only catches provider and rule-set changes from mihomo itself.
+const routePollInterval = 5 * time.Second
 
 type routeTracker struct {
 	mu               sync.Mutex
