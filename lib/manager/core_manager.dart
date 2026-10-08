@@ -309,7 +309,22 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   void onRouteChanged(RouteSnapshot snapshot) {
+    if (!mounted) {
+      return;
+    }
+    final route = ref.read(routeTrackerProvider);
+    final applyPicks =
+        !route.synced || route.picksVersion != snapshot.picksVersion;
     ref.read(routeTrackerProvider.notifier).applySnapshot(snapshot);
+    if (applyPicks) {
+      ref
+          .read(proxiesActionProvider.notifier)
+          .applyRoutePicks(
+            snapshot.picks,
+            closeConnections:
+                route.synced && route.coreEpoch == snapshot.coreEpoch,
+          );
+    }
     super.onRouteChanged(snapshot);
   }
 }

@@ -556,10 +556,30 @@ extension GroupExt on Group {
   String get realNow => now ?? '';
 
   String getCurrentSelectedName(String proxyName) {
-    if (type.isComputedSelected) {
-      return realNow.isNotEmpty ? realNow : proxyName;
+    final supportsSelection =
+        type == GroupType.Selector || type.isComputedSelected;
+    if (!supportsSelection) {
+      return realNow.isNotEmpty && all.any((proxy) => proxy.name == realNow)
+          ? realNow
+          : '';
     }
-    return proxyName.isNotEmpty ? proxyName : realNow;
+
+    bool hasMember(String name) =>
+        name.isNotEmpty && all.any((proxy) => proxy.name == name);
+    final storedName = proxyName.isNotEmpty ? proxyName : realNow;
+    final selected = type.isComputedSelected && realNow.isNotEmpty
+        ? realNow
+        : storedName;
+    if (hasMember(selected)) {
+      return selected;
+    }
+    if (hasMember(realNow)) {
+      return realNow;
+    }
+    if (hasMember(storedName)) {
+      return storedName;
+    }
+    return all.firstOrNull?.name ?? '';
   }
 }
 

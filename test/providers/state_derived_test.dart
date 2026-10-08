@@ -633,6 +633,56 @@ void main() {
     );
   });
 
+  test('stale stored selection resolves to a live group member', () {
+    final profile = Profile.normal().copyWith(
+      selectedMap: {
+        'Selector': 'Removed',
+        'Auto': 'Removed',
+        'Broken': 'Removed-Again',
+        'Balance': 'Node-A',
+      },
+    );
+    const groups = [
+      Group(
+        name: 'Selector',
+        type: GroupType.Selector,
+        now: 'Node-B',
+        all: [
+          Proxy(name: 'Node-A', type: 'Direct'),
+          Proxy(name: 'Node-B', type: 'Direct'),
+        ],
+      ),
+      Group(
+        name: 'Auto',
+        type: GroupType.URLTest,
+        now: 'Node-B',
+        all: [
+          Proxy(name: 'Node-A', type: 'Direct'),
+          Proxy(name: 'Node-B', type: 'Direct'),
+        ],
+      ),
+      Group(
+        name: 'Broken',
+        type: GroupType.Selector,
+        now: 'Removed-Too',
+        all: [Proxy(name: 'Node-A', type: 'Direct')],
+      ),
+      Group(
+        name: 'Balance',
+        type: GroupType.LoadBalance,
+        all: [Proxy(name: 'Node-A', type: 'Direct')],
+      ),
+    ];
+    _profiles(container).replace([profile]);
+    container.read(currentProfileIdProvider.notifier).update((_) => profile.id);
+    container.read(groupsProvider.notifier).update((_) => groups);
+
+    expect(container.read(selectedProxyNameProvider('Selector')), 'Node-B');
+    expect(container.read(selectedProxyNameProvider('Auto')), 'Node-B');
+    expect(container.read(selectedProxyNameProvider('Broken')), 'Node-A');
+    expect(container.read(selectedProxyNameProvider('Balance')), '');
+  });
+
   test(
     'delay view providers dispose after their card stops listening',
     () async {

@@ -151,6 +151,41 @@ class ProxiesAction extends _$ProxiesAction {
     ref.read(groupsProvider.notifier).update((_) => next);
   }
 
+  void applyRoutePicks(
+    Map<String, String> picks, {
+    bool closeConnections = false,
+  }) {
+    if (picks.isEmpty) {
+      return;
+    }
+    final groups = ref.read(groupsProvider);
+    if (groups.isEmpty) {
+      return;
+    }
+    var changed = false;
+    final next = <Group>[];
+    for (final group in groups) {
+      if (_activeSelectedIntents.containsKey(group.name)) {
+        next.add(group);
+        continue;
+      }
+      final proxyName = picks[group.name];
+      if (proxyName != null && proxyName.isNotEmpty && group.now != proxyName) {
+        changed = true;
+        _core.patchCachedGroupNow(group.name, proxyName);
+        next.add(group.copyWith(now: proxyName));
+      } else {
+        next.add(group);
+      }
+    }
+    if (changed) {
+      ref.read(groupsProvider.notifier).update((_) => next);
+      if (closeConnections) {
+        _requestConnectionCleanup();
+      }
+    }
+  }
+
   void changeProxyDebounce(String groupName, String proxyName) {
     final intent = _beginSelectedIntent(groupName);
     _pendingSelectedRollback.putIfAbsent(

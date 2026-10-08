@@ -4,8 +4,11 @@ import (
 	"context"
 	"maps"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/metacubex/mihomo/adapter"
+	"github.com/metacubex/mihomo/adapter/outboundgroup"
 	"github.com/metacubex/mihomo/tunnel"
 )
 
@@ -23,6 +26,22 @@ type routeTracker struct {
 	watched          bool
 	watchSeq         uint64
 	stopPoll         context.CancelFunc
+}
+
+var routeRefreshPending atomic.Bool
+
+func scheduleRouteRefresh() {
+	if !isRunning.Load() || !routeRefreshPending.CompareAndSwap(false, true) {
+		return
+	}
+	safeGoDetached("route invalidate", func() {
+		defer routeRefreshPending.Store(false)
+		refreshRoute()
+	})
+}
+
+func init() {
+	outboundgroup.SetRouteInvalidate(scheduleRouteRefresh)
 }
 
 var (
