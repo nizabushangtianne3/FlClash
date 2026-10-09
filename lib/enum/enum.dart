@@ -62,8 +62,9 @@ enum GroupType {
   }
 
   /// The core refuses a relay group, so it stays parseable but unofferable.
-  static List<GroupType> get selectableValues =>
-      values.where((item) => item != Relay).toList();
+  static final List<GroupType> selectableValues = List.unmodifiable(
+    values.where((item) => item != Relay),
+  );
 }
 
 enum LoadBalanceStrategy {
@@ -616,45 +617,51 @@ enum RuleAction {
 
   const RuleAction(this.value);
 
-  static List<RuleAction> get addedRuleActions {
-    return RuleAction.values
-        .where(
-          (item) => ![
-            RuleAction.MATCH,
-            RuleAction.RULE_SET,
-            RuleAction.SUB_RULE,
-          ].contains(item),
-        )
-        .toList();
-  }
+  static final List<RuleAction> addedRuleActions = List.unmodifiable(
+    values.where(
+      (item) =>
+          item != RuleAction.MATCH &&
+          item != RuleAction.RULE_SET &&
+          item != RuleAction.SUB_RULE,
+    ),
+  );
+
+  static RuleAction? fromValue(String value) => _ruleActionsByValue[value];
 }
 
+final _ruleActionsByValue = <String, RuleAction>{
+  for (final action in RuleAction.values) action.value: action,
+};
+
 extension RuleActionExt on RuleAction {
-  bool get hasParams => [
-    RuleAction.GEOIP,
-    RuleAction.IP_ASN,
-    RuleAction.IP_CIDR,
-    RuleAction.IP_CIDR6,
-    RuleAction.IP_SUFFIX,
-    RuleAction.RULE_SET,
-  ].contains(this);
+  bool get hasParams => switch (this) {
+    RuleAction.GEOIP ||
+    RuleAction.IP_ASN ||
+    RuleAction.IP_CIDR ||
+    RuleAction.IP_CIDR6 ||
+    RuleAction.IP_SUFFIX ||
+    RuleAction.RULE_SET => true,
+    _ => false,
+  };
 
-  bool get nestsRules => [
-    RuleAction.AND,
-    RuleAction.OR,
-    RuleAction.NOT,
-    RuleAction.SUB_RULE,
-  ].contains(this);
+  bool get nestsRules => switch (this) {
+    RuleAction.AND ||
+    RuleAction.OR ||
+    RuleAction.NOT ||
+    RuleAction.SUB_RULE => true,
+    _ => false,
+  };
 
-  bool get hasCommaPayload => [
-    RuleAction.AND,
-    RuleAction.OR,
-    RuleAction.NOT,
-    RuleAction.SUB_RULE,
-    RuleAction.DOMAIN_REGEX,
-    RuleAction.PROCESS_NAME_REGEX,
-    RuleAction.PROCESS_PATH_REGEX,
-  ].contains(this);
+  bool get hasCommaPayload => switch (this) {
+    RuleAction.AND ||
+    RuleAction.OR ||
+    RuleAction.NOT ||
+    RuleAction.SUB_RULE ||
+    RuleAction.DOMAIN_REGEX ||
+    RuleAction.PROCESS_NAME_REGEX ||
+    RuleAction.PROCESS_PATH_REGEX => true,
+    _ => false,
+  };
 
   String getDesc(BuildContext context) {
     final appLocalizations = context.appLocalizations;

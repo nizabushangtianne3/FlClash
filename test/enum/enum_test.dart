@@ -67,17 +67,52 @@ void main() {
   });
 
   group('RuleAction', () {
+    test('maps every value back to its action', () {
+      for (final action in RuleAction.values) {
+        expect(RuleAction.fromValue(action.value), action);
+      }
+      expect(RuleAction.fromValue('NOPE'), isNull);
+      expect(RuleAction.fromValue('domain-suffix'), isNull);
+    });
+
     test('excludes actions that cannot be manually added', () {
       expect(RuleAction.addedRuleActions, isNot(contains(RuleAction.MATCH)));
       expect(RuleAction.addedRuleActions, isNot(contains(RuleAction.RULE_SET)));
       expect(RuleAction.addedRuleActions, isNot(contains(RuleAction.SUB_RULE)));
       expect(RuleAction.addedRuleActions, contains(RuleAction.DOMAIN));
+      expect(
+        RuleAction.addedRuleActions,
+        hasLength(RuleAction.values.length - 3),
+      );
     });
 
-    test('identifies actions with extra params', () {
-      expect(RuleAction.GEOIP.hasParams, isTrue);
-      expect(RuleAction.IP_CIDR.hasParams, isTrue);
-      expect(RuleAction.DOMAIN.hasParams, isFalse);
+    test('identifies actions that take params', () {
+      expect(
+        RuleAction.values.where((action) => action.hasParams),
+        unorderedEquals([
+          RuleAction.GEOIP,
+          RuleAction.IP_ASN,
+          RuleAction.IP_CIDR,
+          RuleAction.IP_CIDR6,
+          RuleAction.IP_SUFFIX,
+          RuleAction.RULE_SET,
+        ]),
+      );
+    });
+
+    test('identifies actions whose payload keeps its commas', () {
+      expect(
+        RuleAction.values.where((action) => action.hasCommaPayload),
+        unorderedEquals([
+          RuleAction.AND,
+          RuleAction.OR,
+          RuleAction.NOT,
+          RuleAction.SUB_RULE,
+          RuleAction.DOMAIN_REGEX,
+          RuleAction.PROCESS_NAME_REGEX,
+          RuleAction.PROCESS_PATH_REGEX,
+        ]),
+      );
     });
   });
 

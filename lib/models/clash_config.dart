@@ -1629,10 +1629,7 @@ abstract class Rule with _$Rule {
         ruleTarget: RuleTarget.DIRECT.value,
       );
     }
-    final action = RuleAction.values.firstWhere(
-      (item) => item.value == type,
-      orElse: () => RuleAction.DOMAIN,
-    );
+    final action = RuleAction.fromValue(type) ?? RuleAction.DOMAIN;
     final rest = fields.sublist(1);
     String? payload;
     String? target;
