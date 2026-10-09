@@ -22,6 +22,13 @@ class Palette extends StatefulWidget {
 }
 
 class _PaletteState extends State<Palette> {
+  /// Hues 0..360 at a fixed chroma and tone, so the ramp every build paints is
+  /// the same one: build it once instead of paying 37 HCT conversions per drag.
+  static final List<Color> _hueColors = [
+    for (var hue = 0; hue <= 360; hue += 10)
+      Color(Hct.from(hue.toDouble(), 100, _trackTone).toInt()),
+  ];
+
   double _hue = 0;
   double _chroma = 0;
   double _tone = 0;
@@ -73,10 +80,7 @@ class _PaletteState extends State<Palette> {
                 value: _hue,
                 max: 360,
                 thumbColor: Color(Hct.from(_hue, 100, _trackTone).toInt()),
-                colors: [
-                  for (var hue = 0; hue <= 360; hue += 10)
-                    Color(Hct.from(hue.toDouble(), 100, _trackTone).toInt()),
-                ],
+                colors: _hueColors,
                 onChanged: _onHueChanged,
               ),
               const SizedBox(height: 8),
