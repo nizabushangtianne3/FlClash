@@ -54,14 +54,11 @@ enum GroupType {
   const GroupType(this.value);
 
   static GroupType parse(String type) {
-    return switch (type.toLowerCase()) {
-      'url-test' || 'urltest' => URLTest,
-      'select' || 'selector' => Selector,
-      'fallback' => Fallback,
-      'load-balance' || 'loadbalance' => LoadBalance,
-      'relay' => Relay,
-      String() => throw UnimplementedError(),
-    };
+    final groupType = GroupTypeExtension.getGroupType(type);
+    if (groupType == null) {
+      throw UnimplementedError();
+    }
+    return groupType;
   }
 
   /// The core refuses a relay group, so it stays parseable but unofferable.
@@ -96,23 +93,26 @@ enum IpVersion {
   const IpVersion(this.value);
 }
 
+/// Every spelling [GroupType.parse] accepts, resolved without rebuilding a list per call.
+final _groupTypesBySpelling = <String, GroupType>{
+  for (final type in GroupType.values) ...{
+    type.name.toLowerCase(): type,
+    type.value: type,
+  },
+  'urltest': GroupType.URLTest,
+  'selector': GroupType.Selector,
+  'loadbalance': GroupType.LoadBalance,
+};
+
 extension GroupTypeExtension on GroupType {
-  static final Set<String> valueSet = Set.unmodifiable(
-    GroupType.values.map((e) => e.toString().split('.').last),
-  );
+  bool get isComputedSelected =>
+      this == GroupType.URLTest || this == GroupType.Fallback;
 
-  static final Map<String, GroupType> _byName = Map.unmodifiable({
-    for (final value in GroupType.values)
-      value.toString().split('.').last: value,
-  });
+  static GroupType? getGroupType(String value) =>
+      _groupTypesBySpelling[value.toLowerCase()];
 
-  bool get isComputedSelected {
-    return this == GroupType.URLTest || this == GroupType.Fallback;
-  }
-
-  static GroupType? getGroupType(String value) {
-    return GroupTypeExtension._byName[value];
-  }
+  static bool isGroupType(Object? value) =>
+      value is String && _groupTypesBySpelling.containsKey(value.toLowerCase());
 }
 
 enum DelayTestPhase { queued, running }

@@ -320,7 +320,7 @@ class _ProxyDesc extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!GroupTypeExtension.valueList.contains(proxy.type)) {
+    if (!GroupTypeExtension.isGroupType(proxy.type)) {
       return _ProxyDescText(desc: proxy.type);
     }
     return Consumer(

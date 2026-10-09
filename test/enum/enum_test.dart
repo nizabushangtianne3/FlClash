@@ -23,6 +23,29 @@ void main() {
       expect(GroupTypeExtension.getGroupType('missing'), isNull);
     });
 
+    test('accepts every spelling the parser accepts', () {
+      for (final type in GroupType.values) {
+        expect(GroupTypeExtension.getGroupType(type.name), type);
+        expect(GroupTypeExtension.getGroupType(type.value), type);
+      }
+      expect(GroupTypeExtension.getGroupType('urltest'), GroupType.URLTest);
+      expect(GroupTypeExtension.getGroupType('selector'), GroupType.Selector);
+      expect(
+        GroupTypeExtension.getGroupType('loadbalance'),
+        GroupType.LoadBalance,
+      );
+    });
+
+    test('separates group types from leaf proxy types', () {
+      expect(GroupTypeExtension.isGroupType('Selector'), isTrue);
+      expect(GroupTypeExtension.isGroupType('load-balance'), isTrue);
+      expect(GroupTypeExtension.isGroupType('relay'), isTrue);
+      expect(GroupTypeExtension.isGroupType('Direct'), isFalse);
+      expect(GroupTypeExtension.isGroupType('REJECT'), isFalse);
+      expect(GroupTypeExtension.isGroupType(null), isFalse);
+      expect(GroupTypeExtension.isGroupType(1), isFalse);
+    });
+
     test('marks only computed selection types', () {
       expect(GroupType.URLTest.isComputedSelected, isTrue);
       expect(GroupType.Fallback.isComputedSelected, isTrue);

@@ -244,7 +244,9 @@ ProxyGroupSelectorState proxyGroupSelectorState(
 
 @riverpod
 String realTestUrl(Ref ref, [String? testUrl]) {
-  final currentTestUrl = ref.watch(appSettingProvider).testUrl;
+  final currentTestUrl = ref.watch(
+    appSettingProvider.select((state) => state.testUrl),
+  );
   return testUrl.takeFirstValid([currentTestUrl]);
 }
 
@@ -409,7 +411,7 @@ String _searchTextOf(Proxy proxy) {
 
 @riverpod
 String proxyDesc(Ref ref, ({String name, String type}) proxy) {
-  if (!GroupTypeExtension.valueSet.contains(proxy.type)) {
+  if (!GroupTypeExtension.isGroupType(proxy.type)) {
     return proxy.type;
   }
   final group = ref.watch(
