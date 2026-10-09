@@ -118,8 +118,9 @@ Map<String, Map<String, int>> trayDelays(Ref ref) {
   }
 
   for (final group in groups) {
-    final testUrl = group.testUrl.takeFirstValid([defaultTestUrl]);
-    final selectedName = group.getCurrentSelectedName(
+    final groupWithNow = groupsByName[group.name] ?? group;
+    final testUrl = groupWithNow.testUrl.takeFirstValid([defaultTestUrl]);
+    final selectedName = groupWithNow.getCurrentSelectedName(
       selectedMap[group.name] ?? '',
     );
     final groupDelays = <String, int>{};
