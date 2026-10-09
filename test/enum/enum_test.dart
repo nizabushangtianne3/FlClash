@@ -134,6 +134,17 @@ void main() {
   });
 
   group('ItemPosition', () {
+    test('reports which edges a position touches', () {
+      expect(ItemPosition.start.isStart, isTrue);
+      expect(ItemPosition.start.isEnd, isFalse);
+      expect(ItemPosition.middle.isStart, isFalse);
+      expect(ItemPosition.middle.isEnd, isFalse);
+      expect(ItemPosition.end.isStart, isFalse);
+      expect(ItemPosition.end.isEnd, isTrue);
+      expect(ItemPosition.startAndEnd.isStart, isTrue);
+      expect(ItemPosition.startAndEnd.isEnd, isTrue);
+    });
+
     test('calculates simple list positions', () {
       expect(ItemPosition.get(0, 1), ItemPosition.startAndEnd);
       expect(ItemPosition.get(0, 3), ItemPosition.start);

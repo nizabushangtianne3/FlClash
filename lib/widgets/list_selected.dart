@@ -104,14 +104,8 @@ class _DecorationListItemState extends State<DecorationListItem> {
     final sortable = SortableItem.maybeOf(context);
     final sorting = sortable?.sorting ?? false;
     final position = ItemPositionProvider.of(context)?.position;
-    final isStart = [
-      ItemPosition.start,
-      ItemPosition.startAndEnd,
-    ].contains(position);
-    final isEnd = [
-      ItemPosition.end,
-      ItemPosition.startAndEnd,
-    ].contains(position);
+    final isStart = position?.isStart ?? false;
+    final isEnd = position?.isEnd ?? false;
     final borderRadius = AppRadius.vertical(
       top: isStart ? AppCorner.xl : AppCorner.none,
       bottom: isEnd ? AppCorner.xl : AppCorner.none,
