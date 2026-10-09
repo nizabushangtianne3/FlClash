@@ -96,7 +96,19 @@ extension ColorExtension on Color {
   }
 }
 
+final _harmonizedAccentsCache = Expando<({Color success, Color warning})>(
+  'harmonizedAccents',
+);
+
 extension ColorSchemeExtension on ColorScheme {
+  /// Harmonizing is an HCT round trip per call and its answer only depends on
+  /// the scheme, so it is kept per scheme instead of per build.
+  ({Color success, Color warning}) get _harmonizedAccents =>
+      _harmonizedAccentsCache[this] ??= (
+        success: Colors.green.harmonizeWith(primary),
+        warning: Colors.orange.harmonizeWith(primary),
+      );
+
   ColorScheme toPureBlack(bool isPureBlack) {
     if (!isPureBlack || brightness != Brightness.dark) {
       return this;
@@ -123,9 +135,9 @@ extension ColorSchemeExtension on ColorScheme {
 
   Color get modalScrim => scrim.withValues(alpha: 0.32);
 
-  Color get success => Colors.green.harmonizeWith(primary);
+  Color get success => _harmonizedAccents.success;
 
-  Color get warning => Colors.orange.harmonizeWith(primary);
+  Color get warning => _harmonizedAccents.warning;
 
   Color? delayColor(int? delay) {
     if (delay == null) return null;
