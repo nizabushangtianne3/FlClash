@@ -152,12 +152,14 @@ List<Proxy> visibleTrayProxies(Group group, String? selectedName) {
   if (all.length <= maxTrayProxiesPerGroup) {
     return all;
   }
-  final selected = all.where((proxy) => proxy.name == selectedName);
-  final others = all.where((proxy) => proxy.name != selectedName);
-  return [
-    ...selected,
-    ...others.take(maxTrayProxiesPerGroup - selected.length),
-  ];
+  final selected = all
+      .where((proxy) => proxy.name == selectedName)
+      .toList(growable: false);
+  final others = all
+      .where((proxy) => proxy.name != selectedName)
+      .take(maxTrayProxiesPerGroup - selected.length)
+      .toList(growable: false);
+  return [...selected, ...others];
 }
 
 Map<String, String>? _proxyTypesCache;
@@ -191,6 +193,10 @@ List<Group> computeHideTimeout({
   required Map<String, String> selectedMap,
   required String defaultTestUrl,
 }) {
+  // Without measured delays nothing can be classified as timed out.
+  if (delayMap.isEmpty) {
+    return groups;
+  }
   final groupsByName = groupsByNameFor(allGroups);
   final realStates = <String, SelectedProxyState>{};
   final proxyTypes = _proxyTypesFor(allGroups);

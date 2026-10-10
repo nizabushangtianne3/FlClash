@@ -1,4 +1,5 @@
 import 'package:fl_clash/common/compute.dart';
+import 'package:fl_clash/common/constant.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:test/test.dart';
@@ -663,6 +664,48 @@ void main() {
         ).single.all.map((proxy) => proxy.name),
         ['fast'],
       );
+    });
+  });
+
+  group('visibleTrayProxies', () {
+    List<Proxy> proxies(int count) => [
+      for (var index = 0; index < count; index++)
+        Proxy(name: 'p$index', type: 'ss'),
+    ];
+
+    test('keeps short groups unchanged', () {
+      final group = Group(
+        name: 'group',
+        type: GroupType.Selector,
+        all: proxies(maxTrayProxiesPerGroup),
+      );
+
+      expect(visibleTrayProxies(group, 'p1'), group.all);
+    });
+
+    test('keeps a selected node beyond the tray cap first', () {
+      final all = proxies(maxTrayProxiesPerGroup + 5);
+      final group = Group(name: 'group', type: GroupType.Selector, all: all);
+
+      final visible = visibleTrayProxies(group, 'p34');
+
+      expect(visible, hasLength(maxTrayProxiesPerGroup));
+      expect(visible.first.name, 'p34');
+      expect(visible.skip(1).map((proxy) => proxy.name), [
+        for (var index = 0; index < maxTrayProxiesPerGroup - 1; index++)
+          'p$index',
+      ]);
+    });
+
+    test('keeps a selected node within the tray cap in place', () {
+      final all = proxies(maxTrayProxiesPerGroup + 5);
+      final group = Group(name: 'group', type: GroupType.Selector, all: all);
+
+      final visible = visibleTrayProxies(group, 'p0');
+
+      expect(visible, hasLength(maxTrayProxiesPerGroup));
+      expect(visible.first.name, 'p0');
+      expect(visible[1].name, 'p1');
     });
   });
 }

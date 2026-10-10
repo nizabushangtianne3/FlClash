@@ -253,6 +253,7 @@ abstract class TrackerInfosState with _$TrackerInfosState {
 final _trackerInfoSearchTexts = Expando<String>();
 final _trackerInfosSearchQueries = Expando<SearchQuery>();
 final _trackerInfoLists = Expando<List<TrackerInfo>>();
+final _dnsQuerySearchTexts = Expando<String>();
 
 extension TrackerInfosStateExt on TrackerInfosState {
   SearchQuery get _searchQuery =>
@@ -362,7 +363,11 @@ extension DnsQueriesStateExt on DnsQueriesState {
     }
     return _dnsQueryLists[this] = dnsQueries
         .where((dnsQuery) => keywords.every(dnsQuery.tags.contains))
-        .whereMatches(searchQuery, (dnsQuery) => dnsQuery.searchFields)
+        .whereMatches(
+          searchQuery,
+          (dnsQuery) => dnsQuery.searchFields,
+          texts: _dnsQuerySearchTexts,
+        )
         .toList();
   }
 }
