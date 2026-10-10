@@ -1721,6 +1721,58 @@ abstract class _$RuleProvider extends $Notifier<Rule> {
   }
 }
 
+@ProviderFor(Connections)
+final connectionsProvider = ConnectionsProvider._();
+
+final class ConnectionsProvider
+    extends $NotifierProvider<Connections, ConnectionsSnapshot> {
+  ConnectionsProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'connectionsProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$connectionsHash();
+
+  @$internal
+  @override
+  Connections create() => Connections();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(ConnectionsSnapshot value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<ConnectionsSnapshot>(value),
+    );
+  }
+}
+
+String _$connectionsHash() => r'33e1e8ff0f1fd7e230d19c1cd1b60327d8a056b4';
+
+abstract class _$Connections extends $Notifier<ConnectionsSnapshot> {
+  ConnectionsSnapshot build();
+  @$mustCallSuper
+  @override
+  WhenComplete runBuild() {
+    final ref = this.ref as $Ref<ConnectionsSnapshot, ConnectionsSnapshot>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<ConnectionsSnapshot, ConnectionsSnapshot>,
+              ConnectionsSnapshot,
+              Object?,
+              Object?
+            >;
+    return element.handleCreate(ref, build);
+  }
+}
+
 @ProviderFor(currentGroupsState)
 final currentGroupsStateProvider = CurrentGroupsStateProvider._();
 

@@ -27,25 +27,31 @@ class ConnectionsView extends ConsumerStatefulWidget {
 }
 
 class _ConnectionsViewState extends ConsumerState<ConnectionsView>
-    with
-        WidgetsBindingObserver,
-        ActivePollingMixin<ConnectionsView>,
-        RouteMotionHoldMixin<ConnectionsView> {
+    with RouteMotionHoldMixin<ConnectionsView> {
   CoreController get _core => ref.read(coreHandlerProvider);
 
   final _listController = TrackerInfoListController();
   final _speedRanker = TrackerSpeedRanker();
   late final ScrollController _scrollController;
+  bool _watching = false;
+  Connections? _connections;
 
   @override
   void initState() {
     super.initState();
     _scrollController =
         widget.scrollController ?? sheetScrollController(context);
+    ref.listenManual(connectionsProvider, (_, next) {
+      updateWhenRouteSettled(() => _applyConnections(next.connections));
+    });
   }
 
   @override
-  Duration get pollInterval => const Duration(milliseconds: 2500);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _connections ??= ref.read(connectionsProvider.notifier);
+    _setWatching(PageActivityScope.isActiveOf(context));
+  }
 
   List<IconButtonData> _buildActions() {
     return [
@@ -58,15 +64,6 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
         },
       ),
     ];
-  }
-
-  @override
-  Future<void> poll(PollGuard isCurrent) async {
-    final trackerInfos = await _readConnections();
-    if (!isCurrent()) {
-      return;
-    }
-    updateWhenRouteSettled(() => _applyConnections(trackerInfos));
   }
 
   Future<void> _refreshConnections() async {
@@ -105,6 +102,22 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
     );
   }
 
+  void _setWatching(bool active) {
+    if (_watching == active) {
+      return;
+    }
+    _watching = active;
+    final connections = _connections;
+    if (connections == null) {
+      return;
+    }
+    if (active) {
+      connections.attachSnapshot(widget.connectionsReader);
+    } else {
+      connections.detachSnapshot();
+    }
+  }
+
   Future<void> _handleBlockConnection(String id) async {
     await _core.closeConnection(id);
     await _refreshConnections();
@@ -112,6 +125,10 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
 
   @override
   void dispose() {
+    if (_watching) {
+      _connections?.detachSnapshot();
+      _watching = false;
+    }
     _listController.dispose();
     if (widget.scrollController == null) {
       _scrollController.dispose();

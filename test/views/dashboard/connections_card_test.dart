@@ -121,4 +121,35 @@ void main() {
 
     await teardownCard(tester);
   });
+
+  testWidgets('opening the sheet reuses the connection poll', (tester) async {
+    var countCalls = 0;
+    var snapshotCalls = 0;
+    when(core.getConnections).thenAnswer((_) async {
+      snapshotCalls++;
+      return const [];
+    });
+
+    await pumpCard(
+      tester,
+      countReader: () async {
+        countCalls++;
+        return 0;
+      },
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(countCalls, 1);
+    expect(snapshotCalls, 0);
+
+    await tester.tap(find.byType(ConnectionsCard));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+
+    expect(countCalls, 1);
+    expect(snapshotCalls, greaterThanOrEqualTo(1));
+
+    await teardownCard(tester);
+  });
 }

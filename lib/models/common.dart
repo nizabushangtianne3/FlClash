@@ -60,6 +60,15 @@ extension PackagesExt on List<Package> {
     required bool isFilterSystemApp,
     required bool isFilterNonInternetApp,
   }) {
+    if (pinedList.isEmpty && sortType == AccessSortType.none) {
+      if (!isFilterSystemApp && !isFilterNonInternetApp) {
+        return this;
+      }
+      return whereVisible(
+        isFilterSystemApp: isFilterSystemApp,
+        isFilterNonInternetApp: isFilterNonInternetApp,
+      ).toList(growable: false);
+    }
     final pinned = pinedList.toSet();
     return whereVisible(
       isFilterSystemApp: isFilterSystemApp,

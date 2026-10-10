@@ -113,6 +113,34 @@ void main() {
         'system.app',
       ]);
     });
+
+    test('reuses the source order when no pins or sorting are requested', () {
+      final packages = [
+        const Package(
+          packageName: 'beta.app',
+          label: 'Beta',
+          system: false,
+          internet: true,
+          lastUpdateTime: 2,
+        ),
+        const Package(
+          packageName: 'alpha.app',
+          label: 'Alpha',
+          system: false,
+          internet: true,
+          lastUpdateTime: 1,
+        ),
+      ];
+
+      final result = packages.getViewList(
+        pinedList: const [],
+        sortType: AccessSortType.none,
+        isFilterSystemApp: false,
+        isFilterNonInternetApp: false,
+      );
+
+      expect(identical(result, packages), isTrue);
+    });
   });
 
   group('TrackerInfoExt', () {

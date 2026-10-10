@@ -1,10 +1,7 @@
 import 'package:fl_clash/common/common.dart';
-import 'package:fl_clash/core/controller.dart';
-import 'package:fl_clash/core/method.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/icons/icons.dart';
-import 'package:fl_clash/providers/app.dart';
-import 'package:fl_clash/providers/core.dart';
+import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/views/connection/connections.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:material_ui/material_ui.dart';
@@ -21,44 +18,39 @@ class ConnectionsCard extends ConsumerStatefulWidget {
   ConsumerState<ConnectionsCard> createState() => _ConnectionsCardState();
 }
 
-class _ConnectionsCardState extends ConsumerState<ConnectionsCard>
-    with WidgetsBindingObserver, ActivePollingMixin<ConnectionsCard> {
-  final _countNotifier = ValueNotifier(0);
-
-  CoreController get _core => ref.read(coreHandlerProvider);
+class _ConnectionsCardState extends ConsumerState<ConnectionsCard> {
+  bool _watching = false;
+  Connections? _connections;
 
   @override
-  Duration get pollInterval => const Duration(seconds: 3);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _connections ??= ref.read(connectionsProvider.notifier);
+    _setWatching(PageActivityScope.isActiveOf(context));
+  }
 
   @override
   void dispose() {
-    _countNotifier.dispose();
+    if (_watching) {
+      _connections?.detachCount();
+      _watching = false;
+    }
     super.dispose();
   }
 
-  @override
-  Future<void> poll(PollGuard isCurrent) async {
-    final count = await _readCount();
-    if (count == null || !isCurrent()) {
+  void _setWatching(bool active) {
+    if (_watching == active) {
       return;
     }
-    _countNotifier.value = count;
-  }
-
-  Future<int?> _readCount() async {
-    final countReader = widget.countReader;
-    if (countReader == null &&
-        ref.read(coreStatusProvider) != CoreStatus.connected) {
-      return 0;
+    _watching = active;
+    final connections = _connections;
+    if (connections == null) {
+      return;
     }
-    try {
-      return await (countReader ?? _core.getConnectionCount)();
-    } catch (error) {
-      commonPrint.log(
-        'updateConnectionCount error: $error',
-        logLevel: coreFailureLogLevel(error),
-      );
-      return null;
+    if (active) {
+      connections.attachCount(widget.countReader);
+    } else {
+      connections.detachCount();
     }
   }
 
@@ -77,9 +69,8 @@ class _ConnectionsCardState extends ConsumerState<ConnectionsCard>
       label: PageLabel.connections.label,
       glyph: AppGlyphs.connections,
       onPressed: () => _openConnections(context),
-      child: ValueListenableBuilder(
-        valueListenable: _countNotifier,
-        builder: (_, count, _) => FeedCount(count: count),
+      child: FeedCount(
+        count: ref.watch(connectionsProvider.select((state) => state.count)),
       ),
     );
   }

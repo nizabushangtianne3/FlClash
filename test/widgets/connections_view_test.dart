@@ -4,6 +4,7 @@ import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/interface.dart';
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:fl_clash/providers/app.dart';
 import 'package:fl_clash/providers/core.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/views/connection/connections.dart';
@@ -209,12 +210,45 @@ void main() {
     expect(readCount, 1);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    container.read(appVisibleProvider.notifier).value = false;
     await tester.pump(const Duration(seconds: 4));
 
     expect(readCount, 1);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    container.read(appVisibleProvider.notifier).value = true;
     await tester.pump();
+
+    expect(readCount, 2);
+    expect(tester.takeException(), null);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('ConnectionsView keeps polling while the app is inactive', (
+    tester,
+  ) async {
+    var readCount = 0;
+
+    Future<List<TrackerInfo>> readConnections() async {
+      readCount++;
+      return const [];
+    }
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await pumpConnections(tester, connectionsReader: readConnections);
+    await tester.pump();
+
+    expect(readCount, 1);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump(const Duration(milliseconds: 2500));
+
+    expect(readCount, 2);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    container.read(appVisibleProvider.notifier).value = false;
+    await tester.pump(const Duration(seconds: 4));
 
     expect(readCount, 2);
     expect(tester.takeException(), null);
