@@ -361,7 +361,9 @@ class AppTray implements TrayPort {
     if (all.length > maxTrayProxiesPerGroup) {
       items.add(
         TrayMenuAction(
-          label: '… ${all.length - visible.length} more',
+          label: currentAppLocalizations.moreProxies(
+            all.length - visible.length,
+          ),
           onSelected: () {
             window?.show();
           },

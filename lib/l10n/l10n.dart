@@ -360,6 +360,16 @@ class AppLocalizations {
     return Intl.message('More', name: 'more', desc: '', args: []);
   }
 
+  /// `… {count} more`
+  String moreProxies(Object count) {
+    return Intl.message(
+      '… $count more',
+      name: 'moreProxies',
+      desc: '',
+      args: [count],
+    );
+  }
+
   /// `Other`
   String get other {
     return Intl.message('Other', name: 'other', desc: '', args: []);

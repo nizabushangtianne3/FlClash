@@ -361,6 +361,26 @@ void main() {
     expect(children.map((item) => item['label']), contains('A'));
   });
 
+  test(
+    'caps a long group submenu and counts the proxies it left out',
+    () async {
+      final all = [
+        for (var index = 0; index <= maxTrayProxiesPerGroup; index++)
+          Proxy(name: 'P$index', type: 'Direct'),
+      ];
+      await update(
+        _trayState(
+          groups: [Group(name: 'Proxy', type: GroupType.Selector, all: all)],
+        ),
+      );
+
+      final submenu = _item(showCall(), 'Proxy');
+      final children = (submenu['items'] as List).cast<Map<Object?, Object?>>();
+      expect(children, hasLength(maxTrayProxiesPerGroup + 1));
+      expect(children.last['label'], currentAppLocalizations.moreProxies(1));
+    },
+  );
+
   test('shows each bound hotkey dimmed beside its entry', () async {
     await update(
       _trayState(

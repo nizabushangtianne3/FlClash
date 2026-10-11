@@ -39,6 +39,7 @@
   "language": "Language",
   "defaultText": "Default",
   "more": "More",
+  "moreProxies": "… {count} more",
   "other": "Other",
   "about": "About",
   "en": "English",

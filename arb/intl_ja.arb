@@ -39,6 +39,7 @@
   "language": "言語",
   "defaultText": "デフォルト",
   "more": "その他",
+  "moreProxies": "…ほか {count} 件",
   "other": "その他",
   "about": "アプリについて",
   "en": "英語",

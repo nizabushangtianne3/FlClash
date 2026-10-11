@@ -39,6 +39,7 @@
   "language": "Язык",
   "defaultText": "По умолчанию",
   "more": "Ещё",
+  "moreProxies": "…ещё {count}",
   "other": "Другое",
   "about": "О программе",
   "en": "Английский",
