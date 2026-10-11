@@ -1253,6 +1253,27 @@ void main() {
       expect(container.read(delayTestingGroupsProvider), isEmpty);
     });
 
+    test('a sweep marks every group it covers until the run settles', () async {
+      final release = Completer<Delay?>();
+      when(
+        () => core.asyncTestDelay(_testUrl, 'HK-01'),
+      ).thenAnswer((_) => release.future);
+      final container = _delayContainer(buildContainer);
+
+      final run = actionOf(container).delayTestGroups([
+        _group('A', const [_proxy]),
+        _group('B', const [_proxy]),
+      ]);
+
+      expect(container.read(delayTestingGroupsProvider), {'A', 'B'});
+      release.completeError(
+        const CoreMethodException(code: 'internal_error', message: 'boom'),
+      );
+      await run;
+
+      expect(container.read(delayTestingGroupsProvider), isEmpty);
+    });
+
     test('stops the run once the transport is gone', () async {
       var calls = 0;
       when(() => core.asyncTestDelay(_testUrl, any())).thenAnswer((_) async {

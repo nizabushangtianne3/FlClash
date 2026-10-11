@@ -553,11 +553,26 @@ class ProxiesAction extends _$ProxiesAction {
     ref.read(sortNumProvider.notifier).add();
   }
 
+  /// A sweep marks every group it covers: the tray and the hotkey start one
+  /// without touching the page, and the group's test button would otherwise
+  /// look idle while its nodes wait their turn.
   Future<void> delayTestGroups(List<Group> groups) async {
-    await _runDelayTests([
-      for (final group in groups) (proxies: group.all, testUrl: group.testUrl),
-    ]);
-    ref.read(sortNumProvider.notifier).add();
+    final testing = ref.read(delayTestingGroupsProvider.notifier);
+    final started = <String>[
+      for (final group in groups)
+        if (testing.start(group.name)) group.name,
+    ];
+    try {
+      await _runDelayTests([
+        for (final group in groups)
+          (proxies: group.all, testUrl: group.testUrl),
+      ]);
+      ref.read(sortNumProvider.notifier).add();
+    } finally {
+      for (final group in started) {
+        testing.stop(group);
+      }
+    }
   }
 
   Future<void> delayTestPageGroup(String groupName) async {
