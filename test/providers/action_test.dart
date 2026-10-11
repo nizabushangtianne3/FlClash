@@ -5,6 +5,7 @@ import 'package:fl_clash/core/desktop/model.dart';
 import 'package:fl_clash/core/interface.dart';
 import 'package:fl_clash/core/method.dart';
 import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/action.dart';
 import 'package:fl_clash/providers/app.dart';
@@ -12,6 +13,7 @@ import 'package:fl_clash/providers/config.dart';
 import 'package:fl_clash/providers/core.dart';
 import 'package:fl_clash/providers/database.dart';
 import 'package:fl_clash/providers/state.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:riverpod/riverpod.dart';
@@ -33,7 +35,31 @@ class _RecordingProfilesAction extends ProfilesAction {
   }
 }
 
+class _PartiallyFailingProfilesAction extends _RecordingProfilesAction {
+  _PartiallyFailingProfilesAction(this.failing);
+
+  final Set<int> failing;
+
+  @override
+  Future<void> updateProfile(
+    Profile profile, {
+    bool showLoading = false,
+    Iterable<int> renameIn = const [],
+  }) async {
+    updated.add(profile.id);
+    if (failing.contains(profile.id)) {
+      throw Exception('subscription is down');
+    }
+  }
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    await AppLocalizations.load(const Locale('en'));
+  });
+
   group('ProfilesAction', () {
     test('auto update sweeps only the subscriptions that are due', () async {
       final now = DateTime.now();
@@ -100,6 +126,32 @@ void main() {
       final profile = container.read(profilesProvider).getProfile(original.id);
       expect(profile?.label, edited.label);
       expect(profile?.url, edited.url);
+    });
+
+    test('sweeps past a dead subscription and reports it', () async {
+      final broken = Profile.normal(
+        label: 'Broken',
+        url: 'https://example.com/broken',
+      );
+      final healthy = Profile.normal(
+        label: 'Healthy',
+        url: 'https://example.com/ok',
+      );
+      final action = _PartiallyFailingProfilesAction({broken.id});
+      final container = ProviderContainer(
+        overrides: [
+          profilesProvider.overrideWith(() => TestProfiles([broken, healthy])),
+          profilesActionProvider.overrideWith(() => action),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final messages = await container
+          .read(profilesActionProvider.notifier)
+          .updateProfiles();
+
+      expect(action.updated, containsAll([broken.id, healthy.id]));
+      expect(messages.map((message) => message.label), ['Broken']);
     });
 
     test('updates selection, inserts first profile, and reorders profiles', () {

@@ -146,9 +146,14 @@ class _HotKeyManagerState extends ConsumerState<HotKeyManager> {
         );
       case HotAction.updateProfiles:
         unawaited(
-          globalState.safeRun(
-            ref.read(profilesActionProvider.notifier).updateProfiles,
-          ),
+          globalState.safeRun(() async {
+            final messages = await ref
+                .read(profilesActionProvider.notifier)
+                .updateProfiles();
+            if (messages.isNotEmpty) {
+              unawaited(dialogs.showAllUpdatingMessagesDialog(messages));
+            }
+          }),
         );
       case HotAction.copyEnv:
         unawaited(systemAction.copyProxyEnv());

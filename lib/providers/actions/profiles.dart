@@ -102,11 +102,31 @@ class ProfilesAction extends _$ProfilesAction {
     return (renameIn: renameIn, conflicts: conflicts);
   }
 
-  Future<void> updateProfiles() async {
-    for (final profile in ref.read(profilesProvider)) {
-      if (profile.type == ProfileType.file) continue;
-      await updateProfile(profile, showLoading: true);
-    }
+  /// Sweeps every subscription and hands back what failed, instead of stopping
+  /// at the first failure: one dead link used to leave every profile after it
+  /// stale, however often the sweep was run.
+  Future<List<UpdatingMessage>> updateProfiles() async {
+    final messages = <UpdatingMessage>[];
+    await Future.wait([
+      for (final profile in ref.read(profilesProvider))
+        if (profile.type != ProfileType.file)
+          () async {
+            try {
+              await updateProfile(profile, showLoading: true);
+            } catch (error) {
+              messages.add(
+                UpdatingMessage(
+                  label: profile.realLabel,
+                  message: userFacingErrorMessage(
+                    error,
+                    currentAppLocalizations,
+                  ),
+                ),
+              );
+            }
+          }(),
+    ]);
+    return messages;
   }
 
   Future<void> updateProfile(
