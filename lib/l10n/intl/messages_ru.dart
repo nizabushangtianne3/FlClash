@@ -409,6 +409,7 @@ class MessageLookup extends MessageLookupByLibrary {
       "Управление глобальными добавленными правилами",
     ),
     "copy": MessageLookupByLibrary.simpleMessage("Копировать"),
+    "copyDetails": MessageLookupByLibrary.simpleMessage("Скопировать сведения"),
     "copyEnvVar": MessageLookupByLibrary.simpleMessage(
       "Копировать переменные окружения",
     ),
@@ -605,6 +606,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "enabled": MessageLookupByLibrary.simpleMessage("Включено"),
     "entries": MessageLookupByLibrary.simpleMessage(" записей"),
     "error": MessageLookupByLibrary.simpleMessage("Ошибка"),
+    "errorDetailsCopied": MessageLookupByLibrary.simpleMessage(
+      "Сведения об ошибке скопированы в буфер обмена",
+    ),
     "exclude": MessageLookupByLibrary.simpleMessage("Скрыть из недавних задач"),
     "excludeDesc": MessageLookupByLibrary.simpleMessage(
       "Скрывать приложение из недавних задач, когда оно в фоне",
@@ -750,6 +754,10 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "infiniteTime": MessageLookupByLibrary.simpleMessage("Бессрочно"),
     "init": MessageLookupByLibrary.simpleMessage("Инициализация"),
+    "initFailed": MessageLookupByLibrary.simpleMessage("Сбой запуска"),
+    "initFailedDesc": MessageLookupByLibrary.simpleMessage(
+      "При запуске произошла критическая ошибка, продолжить работу невозможно.",
+    ),
     "initiator": MessageLookupByLibrary.simpleMessage("Инициатор"),
     "inputProxyGroupName": MessageLookupByLibrary.simpleMessage(
       "Введите название группы прокси",
@@ -1468,6 +1476,7 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "ssidsEmpty": MessageLookupByLibrary.simpleMessage("Список SSID пуст"),
     "stackMode": MessageLookupByLibrary.simpleMessage("Режим стека"),
+    "stackTrace": MessageLookupByLibrary.simpleMessage("Трассировка стека"),
     "standard": MessageLookupByLibrary.simpleMessage("Стандартный"),
     "standardModeDesc": MessageLookupByLibrary.simpleMessage(
       "Стандартный режим: переопределяет базовую конфигурацию и позволяет просто добавлять правила",

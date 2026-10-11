@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/pages/error.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -56,6 +57,14 @@ void main(List<String> args) {
       } catch (e, s) {
         runApp(
           MaterialApp(
+            // The failure screen reads the app's own strings, so it needs the
+            // delegates the running app installs; the locale is the system's,
+            // because the saved setting may be what failed to load.
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              ...GlobalMaterialLocalizations.delegates,
+            ],
+            supportedLocales: AppLocalizations.delegate.supportedLocales,
             home: InitErrorScreen(error: e, stack: s),
           ),
         );

@@ -6218,6 +6218,51 @@ class AppLocalizations {
     return Intl.message('Error', name: 'error', desc: '', args: []);
   }
 
+  /// `Startup failed`
+  String get initFailed {
+    return Intl.message(
+      'Startup failed',
+      name: 'initFailed',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `The app hit a critical error while starting and cannot continue.`
+  String get initFailedDesc {
+    return Intl.message(
+      'The app hit a critical error while starting and cannot continue.',
+      name: 'initFailedDesc',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Stack trace`
+  String get stackTrace {
+    return Intl.message('Stack trace', name: 'stackTrace', desc: '', args: []);
+  }
+
+  /// `Copy details`
+  String get copyDetails {
+    return Intl.message(
+      'Copy details',
+      name: 'copyDetails',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Error details copied to clipboard`
+  String get errorDetailsCopied {
+    return Intl.message(
+      'Error details copied to clipboard',
+      name: 'errorDetailsCopied',
+      desc: '',
+      args: [],
+    );
+  }
+
   /// `Initiator`
   String get initiator {
     return Intl.message('Initiator', name: 'initiator', desc: '', args: []);

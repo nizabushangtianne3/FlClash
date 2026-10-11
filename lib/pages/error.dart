@@ -1,4 +1,5 @@
 import 'package:fl_clash/common/color.dart';
+import 'package:fl_clash/common/context.dart';
 import 'package:fl_clash/common/shape.dart';
 import 'package:fl_clash/icons/icons.dart';
 import 'package:fl_clash/widgets/navigation_dock.dart';
@@ -14,10 +15,11 @@ class InitErrorScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final appLocalizations = context.appLocalizations;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Init Failed'),
+        title: Text(appLocalizations.initFailed),
         backgroundColor: colorScheme.error,
         foregroundColor: colorScheme.onError,
         elevation: 0,
@@ -36,10 +38,10 @@ class InitErrorScreen extends StatelessWidget {
                     size: 32,
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'The application encountered a critical error during startup and cannot continue.',
-                      style: TextStyle(
+                      appLocalizations.initFailedDesc,
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
@@ -48,7 +50,9 @@ class InitErrorScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 24),
-              _buildSectionLabel('Error Details:'),
+              _buildSectionLabel(
+                appLocalizations.details(appLocalizations.error),
+              ),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -68,7 +72,7 @@ class InitErrorScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              _buildSectionLabel('Stack Trace:'),
+              _buildSectionLabel(appLocalizations.stackTrace),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -94,7 +98,7 @@ class InitErrorScreen extends StatelessWidget {
       floatingActionButton: ElasticButton(
         child: FloatingActionButton.extended(
           onPressed: () => _copyToClipboard(context),
-          label: const Text('Copy Details'),
+          label: Text(appLocalizations.copyDetails),
           icon: const GlyphIcon(AppGlyphs.copy, fill: 1),
           backgroundColor: colorScheme.error,
           foregroundColor: colorScheme.onError,
@@ -118,9 +122,9 @@ class InitErrorScreen extends StatelessWidget {
     Clipboard.setData(ClipboardData(text: text));
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Error details copied to clipboard'),
-        duration: Duration(seconds: 2),
+      SnackBar(
+        content: Text(context.appLocalizations.errorDetailsCopied),
+        duration: const Duration(seconds: 2),
       ),
     );
   }

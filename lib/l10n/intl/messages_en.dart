@@ -394,6 +394,7 @@ class MessageLookup extends MessageLookupByLibrary {
       "Control global added rules",
     ),
     "copy": MessageLookupByLibrary.simpleMessage("Copy"),
+    "copyDetails": MessageLookupByLibrary.simpleMessage("Copy details"),
     "copyEnvVar": MessageLookupByLibrary.simpleMessage(
       "Copy environment variables",
     ),
@@ -582,6 +583,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "enabled": MessageLookupByLibrary.simpleMessage("Enabled"),
     "entries": MessageLookupByLibrary.simpleMessage(" entries"),
     "error": MessageLookupByLibrary.simpleMessage("Error"),
+    "errorDetailsCopied": MessageLookupByLibrary.simpleMessage(
+      "Error details copied to clipboard",
+    ),
     "exclude": MessageLookupByLibrary.simpleMessage("Hide from recent tasks"),
     "excludeDesc": MessageLookupByLibrary.simpleMessage(
       "Hide the app from recent tasks while it is in the background",
@@ -727,6 +731,10 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "infiniteTime": MessageLookupByLibrary.simpleMessage("Never expires"),
     "init": MessageLookupByLibrary.simpleMessage("Init"),
+    "initFailed": MessageLookupByLibrary.simpleMessage("Startup failed"),
+    "initFailedDesc": MessageLookupByLibrary.simpleMessage(
+      "The app hit a critical error while starting and cannot continue.",
+    ),
     "initiator": MessageLookupByLibrary.simpleMessage("Initiator"),
     "inputProxyGroupName": MessageLookupByLibrary.simpleMessage(
       "Enter the proxy group name",
@@ -1391,6 +1399,7 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "ssidsEmpty": MessageLookupByLibrary.simpleMessage("SSIDs are empty"),
     "stackMode": MessageLookupByLibrary.simpleMessage("Stack mode"),
+    "stackTrace": MessageLookupByLibrary.simpleMessage("Stack trace"),
     "standard": MessageLookupByLibrary.simpleMessage("Standard"),
     "standardModeDesc": MessageLookupByLibrary.simpleMessage(
       "Standard mode: overrides the basic configuration and offers simple rule additions",

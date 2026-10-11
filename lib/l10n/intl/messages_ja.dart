@@ -325,6 +325,7 @@ class MessageLookup extends MessageLookupByLibrary {
       "グローバル追加ルールを管理",
     ),
     "copy": MessageLookupByLibrary.simpleMessage("コピー"),
+    "copyDetails": MessageLookupByLibrary.simpleMessage("詳細をコピー"),
     "copyEnvVar": MessageLookupByLibrary.simpleMessage("環境変数をコピー"),
     "copyLink": MessageLookupByLibrary.simpleMessage("リンクをコピー"),
     "copySuccess": MessageLookupByLibrary.simpleMessage("コピーしました"),
@@ -489,6 +490,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "enabled": MessageLookupByLibrary.simpleMessage("有効"),
     "entries": MessageLookupByLibrary.simpleMessage(" 件"),
     "error": MessageLookupByLibrary.simpleMessage("エラー"),
+    "errorDetailsCopied": MessageLookupByLibrary.simpleMessage(
+      "エラーの詳細をクリップボードにコピーしました",
+    ),
     "exclude": MessageLookupByLibrary.simpleMessage("最近のタスクから隠す"),
     "excludeDesc": MessageLookupByLibrary.simpleMessage(
       "バックグラウンド時に、最近のタスクからアプリを隠します",
@@ -612,6 +616,10 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "infiniteTime": MessageLookupByLibrary.simpleMessage("無期限"),
     "init": MessageLookupByLibrary.simpleMessage("初期化"),
+    "initFailed": MessageLookupByLibrary.simpleMessage("起動に失敗しました"),
+    "initFailedDesc": MessageLookupByLibrary.simpleMessage(
+      "アプリの起動中に重大なエラーが発生したため、続行できません。",
+    ),
     "initiator": MessageLookupByLibrary.simpleMessage("発信元"),
     "inputProxyGroupName": MessageLookupByLibrary.simpleMessage(
       "プロキシグループ名を入力してください",
@@ -1187,6 +1195,7 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "ssidsEmpty": MessageLookupByLibrary.simpleMessage("SSIDが空です"),
     "stackMode": MessageLookupByLibrary.simpleMessage("スタックモード"),
+    "stackTrace": MessageLookupByLibrary.simpleMessage("スタックトレース"),
     "standard": MessageLookupByLibrary.simpleMessage("標準"),
     "standardModeDesc": MessageLookupByLibrary.simpleMessage(
       "標準モード：基本設定を上書きし、シンプルなルール追加機能を提供します",
