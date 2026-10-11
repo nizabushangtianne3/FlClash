@@ -263,6 +263,12 @@ dart run tool/changelog.dart render release --out release.md
 dart run tool/changelog.dart render telegram --out telegram.md
 ```
 
+Release notes and the Telegram post name the repository the workflow runs in
+(`GITHUB_REPOSITORY`), so the download links of a fork's release point at its own
+assets; only a local render falls back to the upstream project. The in-app update
+check reads `repository` in `lib/common/constant.dart`, which has to name the
+repository those tags are pushed to for a build to find its own updates.
+
 Releasing a stable version, in order:
 
 ```bash

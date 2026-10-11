@@ -7,7 +7,14 @@ import 'src/changelog/git.dart';
 import 'src/changelog/models.dart';
 import 'src/changelog/render.dart';
 
-const _repository = 'chen08209/FlClash';
+/// Releases publish from the repository the workflow runs in, and the notes it
+/// renders link the tag there; a local render names the upstream project.
+const _defaultRepository = 'chen08209/FlClash';
+
+String releaseRepository([Map<String, String>? environment]) {
+  return (environment ?? Platform.environment)['GITHUB_REPOSITORY'] ??
+      _defaultRepository;
+}
 
 Future<void> main(List<String> arguments) async {
   final parser = ArgParser()
@@ -129,7 +136,7 @@ int _render(String root, ArgResults command) {
       version,
       moreUrl: tag == null
           ? null
-          : 'https://github.com/$_repository/releases/tag/$tag',
+          : 'https://github.com/${releaseRepository()}/releases/tag/$tag',
     ),
     _ => _fail('Unknown render target: ${rest.first}'),
   };
