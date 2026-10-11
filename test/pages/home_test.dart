@@ -1224,6 +1224,93 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('a page that leaves the list takes the view with it', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final container = ProviderContainer(
+      overrides: [
+        currentNavigationItemsStateProvider.overrideWith(
+          (ref) =>
+              NavigationItemsState(value: ref.watch(_visibleItemsProvider)),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    globalState.container = container;
+    container.read(viewSizeProvider.notifier).value = const Size(1200, 800);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const TestApp(includeNavigatorKey: false, child: HomePage()),
+      ),
+    );
+    await tester.pump();
+
+    container
+        .read(currentPageLabelProvider.notifier)
+        .toPage(PageLabel.connections);
+    await tester.pumpAndSettle();
+    expect(find.text('page:connections').hitTestable(), findsOneWidget);
+
+    // What shrinking the window past the mobile breakpoint does to the
+    // desktop-only pages.
+    container.read(_visibleItemsProvider.notifier).dropConnections();
+    await tester.pumpAndSettle();
+
+    expect(container.read(currentPageLabelProvider), PageLabel.dashboard);
+    expect(
+      tester.widget<PageView>(find.byType(PageView).first).controller?.page,
+      0,
+      reason:
+          'the PageView has to follow the bar instead of keeping the slot '
+          'the removed page left behind',
+    );
+    expect(find.text('page:dashboard').hitTestable(), findsOneWidget);
+  });
+}
+
+final _visibleItemsProvider =
+    NotifierProvider<_VisibleItems, List<NavigationItem>>(_VisibleItems.new);
+
+class _VisibleItems extends Notifier<List<NavigationItem>> {
+  @override
+  List<NavigationItem> build() => _navItems(withConnections: true);
+
+  void dropConnections() => state = _navItems(withConnections: false);
+}
+
+List<NavigationItem> _navItems({required bool withConnections}) {
+  Widget pageContent(String label) => Center(child: Text('page:$label'));
+  return [
+    NavigationItem(
+      glyph: AppGlyphs.dashboard,
+      label: PageLabel.dashboard,
+      builder: (_) => pageContent('dashboard'),
+    ),
+    NavigationItem(
+      glyph: AppGlyphs.profiles,
+      label: PageLabel.profiles,
+      builder: (_) => pageContent('profiles'),
+    ),
+    if (withConnections)
+      NavigationItem(
+        glyph: AppGlyphs.connections,
+        label: PageLabel.connections,
+        builder: (_) => pageContent('connections'),
+      ),
+    NavigationItem(
+      glyph: AppGlyphs.tools,
+      label: PageLabel.tools,
+      builder: (_) => pageContent('tools'),
+    ),
+  ];
 }
 
 class _ThemeManagedTestApp extends StatelessWidget {

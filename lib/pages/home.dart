@@ -338,7 +338,23 @@ class _HomePageViewState extends ConsumerState<_HomePageView> {
   }
 
   void _updatePageController() {
+    final items = widget.navigationItems;
     final pageLabel = ref.read(currentPageLabelProvider);
+    if (!items.any((item) => item.label == pageLabel)) {
+      if (items.isEmpty) {
+        return;
+      }
+      final fallback = items.first.label;
+      // A page the list dropped cannot stay on screen, and didUpdateWidget may
+      // not write a provider, so the bar's own fallback lands next frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        ref.read(currentPageLabelProvider.notifier).toPage(fallback);
+      });
+      return;
+    }
     _toPage(pageLabel, true);
   }
 
