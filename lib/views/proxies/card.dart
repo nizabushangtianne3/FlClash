@@ -253,6 +253,31 @@ class _DelayTextState extends ConsumerState<_DelayText> {
     );
     final delay = delayView.delay;
     final phase = delayView.phase;
+    final delayContent = delay != null && phase != DelayTestPhase.running
+        ? _buildDelayText(
+            context,
+            delay,
+            queued: phase == DelayTestPhase.queued,
+          )
+        : SizedBox(
+            height: measure.labelSmallHeight,
+            width: measure.labelSmallHeight,
+            child: _withFocusRing(context, switch (phase) {
+              DelayTestPhase.running => const CommonCircleLoading(),
+              DelayTestPhase.queued => GlyphIcon(
+                AppGlyphs.clock,
+                size: measure.labelSmallHeight,
+                color: context.colorScheme.onSurfaceVariant.opacity38,
+              ),
+              null => IconButton(
+                tooltip: context.appLocalizations.delayTest,
+                icon: const GlyphIcon(AppGlyphs.bolt),
+                iconSize: measure.labelSmallHeight,
+                padding: EdgeInsets.zero,
+                onPressed: _handleTestCurrentDelay,
+              ),
+            }),
+          );
     return Actions(
       actions: {
         ActivateIntent: CallbackAction<ActivateIntent>(
@@ -270,40 +295,34 @@ class _DelayTextState extends ConsumerState<_DelayText> {
             alignment: widget.type == ProxyCardType.expand
                 ? Alignment.centerLeft
                 : Alignment.centerRight,
-            child: phase != null || delay == null
-                ? SizedBox(
-                    height: measure.labelSmallHeight,
-                    width: measure.labelSmallHeight,
-                    child: _withFocusRing(context, switch (phase) {
-                      DelayTestPhase.running => const CommonCircleLoading(),
-                      DelayTestPhase.queued => GlyphIcon(
-                        AppGlyphs.clock,
-                        size: measure.labelSmallHeight,
-                        color: context.colorScheme.onSurfaceVariant.opacity38,
-                      ),
-                      null => IconButton(
-                        tooltip: context.appLocalizations.delayTest,
-                        icon: const GlyphIcon(AppGlyphs.bolt),
-                        iconSize: measure.labelSmallHeight,
-                        padding: EdgeInsets.zero,
-                        onPressed: _handleTestCurrentDelay,
-                      ),
-                    }),
-                  )
-                : GestureDetector(
-                    onTap: _handleTestCurrentDelay,
-                    child: _withFocusRing(
-                      context,
-                      Text(
-                        delay > 0 ? '$delay ms' : 'Timeout',
-                        maxLines: 1,
-                        style: context.textTheme.labelSmall?.copyWith(
-                          overflow: TextOverflow.ellipsis,
-                          color: context.colorScheme.delayColor(delay),
-                        ),
-                      ),
-                    ),
-                  ),
+            child: delayContent,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A node waiting for its turn keeps the delay it already has.
+  ///
+  /// The delay sort places a queued node by that value, so swapping it for the
+  /// clock hid the reason a node sat where it did and made a sorted list look
+  /// arbitrary. A node with nothing measured still shows the clock.
+  Widget _buildDelayText(
+    BuildContext context,
+    int delay, {
+    required bool queued,
+  }) {
+    final color = context.colorScheme.delayColor(delay);
+    return GestureDetector(
+      onTap: _handleTestCurrentDelay,
+      child: _withFocusRing(
+        context,
+        Text(
+          delay > 0 ? '$delay ms' : 'Timeout',
+          maxLines: 1,
+          style: context.textTheme.labelSmall?.copyWith(
+            overflow: TextOverflow.ellipsis,
+            color: queued ? color?.opacity38 : color,
           ),
         ),
       ),
