@@ -545,6 +545,7 @@
   "restoreAllData": "Restore all data",
   "addProfile": "Add profile",
   "delayTest": "Delay test",
+  "delayTestAllTimeout": "Every tested node timed out; check the test URL and the nodes.",
   "proxyGroupEmpty": "Proxy group is empty",
   "proxyGroupNameDuplicate": "Duplicate proxy group name",
   "confirmExitWindow": "Are you sure you want to exit the current window?",

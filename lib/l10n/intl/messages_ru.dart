@@ -455,6 +455,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "defaultText": MessageLookupByLibrary.simpleMessage("По умолчанию"),
     "delay": MessageLookupByLibrary.simpleMessage("Задержка"),
     "delayTest": MessageLookupByLibrary.simpleMessage("Тест задержки"),
+    "delayTestAllTimeout": MessageLookupByLibrary.simpleMessage(
+      "Все проверенные узлы превысили время ожидания; проверьте тестовый адрес и узлы",
+    ),
     "delete": MessageLookupByLibrary.simpleMessage("Удалить"),
     "deleteMultipTip": m5,
     "deleteTip": m6,

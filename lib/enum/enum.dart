@@ -434,6 +434,7 @@ enum FunctionTag {
   suspend,
   coreErrorNotifier,
   reloadPackages,
+  delayTestAllTimeout,
 }
 
 enum DashboardWidget {

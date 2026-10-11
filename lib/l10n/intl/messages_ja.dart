@@ -367,6 +367,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "defaultText": MessageLookupByLibrary.simpleMessage("デフォルト"),
     "delay": MessageLookupByLibrary.simpleMessage("遅延"),
     "delayTest": MessageLookupByLibrary.simpleMessage("遅延テスト"),
+    "delayTestAllTimeout": MessageLookupByLibrary.simpleMessage(
+      "テストしたノードがすべてタイムアウトしました。テストURLとノードを確認してください",
+    ),
     "delete": MessageLookupByLibrary.simpleMessage("削除"),
     "deleteMultipTip": m5,
     "deleteTip": m6,

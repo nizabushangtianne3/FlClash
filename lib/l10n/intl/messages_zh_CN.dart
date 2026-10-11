@@ -336,6 +336,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "defaultText": MessageLookupByLibrary.simpleMessage("默认"),
     "delay": MessageLookupByLibrary.simpleMessage("延迟"),
     "delayTest": MessageLookupByLibrary.simpleMessage("延迟测试"),
+    "delayTestAllTimeout": MessageLookupByLibrary.simpleMessage(
+      "本次测试的节点全部超时，请检查测试地址与节点是否可用",
+    ),
     "delete": MessageLookupByLibrary.simpleMessage("删除"),
     "deleteMultipTip": m5,
     "deleteTip": m6,

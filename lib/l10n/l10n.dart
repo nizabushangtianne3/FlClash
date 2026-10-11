@@ -4430,6 +4430,16 @@ class AppLocalizations {
     return Intl.message('Delay test', name: 'delayTest', desc: '', args: []);
   }
 
+  /// `Every tested node timed out; check the test URL and the nodes.`
+  String get delayTestAllTimeout {
+    return Intl.message(
+      'Every tested node timed out; check the test URL and the nodes.',
+      name: 'delayTestAllTimeout',
+      desc: '',
+      args: [],
+    );
+  }
+
   /// `Proxy group is empty`
   String get proxyGroupEmpty {
     return Intl.message(

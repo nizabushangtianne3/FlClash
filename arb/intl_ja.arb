@@ -545,6 +545,7 @@
   "restoreAllData": "すべてのデータを復元",
   "addProfile": "プロファイルを追加",
   "delayTest": "遅延テスト",
+  "delayTestAllTimeout": "テストしたノードがすべてタイムアウトしました。テストURLとノードを確認してください",
   "proxyGroupEmpty": "プロキシグループが空です",
   "proxyGroupNameDuplicate": "プロキシグループ名が重複しています",
   "confirmExitWindow": "現在のウィンドウを閉じてもよろしいですか？",

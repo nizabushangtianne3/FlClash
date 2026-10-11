@@ -19,6 +19,8 @@ class _DelayTestJob {
 
   final Set<String> held;
   final Set<String> startedOnDispatch = {};
+  int answered = 0;
+  int timedOut = 0;
   bool cancelled = false;
 }
 
@@ -694,6 +696,27 @@ class ProxiesAction extends _$ProxiesAction {
         unawaited(resortGroupsByDelay());
       }
     }
+    _reportAllTimedOut(job, targets.length);
+  }
+
+  /// A sweep where every node answered with a timeout is the one case where
+  /// the list itself says nothing about why: the nodes, the test URL and the
+  /// host network all look the same from here.
+  void _reportAllTimedOut(_DelayTestJob job, int targetCount) {
+    if (targetCount <= 1 ||
+        job.answered != targetCount ||
+        job.timedOut != targetCount) {
+      return;
+    }
+    throttler.call(
+      FunctionTag.delayTestAllTimeout,
+      () => dialogs.showNotifier(
+        currentAppLocalizations.delayTestAllTimeout,
+        level: MessageLevel.warning,
+      ),
+      duration: const Duration(seconds: 10),
+      fire: true,
+    );
   }
 
   Future<void> _runDelayTest(_DelayTestJob job, _DelayTestTarget target) async {
@@ -707,6 +730,10 @@ class ProxiesAction extends _$ProxiesAction {
     try {
       final delay = await _runCoreDelayTest(target);
       if (delay != null && !job.cancelled) {
+        job.answered++;
+        if ((delay.value ?? -1) <= 0) {
+          job.timedOut++;
+        }
         setDelay(delay);
       }
     } catch (error) {
