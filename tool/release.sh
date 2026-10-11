@@ -144,13 +144,26 @@ if ((bumped)); then
 fi
 tool/bump_version.sh minor
 
+# The tool says why it refused (nothing new to collect, a build hook that cannot
+# find its toolchain); guessing the cause sends the reader the wrong way when
+# the notes matter most.
+print_preview() {
+  local notes error
+  if ! error="$(dart run tool/changelog.dart build --unreleased 2>&1 >/dev/null)"; then
+    echo '(release notes preview unavailable)'
+    printf '%s\n' "$error" | sed -n '1,15p' | sed 's/^/  /'
+    return 0
+  fi
+  if ! notes="$(dart run tool/changelog.dart render release 2>&1)"; then
+    echo '(release notes preview unavailable)'
+    printf '%s\n' "$notes" | sed -n '1,15p' | sed 's/^/  /'
+    return 0
+  fi
+  printf '%s\n' "$notes" | sed -n '/changelog:begin/,/changelog:end/p' | sed '1d;$d'
+}
+
 echo "--- release notes for $tag ---"
-if dart run tool/changelog.dart build --unreleased >/dev/null 2>&1; then
-  dart run tool/changelog.dart render release 2>/dev/null |
-    sed -n '/changelog:begin/,/changelog:end/p' | sed '1d;$d'
-else
-  echo "(preview unavailable: 'build --unreleased' found nothing to collect)"
-fi
+print_preview
 git checkout -- changelog.json 2>/dev/null || true
 echo "--- end of notes ---"
 echo
