@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.8.114 (2026-10-12)
+
+**Features**
+
+- **proxies** A delay test that times out on every node says so, so the test URL can be checked (f8c5742)
+- **release** Release downloads and announcements link the repository that published the build (66b7157)
+
+**Bug Fixes**
+
+- **app** Preserve delay state and subscription updates (c19a2aa)
+- **pages** Shrinking the window off a page the navigation drops no longer shows a different page (00e4bbc)
+- **tray** A tray the system refused to build is retried instead of staying empty until something else changes (3d62223)
+- **proxies** A failed node switch falls back to the node that is in effect, not to an older pick (eb7b3b6)
+- **proxies** A delay sweep started from the tray or a hotkey shows as testing on the proxies page (1d7b2f2)
+- **proxies** A node waiting for a delay test keeps showing its last delay (0731b8e)
+- **profiles** One dead subscription no longer stops the others from updating (8933b7d)
+- **pages** The startup failure screen speaks the reader's language (dacafc7)
+- **common** The tray menu names the proxies it left out in the reader's language (2cfafb6)
+- **common** The update check and the download links follow the repository that publishes this build (c48373b)
+- **proxies** Align computed selection marks (6db8db9)
+
+**Performance**
+
+- **common,profiles** Trim repeated UI work (5da2a5f)
+- **connections,models** Share connection polling and skip no-op sorting (763180a)
+
 ## v0.8.113 (2026-10-10)
 
 **Bug Fixes**

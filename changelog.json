@@ -2,6 +2,104 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "0.8.114",
+      "tag": "v0.8.114",
+      "date": "2026-10-12",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "feat",
+          "entries": [
+            {
+              "id": "f8c5742",
+              "scope": "proxies",
+              "text": "A delay test that times out on every node says so, so the test URL can be checked"
+            },
+            {
+              "id": "66b7157",
+              "scope": "release",
+              "text": "Release downloads and announcements link the repository that published the build"
+            }
+          ]
+        },
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "c19a2aa",
+              "scope": "app",
+              "text": "Preserve delay state and subscription updates"
+            },
+            {
+              "id": "00e4bbc",
+              "scope": "pages",
+              "text": "Shrinking the window off a page the navigation drops no longer shows a different page"
+            },
+            {
+              "id": "3d62223",
+              "scope": "tray",
+              "text": "A tray the system refused to build is retried instead of staying empty until something else changes"
+            },
+            {
+              "id": "eb7b3b6",
+              "scope": "proxies",
+              "text": "A failed node switch falls back to the node that is in effect, not to an older pick"
+            },
+            {
+              "id": "1d7b2f2",
+              "scope": "proxies",
+              "text": "A delay sweep started from the tray or a hotkey shows as testing on the proxies page"
+            },
+            {
+              "id": "0731b8e",
+              "scope": "proxies",
+              "text": "A node waiting for a delay test keeps showing its last delay"
+            },
+            {
+              "id": "8933b7d",
+              "scope": "profiles",
+              "text": "One dead subscription no longer stops the others from updating"
+            },
+            {
+              "id": "dacafc7",
+              "scope": "pages",
+              "text": "The startup failure screen speaks the reader's language"
+            },
+            {
+              "id": "2cfafb6",
+              "scope": "common",
+              "text": "The tray menu names the proxies it left out in the reader's language"
+            },
+            {
+              "id": "c48373b",
+              "scope": "common",
+              "text": "The update check and the download links follow the repository that publishes this build"
+            },
+            {
+              "id": "6db8db9",
+              "scope": "proxies",
+              "text": "Align computed selection marks"
+            }
+          ]
+        },
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "5da2a5f",
+              "scope": "common,profiles",
+              "text": "Trim repeated UI work"
+            },
+            {
+              "id": "763180a",
+              "scope": "connections,models",
+              "text": "Share connection polling and skip no-op sorting"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.8.113",
       "tag": "v0.8.113",
       "date": "2026-10-10",
