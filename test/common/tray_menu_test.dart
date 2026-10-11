@@ -259,6 +259,30 @@ void main() {
     expect(calls.where((call) => call.method == 'show'), hasLength(1));
   });
 
+  test('retries a show the platform rejected', () async {
+    var showCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, (call) async {
+          calls.add(call);
+          if (call.method == 'show') {
+            showCalls++;
+            return showCalls > 1;
+          }
+          return true;
+        });
+
+    await update(_trayState(isStart: true));
+    await update(_trayState(isStart: true));
+
+    expect(
+      showCalls,
+      2,
+      reason:
+          'a rejected show leaves the tray unbuilt, so the same state '
+          'has to ask again instead of being skipped as a repeat',
+    );
+  });
+
   test('rebuilds when only the delay distribution changes', () async {
     container.dispose();
     container = ProviderContainer(

@@ -134,8 +134,10 @@ class AppTray implements TrayPort {
     final needRebuild = fingerprint != _lastTrayFingerprint;
 
     if (needRebuild) {
-      _lastTrayFingerprint = fingerprint;
-      await Tray.instance.show(
+      // Only an applied show may suppress the next one: a rejected rebuild has
+      // to be retried, and the payload signature it failed to install is the
+      // only thing that would have asked for it.
+      final isApplied = await Tray.instance.show(
         TraySpec(
           icon: TrayIcon.asset(
             getTrayIcon(
@@ -152,6 +154,9 @@ class AppTray implements TrayPort {
           menu: _buildMenu(trayState: trayState, read: read),
         ),
       );
+      if (isApplied) {
+        _lastTrayFingerprint = fingerprint;
+      }
     }
 
     await updateTitle(showTrayTitle: trayState.showTrayTitle, traffic: traffic);

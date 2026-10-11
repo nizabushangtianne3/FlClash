@@ -47,7 +47,9 @@ final class Tray {
 
   bool get isVisible => _isVisible;
 
-  Future<void> show(TraySpec spec) {
+  /// Whether the tray now reflects [spec]. A rejected show leaves no signature
+  /// behind, so the caller can ask again with the same payload.
+  Future<bool> show(TraySpec spec) {
     return _serialize(() => _show(spec));
   }
 
@@ -86,14 +88,14 @@ final class Tray {
     return completer.future;
   }
 
-  Future<void> _show(TraySpec spec) async {
+  Future<bool> _show(TraySpec spec) async {
     if (!capabilities.supported) {
-      return;
+      return true;
     }
     final encoded = TrayCodec.encode(spec);
     if (_isVisible && encoded.signature == _signature) {
       _itemsById = encoded.itemsById;
-      return;
+      return true;
     }
     final isApplied = await _channel
         .invokeMethod<bool>(_methodShow, <String, Object?>{
@@ -105,11 +107,12 @@ final class Tray {
         });
     if (isApplied != true) {
       _signature = null;
-      return;
+      return false;
     }
     _itemsById = encoded.itemsById;
     _signature = encoded.signature;
     _isVisible = true;
+    return true;
   }
 
   Future<void> _setTitle(String title) async {
