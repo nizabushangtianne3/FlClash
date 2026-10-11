@@ -51,8 +51,8 @@ func (response MethodResponse) send() {
 	send(data)
 }
 
-func deliverEvent(data []byte) {
-	send(data)
+func deliverEvent(data []byte) bool {
+	return send(data)
 }
 
 // The desktop core exits with its host connection, so it is always heard.
@@ -144,7 +144,7 @@ func readFrame(r io.Reader) ([]byte, error) {
 	return data, nil
 }
 
-func send(data []byte) {
+func send(data []byte) bool {
 	writeMu.Lock()
 	defer writeMu.Unlock()
 
@@ -154,7 +154,7 @@ func send(data []byte) {
 
 	if c == nil {
 		logDeliveryError("send conn nil")
-		return
+		return false
 	}
 	if err := c.SetWriteDeadline(time.Now().Add(ipcWriteTimeout)); err != nil {
 		logDeliveryError("server write deadline error: %v", err)
@@ -162,11 +162,11 @@ func send(data []byte) {
 	written, err := writeFrame(&resumingWriter{conn: c}, data)
 	if err == nil {
 		deliveryFailureReported.Store(false)
-		return
+		return true
 	}
 	if written == 0 {
 		logDeliveryError("server write error, dropped one frame: %v", err)
-		return
+		return false
 	}
 	logDeliveryError("server write error after %d bytes: %v", written, err)
 	connMu.Lock()
@@ -175,6 +175,7 @@ func send(data []byte) {
 	}
 	connMu.Unlock()
 	_ = c.Close()
+	return false
 }
 
 func startServer(arg string) {

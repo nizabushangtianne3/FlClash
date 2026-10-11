@@ -19,6 +19,7 @@ class _RecordingListener with CoreEventListener {
   final List<TrackerInfo> requests = [];
   final List<DnsQuery> dnsQueries = [];
   final List<Log> logs = [];
+  final List<Delay> delays = [];
 
   @override
   void onLoaded(String providerName) {
@@ -39,6 +40,11 @@ class _RecordingListener with CoreEventListener {
   @override
   void onLog(Log log) {
     logs.add(log);
+  }
+
+  @override
+  void onDelay(Delay delay) {
+    delays.add(delay);
   }
 }
 
@@ -239,5 +245,30 @@ void main() {
     expect(first.logs.single.payload, 'shared-event');
     expect(second.logs.single.payload, 'shared-event');
     expect(identical(first.logs.single, second.logs.single), isTrue);
+  });
+
+  test('parses a delay event once for every listener', () {
+    final first = _RecordingListener();
+    final second = _RecordingListener();
+    coreEventManager.addListener(first);
+    coreEventManager.addListener(second);
+    addTearDown(() {
+      coreEventManager.removeListener(first);
+      coreEventManager.removeListener(second);
+    });
+
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.delay,
+        data: {'name': 'HK-01', 'url': 'https://example.test/204', 'value': 42},
+      ),
+    );
+
+    expect(first.delays.single, second.delays.single);
+    expect(identical(first.delays.single, second.delays.single), isTrue);
+    expect(
+      first.delays.single,
+      const Delay(name: 'HK-01', url: 'https://example.test/204', value: 42),
+    );
   });
 }

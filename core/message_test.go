@@ -4,6 +4,10 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	adapter "github.com/metacubex/mihomo/adapter"
+	"github.com/metacubex/mihomo/adapter/outbound"
+	"github.com/metacubex/mihomo/constant"
 )
 
 type batchCollector struct {
@@ -40,13 +44,41 @@ func closedMessages() chan Message {
 	return queue
 }
 
+func drainDelayWakeUps() {
+	for {
+		select {
+		case <-delayWakeUps:
+		default:
+			return
+		}
+	}
+}
+
+func resetDelayDeliveryState() {
+	clearLatestDelays()
+	drainDelayWakeUps()
+}
+
+func recordCurrentDelay(delay Delay) bool {
+	return recordDelayUpdate(delay, proxiesGeneration.Load())
+}
+
 func runBatcherUntilDrained(t *testing.T, state, priority, bulk chan Message) *batchCollector {
+	t.Helper()
+	return runBatcherUntilDrainedWithDelayWakeUps(t, state, priority, bulk, nil)
+}
+
+func runBatcherUntilDrainedWithDelayWakeUps(
+	t *testing.T,
+	state, priority, bulk chan Message,
+	delayWakeUps chan struct{},
+) *batchCollector {
 	t.Helper()
 	collector := &batchCollector{}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		runMessageBatcher(state, priority, bulk, collector.send)
+		runMessageBatcher(state, priority, bulk, delayWakeUps, collector.send)
 	}()
 	select {
 	case <-done:
@@ -177,6 +209,254 @@ func TestEnqueueLatestNeverBlocks(t *testing.T) {
 	}
 }
 
+func TestDelayBatchCarriesLatestStateForEveryNode(t *testing.T) {
+	resetDelayDeliveryState()
+	t.Cleanup(resetDelayDeliveryState)
+
+	recordCurrentDelay(Delay{Url: "https://example.test", Name: "node-a", Value: 10})
+	recordCurrentDelay(Delay{Url: "https://example.test", Name: "node-b", Value: 15})
+	recordCurrentDelay(Delay{Url: "https://example.test", Name: "node-a", Value: 20})
+
+	got := coalesceDelayMessages([]Message{
+		{Type: LogMessage, Data: "log"},
+		{Type: DelayMessage, Data: Delay{
+			Url:   "https://example.test",
+			Name:  "node-a",
+			Value: 10,
+		}},
+	})
+
+	want := []Message{
+		{Type: LogMessage, Data: "log"},
+		{Type: DelayMessage, Data: Delay{
+			Url:   "https://example.test",
+			Name:  "node-a",
+			Value: 20,
+		}},
+		{Type: DelayMessage, Data: Delay{
+			Url:   "https://example.test",
+			Name:  "node-b",
+			Value: 15,
+		}},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("coalesced batch length = %d, want %d: %+v", len(got), len(want), got)
+	}
+	for index := range want {
+		if got[index].Type != want[index].Type || got[index].Data != want[index].Data {
+			t.Fatalf(
+				"message %d = {%s %v}, want {%s %v}",
+				index,
+				got[index].Type,
+				got[index].Data,
+				want[index].Type,
+				want[index].Data,
+			)
+		}
+	}
+}
+
+func TestManyDelayUpdatesShareOneWakeUp(t *testing.T) {
+	resetDelayDeliveryState()
+	t.Cleanup(resetDelayDeliveryState)
+
+	delayWakeUps := make(chan struct{}, 1)
+	if !queueDelayWakeUpTo(delayWakeUps) {
+		t.Fatal("the first delay update did not queue a wake-up")
+	}
+	if queueDelayWakeUpTo(delayWakeUps) {
+		t.Fatal("a second delay update queued another wake-up while one was pending")
+	}
+
+	select {
+	case <-delayWakeUps:
+	default:
+		t.Fatal("the pending wake-up was not retained for the batcher")
+	}
+
+	if !queueDelayWakeUpTo(delayWakeUps) {
+		t.Fatal("a wake-up was not available after the previous batch was delivered")
+	}
+}
+
+func TestRunMessageBatcherDeliversDelayWakeUp(t *testing.T) {
+	resetDelayDeliveryState()
+	t.Cleanup(resetDelayDeliveryState)
+	recordCurrentDelay(Delay{
+		Url:   "https://example.test",
+		Name:  "node-a",
+		Value: 20,
+	})
+
+	delayWakeUps := make(chan struct{}, 1)
+	delayWakeUps <- struct{}{}
+	close(delayWakeUps)
+	batches := runBatcherUntilDrainedWithDelayWakeUps(
+		t,
+		closedMessages(),
+		closedMessages(),
+		closedMessages(),
+		delayWakeUps,
+	).snapshot()
+
+	if len(batches) != 1 || len(batches[0]) != 1 || batches[0][0].Type != DelayMessage {
+		t.Fatalf("delivered batches = %+v, want one delay wake-up", batches)
+	}
+	got := coalesceDelayMessages(batches[0])
+	want := []Message{{
+		Type: DelayMessage,
+		Data: Delay{
+			Url:   "https://example.test",
+			Name:  "node-a",
+			Value: 20,
+		},
+	}}
+	if len(got) != len(want) || got[0].Data != want[0].Data {
+		t.Fatalf("coalesced delay = %+v, want %+v", got, want)
+	}
+}
+
+func TestReplayLeavesAWakeUpForLaterUpdates(t *testing.T) {
+	resetDelayDeliveryState()
+	t.Cleanup(resetDelayDeliveryState)
+	delayWakeUps := make(chan struct{}, 1)
+
+	recordCurrentDelay(Delay{
+		Url:   "https://example.test",
+		Name:  "node-a",
+		Value: 10,
+	})
+	if !queueDelayWakeUpTo(delayWakeUps) {
+		t.Fatal("the first delay update did not queue a wake-up")
+	}
+
+	replayed := latestDelayMessages()
+	if len(replayed) != 1 {
+		t.Fatalf("replayed delay count = %d, want 1", len(replayed))
+	}
+	if queueDelayWakeUpTo(delayWakeUps) {
+		t.Fatal("replay discarded a wake-up that a later update could reuse")
+	}
+
+	recordCurrentDelay(Delay{
+		Url:   "https://example.test",
+		Name:  "node-a",
+		Value: 30,
+	})
+	got := coalesceDelayMessages([]Message{{Type: DelayMessage}})
+	want := []Message{{
+		Type: DelayMessage,
+		Data: Delay{
+			Url:   "https://example.test",
+			Name:  "node-a",
+			Value: 30,
+		},
+	}}
+	if len(got) != len(want) || got[0].Data != want[0].Data {
+		t.Fatalf("coalesced delay = %+v, want %+v", got, want)
+	}
+}
+
+func TestProxyTreeChangeDropsOldDelayState(t *testing.T) {
+	resetDelayDeliveryState()
+	t.Cleanup(resetDelayDeliveryState)
+
+	generation := proxiesGeneration.Load()
+	if recordDelayUpdate(
+		Delay{
+			Url:   "https://example.test",
+			Name:  "old-node",
+			Value: 10,
+		},
+		generation,
+	) {
+		bumpProxiesGeneration()
+	}
+
+	if messages := latestDelayMessages(); len(messages) != 0 {
+		t.Fatalf("old delay state survived a proxy tree change: %+v", messages)
+	}
+}
+
+func TestStaleDelayResultCannotEnterTheNewProxyTree(t *testing.T) {
+	resetDelayDeliveryState()
+	t.Cleanup(resetDelayDeliveryState)
+
+	generation := proxiesGeneration.Load()
+	bumpProxiesGeneration()
+	if recordDelayUpdate(
+		Delay{
+			Url:   "https://example.test",
+			Name:  "same-name",
+			Value: 10,
+		},
+		generation,
+	) {
+		t.Fatal("a result captured before the proxy tree change entered the new state")
+	}
+	if messages := latestDelayMessages(); len(messages) != 0 {
+		t.Fatalf("stale delay state survived: %+v", messages)
+	}
+}
+
+func TestCurrentProxyMatchesRejectsAReplacedNode(t *testing.T) {
+	adapterProxy := outbound.NewDirectWithOption(
+		outbound.DirectOption{Name: "node"},
+	)
+	current := adapter.NewProxy(adapterProxy)
+	measured := adapter.NewProxy(adapterProxy)
+	replaced := adapter.NewProxy(
+		outbound.NewDirectWithOption(outbound.DirectOption{Name: "node"}),
+	)
+	lookup := func(name string) constant.Proxy {
+		if name == "node" {
+			return current
+		}
+		return nil
+	}
+
+	if !currentProxyMatches("node", measured, lookup) {
+		t.Fatal("the live proxy object was rejected")
+	}
+	if currentProxyMatches("node", replaced, lookup) {
+		t.Fatal("a replaced proxy object was accepted")
+	}
+	if currentProxyMatches("missing", measured, lookup) {
+		t.Fatal("a missing proxy was accepted")
+	}
+}
+
+func TestRestoreMissingPendingDelaysKeepsNewerUpdates(t *testing.T) {
+	resetDelayDeliveryState()
+	t.Cleanup(resetDelayDeliveryState)
+
+	oldDelay := Delay{
+		Url:   "https://example.test",
+		Name:  "node-a",
+		Value: 10,
+	}
+	newerDelay := Delay{
+		Url:   "https://example.test",
+		Name:  "node-a",
+		Value: 30,
+	}
+	recordCurrentDelay(oldDelay)
+	recordCurrentDelay(newerDelay)
+
+	restoreMissingPendingDelays([]Delay{oldDelay})
+
+	if pending := pendingDelayDelays(); len(pending) != 1 || pending[0] != newerDelay {
+		t.Fatalf("pending delays = %+v, want only %+v", pending, newerDelay)
+	}
+
+	commitDeliveredDelays([]Delay{newerDelay})
+	restoreMissingPendingDelays([]Delay{oldDelay})
+
+	if pending := pendingDelayDelays(); len(pending) != 1 || pending[0] != oldDelay {
+		t.Fatalf("restored delays = %+v, want only %+v", pending, oldDelay)
+	}
+}
+
 func TestRunMessageBatcherPrefersPriorityAndGuaranteesBulkOpportunity(t *testing.T) {
 	priority := make(chan Message, 64)
 	bulk := make(chan Message, 64)
@@ -251,7 +531,7 @@ func TestRunMessageBatcherFlushesOnInterval(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		runMessageBatcher(closedMessages(), priority, bulk, collector.send)
+		runMessageBatcher(closedMessages(), priority, bulk, nil, collector.send)
 	}()
 
 	for i := 0; i < 3; i++ {

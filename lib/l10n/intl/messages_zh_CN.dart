@@ -543,7 +543,6 @@ class MessageLookup extends MessageLookupByLibrary {
     "iconStylePlain": MessageLookupByLibrary.simpleMessage("纯图标"),
     "iconUrl": MessageLookupByLibrary.simpleMessage("图标链接"),
     "ignoreBatteryOptimization": MessageLookupByLibrary.simpleMessage("忽略电池优化"),
-    "import": MessageLookupByLibrary.simpleMessage("导入"),
     "importFile": MessageLookupByLibrary.simpleMessage("通过文件导入"),
     "importFromURL": MessageLookupByLibrary.simpleMessage("从URL导入"),
     "importUrl": MessageLookupByLibrary.simpleMessage("通过URL导入"),

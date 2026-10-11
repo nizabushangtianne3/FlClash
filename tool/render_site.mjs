@@ -20,7 +20,7 @@ runInNewContext(readFileSync(join(out, 'assets/shared.js'), 'utf8'), sandbox);
 const { REPO, FIRST_PAGE, STRINGS, parseChangelog, changelogMeta, escapeHtml: escape, timelineHtml } =
   sandbox.FlClashSite;
 
-const template = readFileSync(join(out, 'index.html'), 'utf8');
+const template = readFileSync(join(out, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
 const versions = parseChangelog(readFileSync(join(out, 'CHANGELOG.md'), 'utf8'));
 const releasePath = join(out, 'release.json');
 const release = existsSync(releasePath) ? JSON.parse(readFileSync(releasePath, 'utf8')) : null;

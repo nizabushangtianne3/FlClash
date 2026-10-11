@@ -455,7 +455,6 @@
   "tproxyPort": "TProxyポート",
   "portTip": "{label} は 1024〜49151 の範囲で指定してください",
   "portConflictTip": "別のポートを入力してください",
-  "import": "インポート",
   "importFile": "ファイルからインポート",
   "importUrl": "URLからインポート",
   "startFromScratch": "最初から作成",

@@ -190,6 +190,7 @@ var proxiesGeneration atomic.Uint64
 
 func bumpProxiesGeneration() {
 	proxiesGeneration.Add(1)
+	clearLatestDelays()
 }
 
 func collectProxySelections(proxies map[string]constant.Proxy, groupNames []string) map[string]string {
@@ -954,15 +955,15 @@ func handleSetupConfig(params *SetupParams) string {
 }
 
 func init() {
-	adapter.UrlTestHook = func(url string, name string, delay uint16) {
-		sendMessage(Message{
-			Type: DelayMessage,
-			Data: &Delay{
+	adapter.UrlTestHook = func(url string, proxy constant.Proxy, delay uint16) {
+		sendDelayEvent(
+			Delay{
 				Url:   url,
-				Name:  name,
+				Name:  proxy.Name(),
 				Value: delayValue(delay),
 			},
-		})
+			proxy,
+		)
 	}
 	statistic.DefaultRequestNotify = func(c statistic.Tracker) {
 		notifyProbeRoute(c)

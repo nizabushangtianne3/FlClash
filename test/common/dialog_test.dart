@@ -107,6 +107,30 @@ void main() {
     expect(await result, isFalse);
   });
 
+  testWidgets('a dialog opened before the first layout still builds', (
+    tester,
+  ) async {
+    final container = await _pumpHost(tester);
+    container.read(viewSizeProvider.notifier).update((_) => Size.zero);
+
+    final result = dialogs.showCommonDialog<void>(
+      child: const CommonDialog(title: 'dialog'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('dialog'), findsOneWidget);
+    expect(
+      tester.takeException(),
+      isNull,
+      reason:
+          'a zero view size must not hand BoxConstraints a negative '
+          'maximum',
+    );
+
+    Navigator.of(globalState.navigatorKey.currentContext!).pop();
+    await result;
+  });
+
   testWidgets('showMessage hides the cancel action when not cancelable', (
     tester,
   ) async {

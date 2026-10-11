@@ -500,9 +500,9 @@ class AppLocalizations {
     );
   }
 
-  /// `Logcat`
+  /// `Log capture`
   String get logcat {
-    return Intl.message('Logcat', name: 'logcat', desc: '', args: []);
+    return Intl.message('Log capture', name: 'logcat', desc: '', args: []);
   }
 
   /// `Disabling hides the log entry point`
@@ -3633,11 +3633,6 @@ class AppLocalizations {
       desc: '',
       args: [],
     );
-  }
-
-  /// `Import`
-  String get import {
-    return Intl.message('Import', name: 'import', desc: '', args: []);
   }
 
   /// `Import from file`

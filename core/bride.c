@@ -12,7 +12,7 @@ int (*resolve_uid_func)(void *tun_interface, int protocol, const char *source, c
 
 char* (*resolve_package_func)(void *tun_interface, int uid);
 
-void (*result_func)(void *invoke_Interface, const char *data);
+int (*result_func)(void *invoke_Interface, const char *data);
 
 int protect(void *tun_interface, int fd) {
     if (protect_func == NULL) {
@@ -49,9 +49,9 @@ void free_string(char *data) {
     free_string_func(data);
 }
 
-void result(void *invoke_Interface, const char *data) {
+int result(void *invoke_Interface, const char *data) {
     if (result_func == NULL) {
-        return;
+        return 0;
     }
-    result_func(invoke_Interface, data);
+    return result_func(invoke_Interface, data);
 }

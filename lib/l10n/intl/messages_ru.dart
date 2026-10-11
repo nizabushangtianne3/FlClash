@@ -738,7 +738,6 @@ class MessageLookup extends MessageLookupByLibrary {
     "ignoreBatteryOptimization": MessageLookupByLibrary.simpleMessage(
       "Игнорировать оптимизацию батареи",
     ),
-    "import": MessageLookupByLibrary.simpleMessage("Импорт"),
     "importFile": MessageLookupByLibrary.simpleMessage("Импорт из файла"),
     "importFromURL": MessageLookupByLibrary.simpleMessage("Импорт из URL"),
     "importUrl": MessageLookupByLibrary.simpleMessage("Импорт по URL"),

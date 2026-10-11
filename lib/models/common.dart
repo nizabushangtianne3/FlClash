@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:collection/collection.dart';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/icons/glyph.dart';
@@ -70,22 +69,31 @@ extension PackagesExt on List<Package> {
       ).toList(growable: false);
     }
     final pinned = pinedList.toSet();
-    return whereVisible(
+    final visible = whereVisible(
       isFilterSystemApp: isFilterSystemApp,
       isFilterNonInternetApp: isFilterNonInternetApp,
-    ).sorted((a, b) {
-      final isSelectA = pinned.contains(a.packageName);
-      final isSelectB = pinned.contains(b.packageName);
+    ).toList(growable: false);
+    // List.sort is unstable; the source index keeps equal entries put.
+    final order = List<int>.generate(visible.length, (index) => index)
+      ..sort((a, b) {
+        final itemA = visible[a];
+        final itemB = visible[b];
+        final isSelectA = pinned.contains(itemA.packageName);
+        final isSelectB = pinned.contains(itemB.packageName);
 
-      if (isSelectA != isSelectB) {
-        return isSelectA ? -1 : 1;
-      }
-      return switch (sortType) {
-        AccessSortType.none => 0,
-        AccessSortType.name => a.label.compareTo(b.label),
-        AccessSortType.time => b.lastUpdateTime.compareTo(a.lastUpdateTime),
-      };
-    });
+        if (isSelectA != isSelectB) {
+          return isSelectA ? -1 : 1;
+        }
+        final compared = switch (sortType) {
+          AccessSortType.none => 0,
+          AccessSortType.name => itemA.label.compareTo(itemB.label),
+          AccessSortType.time => itemB.lastUpdateTime.compareTo(
+            itemA.lastUpdateTime,
+          ),
+        };
+        return compared != 0 ? compared : a.compareTo(b);
+      });
+    return [for (final index in order) visible[index]];
   }
 }
 

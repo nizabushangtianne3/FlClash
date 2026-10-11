@@ -27,6 +27,11 @@ throw stays catchable as an `Exception` and carries a stack trace. Assert on it
 with `isA<MessageException>().having((e) => e.message, 'message', ...)`, not on a
 raw string.
 
+`List.sort` is unstable past its insertion-sort size, so a list whose order belongs to the reader must break ties on
+the source index instead of returning `0`: `PackagesExt.getViewList` does that for the pin-first app list, and
+`sortOfDelay` in `lib/common/compute.dart` for the delay-sorted proxy groups. Without the tiebreak, equal entries —
+every unpinned app under `none`, every node still waiting on its first measurement — come back in an arbitrary order.
+
 ### Corner Radius
 
 Rounded corners are superellipses (continuous corners) everywhere, never circular arcs; when a component offers
@@ -215,6 +220,10 @@ leaving a repo-wide policy as a comment reaches only the reader of that one file
   used to mean "testing", which let a result and the state of a test overwrite each other and left cards spinning
   forever when the Core restarted. The run owns its keys and releases them in a `finally`, so nothing depends on a
   reply arriving; core status leaving `connected` cancels every run in flight.
+- Delay results are state, not an event stream that may discard a node's newest value. Core keeps the latest result per
+  `(test URL, proxy)`, wakes the batcher through a dedicated one-slot channel, and sends pending deltas only after the
+  platform delivery call succeeds. A delivery failure keeps the delta and re-arms the wake-up. The table follows the
+  applied proxy tree and is replayed when Android reattaches its listener.
 - Anything on the mihomo side that is reached from both a user-triggered core method and mihomo's own background
   scheduler needs its in-flight guard on the FlClash side. `updater.UpdateMMDB` and its siblings have none — only the
   batch `UpdateGeoDatabases` does — and two concurrent runs close the mmap'd database twice, so `handleUpdateGeoData`

@@ -31,7 +31,16 @@ String? profileUrlFromQrCodes(Iterable<String?> values) {
 }
 
 String? _installConfigUrl(Uri uri) {
-  return uri.host == 'install-config' ? uri.queryParameters['url'] : null;
+  if (uri.host != 'install-config') {
+    return null;
+  }
+  // A mangled percent-escape throws while the query is decoded, and the link a
+  // camera or the OS handed over is not worth an unhandled error.
+  try {
+    return uri.queryParameters['url'];
+  } catch (_) {
+    return null;
+  }
 }
 
 class LinkManager {

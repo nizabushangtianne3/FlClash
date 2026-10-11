@@ -271,6 +271,30 @@ void main() {
       }
     });
 
+    test('a delay event crosses the Android service channel intact', () async {
+      final listener = _RecordingListener();
+      Service().addListener(listener);
+      addTearDown(() => Service().removeListener(listener));
+
+      await emitFromPlatform([
+        {
+          'type': CoreEventType.delay.name,
+          'data': {
+            'name': 'HK-01',
+            'url': 'https://example.test/204',
+            'value': 42,
+          },
+        },
+      ]);
+
+      expect(listener.events.single.type, CoreEventType.delay);
+      expect(listener.events.single.data, {
+        'name': 'HK-01',
+        'url': 'https://example.test/204',
+        'value': 42,
+      });
+    });
+
     test('accepts a single event object as well as a list', () async {
       final listener = _RecordingListener();
       Service().addListener(listener);

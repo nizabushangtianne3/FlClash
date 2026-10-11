@@ -82,24 +82,28 @@ class Protocol {
   }
 
   void register(String scheme) {
-    final plan = ProtocolRegistrationPlan(
-      scheme: scheme,
-      executable: Platform.resolvedExecutable,
-    );
-    final regKey = CURRENT_USER.create(plan.protocolKey);
     try {
-      regKey.setValue(
-        plan.protocolValueName,
-        RegistryValue.string(plan.protocolValue),
+      final plan = ProtocolRegistrationPlan(
+        scheme: scheme,
+        executable: Platform.resolvedExecutable,
       );
-      final commandKey = regKey.create(plan.commandKey);
+      final regKey = CURRENT_USER.create(plan.protocolKey);
       try {
-        commandKey.setValue('', RegistryValue.string(plan.command));
+        regKey.setValue(
+          plan.protocolValueName,
+          RegistryValue.string(plan.protocolValue),
+        );
+        final commandKey = regKey.create(plan.commandKey);
+        try {
+          commandKey.setValue('', RegistryValue.string(plan.command));
+        } finally {
+          commandKey.close();
+        }
       } finally {
-        commandKey.close();
+        regKey.close();
       }
-    } finally {
-      regKey.close();
+    } catch (e) {
+      commonPrint.log('windows protocol registration failed: $e');
     }
   }
 

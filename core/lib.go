@@ -348,7 +348,9 @@ func setEventListener(listener unsafe.Pointer) {
 	eventListenerLock.Unlock()
 	if listener == nil {
 		stopRouteWatch()
+		return
 	}
+	replayLatestDelays()
 }
 
 func hasEventListener() bool {
@@ -376,13 +378,13 @@ func marshalResult(value any) string {
 	return string(data)
 }
 
-func deliverEvent(data []byte) {
+func deliverEvent(data []byte) bool {
 	eventListenerLock.RLock()
 	defer eventListenerLock.RUnlock()
 	if eventListener == nil {
-		return
+		return false
 	}
-	invokeResult(eventListener, string(data))
+	return invokeResult(eventListener, string(data))
 }
 
 //export stopTun

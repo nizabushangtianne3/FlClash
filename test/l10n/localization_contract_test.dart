@@ -64,4 +64,32 @@ void main() {
       }
     }
   });
+
+  test('every literal message carries the text its arb entry holds', () {
+    final english =
+        jsonDecode(File('arb/intl_en.arb').readAsStringSync())
+            as Map<String, dynamic>;
+    final literalKeys = [
+      for (final entry in english.entries)
+        if (!entry.key.startsWith('@') &&
+            entry.value is String &&
+            !(entry.value as String).contains('{'))
+          entry.key,
+    ];
+
+    expect(literalKeys, isNotEmpty, reason: 'the extraction broke');
+    for (final lookup in lookups.entries) {
+      final arb =
+          jsonDecode(File('arb/intl_${lookup.key}.arb').readAsStringSync())
+              as Map<String, dynamic>;
+      for (final key in literalKeys) {
+        expect(
+          Function.apply(lookup.value.messages[key]! as Function, const []),
+          arb[key],
+          reason:
+              '${lookup.key}.$key must be the regenerated text of its arb entry',
+        );
+      }
+    }
+  });
 }

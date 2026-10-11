@@ -1,7 +1,9 @@
 import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/interface.dart';
+import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/app.dart';
 import 'package:fl_clash/providers/database.dart';
+import 'package:fl_clash/providers/state.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/views/connection/connections.dart';
 import 'package:fl_clash/views/dashboard/widgets/connections.dart';
@@ -14,6 +16,15 @@ import '../../helpers/test_app.dart';
 import '../../helpers/test_profiles.dart';
 
 class MockCoreHandlerInterface extends Mock implements CoreHandlerInterface {}
+
+TrackerInfo _connection(String id) => TrackerInfo(
+  id: id,
+  start: DateTime(2024),
+  metadata: const Metadata(network: 'tcp', host: 'example.com'),
+  chains: const ['proxy-a'],
+  rule: 'MATCH',
+  rulePayload: '',
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -133,6 +144,29 @@ void main() {
 
     expect(countCalls, 1);
     expect(snapshotCalls, greaterThanOrEqualTo(1));
+
+    await teardownCard(tester);
+  });
+
+  testWidgets('closing the sheet releases its full snapshot', (tester) async {
+    when(
+      core.getConnections,
+    ).thenAnswer((_) async => [_connection('connection-1')]);
+
+    await pumpCard(tester, countReader: () async => 1);
+    await tester.tap(find.byType(ConnectionsCard));
+    await tester.pumpAndSettle();
+
+    expect(container.read(connectionsProvider).connections, hasLength(1));
+
+    Navigator.of(tester.element(find.byType(ConnectionsView))).pop();
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+
+    final snapshot = container.read(connectionsProvider);
+    expect(snapshot.count, 1);
+    expect(snapshot.connections, isEmpty);
 
     await teardownCard(tester);
   });

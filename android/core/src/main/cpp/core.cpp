@@ -149,19 +149,20 @@ static char *call_tun_interface_resolve_package_impl(void *tun_interface, const 
     return result;
 }
 
-static void call_invoke_interface_result_impl(void *invoke_interface, const char *data) {
+static int call_invoke_interface_result_impl(void *invoke_interface, const char *data) {
     if (invoke_interface == nullptr) {
-        return;
+        return 0;
     }
     ATTACH_JNI();
     const auto value = new_bytes(data);
     env->CallVoidMethod(static_cast<jobject>(invoke_interface),
                         m_invoke_interface_result,
                         value);
-    jni_clear_exception(env);
+    const bool delivered = !jni_clear_exception(env);
     if (value != nullptr) {
         env->DeleteLocalRef(value);
     }
+    return delivered ? 1 : 0;
 }
 
 extern "C"

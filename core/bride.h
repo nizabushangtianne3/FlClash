@@ -12,7 +12,7 @@ extern int (*resolve_uid_func)(void *tun_interface, int protocol, const char *so
 
 extern char* (*resolve_package_func)(void *tun_interface, int uid);
 
-extern void (*result_func)(void *invoke_Interface, const char *data);
+extern int (*result_func)(void *invoke_Interface, const char *data);
 
 extern int protect(void *tun_interface, int fd);
 
@@ -25,4 +25,4 @@ extern void release_object(void *obj);
 
 extern void free_string(char *data);
 
-extern void result(void *invoke_Interface,  const char *data);
+extern int result(void *invoke_Interface,  const char *data);

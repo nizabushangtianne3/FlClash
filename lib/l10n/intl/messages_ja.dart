@@ -602,7 +602,6 @@ class MessageLookup extends MessageLookupByLibrary {
     "ignoreBatteryOptimization": MessageLookupByLibrary.simpleMessage(
       "電池の最適化を無視",
     ),
-    "import": MessageLookupByLibrary.simpleMessage("インポート"),
     "importFile": MessageLookupByLibrary.simpleMessage("ファイルからインポート"),
     "importFromURL": MessageLookupByLibrary.simpleMessage("URLからインポート"),
     "importUrl": MessageLookupByLibrary.simpleMessage("URLからインポート"),

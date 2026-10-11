@@ -117,8 +117,19 @@ final request = Request();
 
 String? getFileNameForDisposition(String? disposition) {
   if (disposition == null) return null;
-  final parseValue = HeaderValue.parse(disposition);
-  final parameters = parseValue.parameters;
+  // A header the server mangled, or a percent-escape it broke, throws here.
+  // That is no reason to lose the download: the caller keeps its own label.
+  final Map<String, String?> parameters;
+  try {
+    parameters = HeaderValue.parse(disposition).parameters;
+  } catch (_) {
+    return null;
+  }
+  final fileNameKey = parameters.keys.firstWhere(
+    (key) => key == 'filename',
+    orElse: () => '',
+  );
+  final fallback = fileNameKey.isEmpty ? null : parameters[fileNameKey];
   final fileNamePointKey = parameters.keys.firstWhere(
     (key) => key == 'filename*',
     orElse: () => '',
@@ -126,13 +137,12 @@ String? getFileNameForDisposition(String? disposition) {
   if (fileNamePointKey.isNotEmpty) {
     final res = parameters[fileNamePointKey]?.split("''") ?? [];
     if (res.length >= 2) {
-      return Uri.decodeComponent(res[1]);
+      try {
+        return Uri.decodeComponent(res[1]);
+      } catch (_) {
+        return fallback;
+      }
     }
   }
-  final fileNameKey = parameters.keys.firstWhere(
-    (key) => key == 'filename',
-    orElse: () => '',
-  );
-  if (fileNameKey.isEmpty) return null;
-  return parameters[fileNameKey];
+  return fallback;
 }

@@ -277,10 +277,28 @@ class _HomePageViewState extends ConsumerState<_HomePageView> {
   @override
   void didUpdateWidget(covariant _HomePageView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.navigationItems.length != widget.navigationItems.length) {
+    if (!_sameNavigationLabels(
+      oldWidget.navigationItems,
+      widget.navigationItems,
+    )) {
       _order = null;
       _updatePageController();
     }
+  }
+
+  bool _sameNavigationLabels(
+    List<NavigationItem> previous,
+    List<NavigationItem> next,
+  ) {
+    if (previous.length != next.length) {
+      return false;
+    }
+    for (var index = 0; index < previous.length; index++) {
+      if (previous[index].label != next[index].label) {
+        return false;
+      }
+    }
+    return true;
   }
 
   int get _pageIndex {

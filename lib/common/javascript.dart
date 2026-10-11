@@ -7,6 +7,8 @@ import 'package:rust_api/rust_api.dart';
 typedef ScriptEvaluator =
     Future<String> Function({required String script, required String config});
 
+const _notAConfigMessage = 'script did not return a configuration object';
+
 @visibleForTesting
 ScriptEvaluator scriptEvaluator = evaluateScript;
 
@@ -26,11 +28,14 @@ Future<Map<String, dynamic>> handleEvaluate(
   } catch (e) {
     throw MessageException(e.toString());
   }
-  final decoded = json.decode(result);
+  final Object? decoded;
+  try {
+    decoded = json.decode(result);
+  } on FormatException {
+    throw const MessageException(_notAConfigMessage);
+  }
   if (decoded is! Map<String, dynamic>) {
-    throw const MessageException(
-      'script did not return a configuration object',
-    );
+    throw const MessageException(_notAConfigMessage);
   }
   return decoded;
 }

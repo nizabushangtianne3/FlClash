@@ -313,6 +313,26 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('delay events update the delay state', (tester) async {
+    final coreInterface = _coreInterface();
+    final container = await _pumpCoreManager(tester, coreInterface);
+
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.delay,
+        data: {'name': 'HK-01', 'url': 'https://example.test/204', 'value': 42},
+      ),
+    );
+    await tester.pump();
+    await tester.pump(renderThrottleDuration);
+
+    expect(container.read(delayDataSourceProvider), {
+      'https://example.test/204': {'HK-01': 42},
+    });
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('core dns queries are recorded and counted', (tester) async {
     final coreInterface = _coreInterface();
     final container = await _pumpCoreManager(tester, coreInterface);

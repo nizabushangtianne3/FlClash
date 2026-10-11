@@ -43,10 +43,12 @@ class CommonDialog extends ConsumerWidget {
       backgroundColor: backgroundColor,
       content: Container(
         constraints: BoxConstraints(
-          maxHeight: min(size.height - 40, 500),
+          // Before the first layout the size is zero, and a dialog opened then
+          // would hand BoxConstraints a negative maximum.
+          maxHeight: max(0, min(size.height - 40, 500)),
           maxWidth: 300,
         ),
-        width: size.width - 40,
+        width: max(0, size.width - 40),
         child: !overrideScroll ? SingleChildScrollView(child: child) : child,
       ),
     );

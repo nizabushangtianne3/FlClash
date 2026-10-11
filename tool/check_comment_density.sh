@@ -107,7 +107,19 @@ if [ "$#" -gt 0 ]; then
 else
   mode='hook'
   payload="$(cat)"
-  file="$(printf '%s' "$payload" | jq -r '.tool_input.file_path // .tool_response.filePath // empty' 2>/dev/null || true)"
+  if command -v jq >/dev/null 2>&1; then
+    file="$(printf '%s' "$payload" | jq -r '.tool_input.file_path // .tool_response.filePath // empty' 2>/dev/null || true)"
+  else
+    # jq is not on every machine a hook runs on — nothing ships one with Windows —
+    # and a payload this script then fails to read widens the gate to every changed
+    # file in the tree, so an unrelated dense file fails the edit that asked about
+    # another one. A JSON backslash arrives doubled, and git takes forward slashes.
+    file="$(printf '%s' "$payload" | sed -n 's/.*"file_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+    if [ -z "$file" ]; then
+      file="$(printf '%s' "$payload" | sed -n 's/.*"filePath"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+    fi
+    file="$(printf '%s' "$file" | sed 's|\\\\|/|g')"
+  fi
   if [ -n "$file" ]; then
     findings="$(collect "$file")"
   else

@@ -362,6 +362,65 @@ void main() {
     }
   });
 
+  test('the app and the core agree on the service checker names', () {
+    final app = File('lib/common/service_probe.dart').readAsStringSync();
+    final core = File('core/service_check.go').readAsStringSync();
+    final targets = _enumValues(app, 'ServiceTarget', r"^\s+\w+\('([^']+)'");
+    final registered = RegExp(
+      r'\{name: "([^"]+)"',
+    ).allMatches(core).map((match) => match.group(1)!).toSet();
+
+    expect(targets, isNotEmpty, reason: 'ServiceTarget must name its checks');
+    expect(registered, isNotEmpty, reason: 'the core must register checks');
+    expect(
+      targets,
+      registered,
+      reason: 'a target the core does not register can only ever fail',
+    );
+  });
+
+  test('every dns and ntp override names a key the core reads', () {
+    final app = File('lib/enum/enum.dart').readAsStringSync();
+    final core = File('core/Clash.Meta/config/config.go').readAsStringSync();
+    final dnsKeys = _dartEnumPaths(app, 'DnsOverrideKey');
+    final ntpKeys = _dartEnumPaths(app, 'NtpOverrideKey');
+    final coreDns = _goYamlTags(core, 'RawDNS');
+    final coreNtp = _goYamlTags(core, 'RawNTP');
+    final coreFallbackFilter = _goYamlTags(core, 'RawFallbackFilter');
+    const fallbackFilterPrefix = 'fallback-filter.';
+
+    expect(dnsKeys, isNotEmpty, reason: 'reading DnsOverrideKey broke');
+    expect(ntpKeys, isNotEmpty, reason: 'reading NtpOverrideKey broke');
+    expect(
+      dnsKeys
+          .where((key) => !key.startsWith(fallbackFilterPrefix))
+          .toSet()
+          .difference(coreDns),
+      isEmpty,
+      reason:
+          'A dns override the core does not read silently does nothing. '
+          'The core reads: $coreDns',
+    );
+    expect(
+      dnsKeys
+          .where((key) => key.startsWith(fallbackFilterPrefix))
+          .map((key) => key.substring(fallbackFilterPrefix.length))
+          .toSet()
+          .difference(coreFallbackFilter),
+      isEmpty,
+      reason:
+          'A fallback filter the core does not read silently does nothing. '
+          'The core reads: $coreFallbackFilter',
+    );
+    expect(
+      ntpKeys.difference(coreNtp),
+      isEmpty,
+      reason:
+          'An ntp override the core does not read silently does nothing. '
+          'The core reads: $coreNtp',
+    );
+  });
+
   test('the app and the core agree on the maps it builds by hand', () {
     final app = File('lib/core/interface.dart').readAsStringSync();
     final core = File('core/constant.go').readAsStringSync();
@@ -681,6 +740,33 @@ Set<String> _quotedValues(String source, String pattern) {
     pattern,
     multiLine: true,
   ).allMatches(source).map((match) => match.group(1)!).toSet();
+}
+
+Set<String> _dartEnumPaths(String source, String name) {
+  final body = RegExp(
+    'enum $name \\{(.*?)\\n\\}',
+    dotAll: true,
+  ).firstMatch(source);
+  if (body == null) {
+    fail('could not read enum $name from the app sources');
+  }
+  return RegExp(
+    r"^\s+\w+\('([^']+)'\)",
+    multiLine: true,
+  ).allMatches(body.group(1)!).map((match) => match.group(1)!).toSet();
+}
+
+Set<String> _goYamlTags(String source, String structName) {
+  final body = RegExp(
+    'type $structName struct \\{(.*?)\\n\\}',
+    dotAll: true,
+  ).firstMatch(source);
+  if (body == null) {
+    fail('could not read struct $structName from the core sources');
+  }
+  return RegExp(
+    r'yaml:"([^",]+)',
+  ).allMatches(body.group(1)!).map((match) => match.group(1)!).toSet();
 }
 
 String _dartConst(String source, String name) {

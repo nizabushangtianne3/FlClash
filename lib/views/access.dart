@@ -252,10 +252,9 @@ class _AccessViewState extends ConsumerState<AccessView> {
       final data = await Clipboard.getData('text/plain');
       final text = data?.text;
       if (text == null) return;
-      final list = text.split('\n');
       ref
           .read(accessControlStateProvider.notifier)
-          .update((state) => state.copyWithNewList(list.toSet().toList()));
+          .update((state) => state.copyWithNewList(text.uniqueTrimmedLines));
     });
   }
 

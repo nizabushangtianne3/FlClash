@@ -135,6 +135,22 @@ void main() {
     });
   });
 
+  group('proxyEnvCommand', () {
+    test('writes a PowerShell assignment its parser accepts', () {
+      expect(
+        proxyEnvCommand(7890, isWindows: true),
+        r"$env:all_proxy='http://127.0.0.1:7890'",
+      );
+    });
+
+    test('keeps the export form for the other platforms', () {
+      expect(
+        proxyEnvCommand(7890, isWindows: false),
+        'export all_proxy=http://127.0.0.1:7890',
+      );
+    });
+  });
+
   group('getViewMode', () {
     test('mobile for small width', () {
       expect(getViewMode(400).name, 'mobile');
@@ -352,6 +368,22 @@ void main() {
 
     test('returns null when no filename parameter is present', () {
       expect(getFileNameForDisposition('attachment'), isNull);
+    });
+
+    test('keeps the download when the header cannot be parsed', () {
+      expect(
+        getFileNameForDisposition('attachment; filename="unclosed'),
+        isNull,
+      );
+    });
+
+    test('falls back to filename when the escape is broken', () {
+      expect(
+        getFileNameForDisposition(
+          "attachment; filename=\"fallback.yaml\"; filename*=UTF-8''%ZZ.yaml",
+        ),
+        'fallback.yaml',
+      );
     });
   });
 }

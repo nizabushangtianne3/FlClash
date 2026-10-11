@@ -64,6 +64,7 @@ void main() {
     );
     addTearDown(container.dispose);
     globalState.container = container;
+    container.read(viewSizeProvider.notifier).value = size;
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
@@ -94,6 +95,20 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Office'), findsOneWidget);
     expect(find.text('SSIDs are empty'), findsNothing);
+  });
+
+  testWidgets('renaming an SSID keeps it where the reader put it', (
+    tester,
+  ) async {
+    await pumpView(tester, ssids: ['Home', 'Office', 'Cafe']);
+
+    await tester.tap(find.text('Office'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), 'Work');
+    await tester.tap(find.text('Submit'));
+    await tester.pumpAndSettle();
+
+    expect(container.read(excludeSSIDsProvider), ['Home', 'Work', 'Cafe']);
   });
 
   testWidgets('selecting an item swaps the header into selection mode', (

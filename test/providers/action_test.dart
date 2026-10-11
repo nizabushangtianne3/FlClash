@@ -26,10 +26,11 @@ class _RecordingProfilesAction extends ProfilesAction {
   final updated = <int>[];
 
   @override
-  Future<void> updateProfile(
+  Future<void> updateProfileNow(
     Profile profile, {
     bool showLoading = false,
     Iterable<int> renameIn = const [],
+    bool applyProfileState = true,
   }) async {
     updated.add(profile.id);
   }
@@ -41,14 +42,66 @@ class _PartiallyFailingProfilesAction extends _RecordingProfilesAction {
   final Set<int> failing;
 
   @override
-  Future<void> updateProfile(
+  Future<void> updateProfileNow(
     Profile profile, {
     bool showLoading = false,
     Iterable<int> renameIn = const [],
+    bool applyProfileState = true,
   }) async {
     updated.add(profile.id);
     if (failing.contains(profile.id)) {
       throw Exception('subscription is down');
+    }
+  }
+}
+
+class _BlockingProfilesAction extends _RecordingProfilesAction {
+  final release = Completer<void>();
+
+  @override
+  Future<void> updateProfileNow(
+    Profile profile, {
+    bool showLoading = false,
+    Iterable<int> renameIn = const [],
+    bool applyProfileState = true,
+  }) async {
+    updated.add(profile.id);
+    await release.future;
+  }
+}
+
+class _QueueingProfilesAction extends ProfilesAction {
+  final gate = Completer<void>();
+  final runs = <String>[];
+
+  @override
+  Future<void> updateProfileNow(
+    Profile profile, {
+    bool showLoading = false,
+    Iterable<int> renameIn = const [],
+    bool applyProfileState = true,
+  }) async {
+    runs.add(profile.label);
+    if (runs.length == 1) {
+      await gate.future;
+    }
+  }
+}
+
+class _StatefulQueueProfilesAction extends ProfilesAction {
+  final gate = Completer<void>();
+  final calls = <({bool applyProfileState, String label})>[];
+
+  @override
+  Future<void> updateProfileNow(
+    Profile profile, {
+    bool showLoading = false,
+    Iterable<int> renameIn = const [],
+    bool applyProfileState = true,
+  }) async {
+    calls.add((applyProfileState: applyProfileState, label: profile.label));
+    if (calls.length == 1) {
+      await gate.future;
     }
   }
 }
@@ -61,6 +114,157 @@ void main() {
   });
 
   group('ProfilesAction', () {
+    test('only update state decides whether a sweep must run again', () {
+      final profiles = [
+        Profile.normal(label: 'One', url: 'https://example.com/a'),
+        Profile.normal(label: 'Two', url: 'https://example.com/b'),
+      ];
+
+      expect(
+        sameProfileUpdateState(profiles, [
+          profiles.first.copyWith(
+            label: 'Renamed',
+            selectedMap: const {'Group': 'Proxy'},
+          ),
+          profiles.last,
+        ]),
+        isTrue,
+        reason: 'a node switch is not a subscription change',
+      );
+      expect(
+        sameProfileUpdateState(profiles, List.of(profiles.reversed)),
+        isTrue,
+      );
+      expect(
+        sameProfileUpdateState(profiles, [
+          profiles.first.copyWith(url: 'https://example.com/changed'),
+          profiles.last,
+        ]),
+        isFalse,
+      );
+      expect(
+        sameProfileUpdateState(profiles, [...profiles, profiles.first]),
+        isFalse,
+      );
+    });
+
+    test('a completed download merges into the latest profile state', () {
+      final original = Profile.normal(
+        label: 'Old',
+        url: 'https://example.com/old',
+      );
+      final current = original.copyWith(
+        label: 'User name',
+        url: 'https://example.com/user-edited',
+        selectedMap: const {'Group': 'New node'},
+        subscriptionInfo: const SubscriptionInfo(upload: 3, download: 4),
+        lastUpdateDate: DateTime(2026, 10, 10),
+      );
+      final updated = original.copyWith(
+        label: 'Server name',
+        subscriptionInfo: const SubscriptionInfo(upload: 1, download: 2),
+        lastUpdateDate: DateTime(2026, 10, 11),
+      );
+
+      final merged = mergeUpdatedProfile(
+        original: original,
+        current: current,
+        updated: updated,
+      );
+
+      expect(merged.label, 'User name');
+      expect(merged.url, current.url);
+      expect(merged.selectedMap, current.selectedMap);
+      expect(merged.subscriptionInfo, updated.subscriptionInfo);
+      expect(merged.lastUpdateDate, updated.lastUpdateDate);
+
+      final unchangedLabel = mergeUpdatedProfile(
+        original: original,
+        current: original,
+        updated: updated,
+      );
+      expect(unchangedLabel.label, 'Server name');
+
+      final requested = mergeRequestedProfile(
+        requested: original,
+        current: current,
+      );
+      expect(requested.subscriptionInfo, current.subscriptionInfo);
+      expect(requested.lastUpdateDate, current.lastUpdateDate);
+    });
+
+    test('a download whose URL was replaced does not apply to the Core', () {
+      final profile = Profile.normal(
+        label: 'One',
+        url: 'https://example.com/old',
+      );
+      final changed = profile.copyWith(url: 'https://example.com/new');
+
+      expect(
+        shouldApplyUpdatedProfile(
+          downloaded: profile,
+          latest: profile,
+          currentProfileId: profile.id,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldApplyUpdatedProfile(
+          downloaded: profile,
+          latest: changed,
+          currentProfileId: profile.id,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldApplyUpdatedProfile(
+          downloaded: profile,
+          latest: profile,
+          currentProfileId: null,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a queued edit preserves changes made while it waits', () async {
+      final original = Profile.normal(
+        label: 'Old',
+        url: 'https://example.com/old',
+      );
+      final edited = original.copyWith(
+        label: 'Edited',
+        url: 'https://example.com/edited',
+      );
+      final action = _StatefulQueueProfilesAction();
+      final container = ProviderContainer(
+        overrides: [
+          profilesProvider.overrideWith(() => TestProfiles([original])),
+          profilesActionProvider.overrideWith(() => action),
+        ],
+      );
+      addTearDown(container.dispose);
+      final profilesAction = container.read(profilesActionProvider.notifier);
+      final profiles =
+          container.read(profilesProvider.notifier) as TestProfiles;
+
+      final first = profilesAction.updateProfile(original);
+      profiles.put(
+        original.copyWith(selectedMap: const {'Group': 'Current node'}),
+      );
+      final second = profilesAction.updateProfile(edited);
+
+      final queuedProfile = container.read(profilesProvider).single;
+      expect(queuedProfile.label, 'Edited');
+      expect(queuedProfile.url, edited.url);
+      expect(queuedProfile.selectedMap, {'Group': 'Current node'});
+
+      action.gate.complete();
+      await Future.wait([first, second]);
+
+      expect(action.calls.map((call) => call.applyProfileState), [true, false]);
+      expect(action.calls.map((call) => call.label), ['Old', 'Edited']);
+    });
+
     test('auto update sweeps only the subscriptions that are due', () async {
       final now = DateTime.now();
       final due = Profile(
@@ -97,6 +301,31 @@ void main() {
           .autoUpdateProfiles();
 
       expect(action.updated, [due.id]);
+    });
+
+    test('auto update skips profiles waiting out a retry', () async {
+      final now = DateTime.now();
+      final due = Profile(
+        id: 1,
+        url: 'https://example.com/a',
+        autoUpdateDuration: const Duration(hours: 1),
+        lastUpdateDate: now.subtract(const Duration(hours: 2)),
+      );
+      final action = _RecordingProfilesAction();
+      final container = ProviderContainer(
+        overrides: [
+          profilesProvider.overrideWith(() => TestProfiles([due])),
+          profilesActionProvider.overrideWith(() => action),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final failed = await container
+          .read(profilesActionProvider.notifier)
+          .autoUpdateProfiles(skipProfileIds: {due.id});
+
+      expect(action.updated, isEmpty);
+      expect(failed, isEmpty);
     });
 
     test('keeps edited profile data when remote update fails', () async {
@@ -152,6 +381,105 @@ void main() {
 
       expect(action.updated, containsAll([broken.id, healthy.id]));
       expect(messages.map((message) => message.label), ['Broken']);
+    });
+
+    test('a second sweep joins the one already running', () async {
+      final profile = Profile.normal(
+        label: 'One',
+        url: 'https://example.com/a',
+      );
+      final action = _BlockingProfilesAction();
+      final container = ProviderContainer(
+        overrides: [
+          profilesProvider.overrideWith(() => TestProfiles([profile])),
+          profilesActionProvider.overrideWith(() => action),
+        ],
+      );
+      addTearDown(container.dispose);
+      final profilesAction = container.read(profilesActionProvider.notifier);
+
+      final first = profilesAction.updateProfiles();
+      final second = profilesAction.updateProfiles();
+
+      expect(identical(first, second), isTrue);
+      action.release.complete();
+      await Future.wait([first, second]);
+      expect(action.updated, [profile.id]);
+    });
+
+    test('a profile runs only the latest update waiting behind one', () async {
+      const old = Profile(
+        id: 1,
+        label: 'old',
+        autoUpdateDuration: Duration(hours: 1),
+      );
+      const middle = Profile(
+        id: 1,
+        label: 'middle',
+        autoUpdateDuration: Duration(hours: 1),
+      );
+      const latest = Profile(
+        id: 1,
+        label: 'latest',
+        autoUpdateDuration: Duration(hours: 1),
+      );
+      final action = _QueueingProfilesAction();
+      final container = ProviderContainer(
+        overrides: [
+          profilesProvider.overrideWith(() => TestProfiles([old])),
+          profilesActionProvider.overrideWith(() => action),
+        ],
+      );
+      addTearDown(container.dispose);
+      final profilesAction = container.read(profilesActionProvider.notifier);
+
+      final first = profilesAction.updateProfile(old);
+      final second = profilesAction.updateProfile(middle);
+      final third = profilesAction.updateProfile(latest);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(action.runs, ['old']);
+
+      action.gate.complete();
+      await Future.wait([first, second, third]);
+
+      expect(action.runs, ['old', 'latest']);
+    });
+
+    test('a sweep picks up a profile added while it runs', () async {
+      final firstProfile = Profile.normal(
+        label: 'One',
+        url: 'https://example.com/a',
+      );
+      final addedProfile = Profile.normal(
+        label: 'Two',
+        url: 'https://example.com/b',
+      );
+      final action = _BlockingProfilesAction();
+      final container = ProviderContainer(
+        overrides: [
+          profilesProvider.overrideWith(() => TestProfiles([firstProfile])),
+          profilesActionProvider.overrideWith(() => action),
+        ],
+      );
+      addTearDown(container.dispose);
+      final profilesAction = container.read(profilesActionProvider.notifier);
+      final profiles =
+          container.read(profilesProvider.notifier) as TestProfiles;
+
+      final first = profilesAction.updateProfiles();
+      profiles.put(addedProfile);
+      final second = profilesAction.updateProfiles();
+
+      expect(identical(first, second), isTrue);
+      action.release.complete();
+      await first;
+
+      expect(action.updated, [
+        firstProfile.id,
+        firstProfile.id,
+        addedProfile.id,
+      ]);
     });
 
     test('updates selection, inserts first profile, and reorders profiles', () {
@@ -638,6 +966,33 @@ void main() {
   });
 
   group('SetupAction', () {
+    test('a full setup clears stale delay state', () async {
+      final action = _TestSetupAction();
+      final container = ProviderContainer(
+        overrides: [
+          initProvider.overrideWithBuild((_, _) => true),
+          setupActionProvider.overrideWith(() => action),
+        ],
+      );
+      addTearDown(container.dispose);
+      container
+          .read(delayDataSourceProvider.notifier)
+          .setDelay(
+            const Delay(
+              name: 'HK-01',
+              url: 'https://example.test/204',
+              value: 42,
+            ),
+          );
+
+      expect(
+        await container.read(setupActionProvider.notifier).fullSetup(),
+        isTrue,
+      );
+
+      expect(container.read(delayDataSourceProvider), isEmpty);
+    });
+
     group('rapid status changes', () {
       test('updates runtime and traffic while core start is pending', () async {
         final startCompleter = Completer<bool>();

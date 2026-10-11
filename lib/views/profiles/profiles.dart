@@ -25,13 +25,7 @@ class ProfilesView extends ConsumerStatefulWidget {
 }
 
 class _ProfilesViewState extends ConsumerState<ProfilesView> {
-  Function? applyConfigDebounce;
   bool _isUpdating = false;
-
-  @override
-  void initState() {
-    super.initState();
-  }
 
   Future<void> _updateProfiles() async {
     if (_isUpdating) {

@@ -369,11 +369,66 @@ func TestSendMessageBatchWrapsMessagesInMethodCall(t *testing.T) {
 	if err := json.Unmarshal(call.Arguments, &decoded); err != nil {
 		t.Fatalf("arguments are not a message list: %v", err)
 	}
-	if len(decoded) != 2 {
-		t.Fatalf("decoded %d messages, want 2", len(decoded))
+	if len(decoded) != 1 {
+		t.Fatalf("decoded %d messages, want only the retained log", len(decoded))
 	}
-	if decoded[0].Type != DelayMessage || decoded[1].Type != LogMessage {
-		t.Errorf("decoded types = %s,%s, want delay,log", decoded[0].Type, decoded[1].Type)
+	if decoded[0].Type != LogMessage {
+		t.Errorf("decoded type = %s, want log", decoded[0].Type)
+	}
+}
+
+func TestFailedDelayDeliveryKeepsPendingState(t *testing.T) {
+	resetDelayDeliveryState()
+	t.Cleanup(resetDelayDeliveryState)
+
+	delay := Delay{
+		Url:   "https://example.test",
+		Name:  "node-a",
+		Value: 20,
+	}
+	if !recordDelayUpdate(delay, proxiesGeneration.Load()) {
+		t.Fatal("a current delay result was rejected")
+	}
+	wakeUps := make(chan struct{}, 1)
+
+	previous := swapConn(nil)
+	sendMessageBatchWithWakeUp([]Message{{Type: DelayMessage}}, wakeUps)
+	swapConn(previous)
+
+	if pending := pendingDelayDelays(); len(pending) != 1 || pending[0] != delay {
+		t.Fatalf("pending delays after a failed delivery = %+v, want [%+v]", pending, delay)
+	}
+	// A failed delivery re-arms the local wake-up; the process-wide batcher
+	// may consume the global signal immediately, so a local channel is used
+	// to keep this assertion deterministic.
+	if len(wakeUps) != 1 {
+		t.Fatal("a failed delivery did not re-arm the delay wake-up")
+	}
+}
+
+func TestFailedReplayKeepsPendingState(t *testing.T) {
+	resetDelayDeliveryState()
+	t.Cleanup(resetDelayDeliveryState)
+
+	delay := Delay{
+		Url:   "https://example.test",
+		Name:  "node-a",
+		Value: 20,
+	}
+	if !recordDelayUpdate(delay, proxiesGeneration.Load()) {
+		t.Fatal("a current delay result was rejected")
+	}
+
+	wakeUps := make(chan struct{}, 1)
+	previous := swapConn(nil)
+	replayLatestDelaysWithWakeUp(wakeUps)
+	swapConn(previous)
+
+	if pending := pendingDelayDelays(); len(pending) != 1 || pending[0] != delay {
+		t.Fatalf("pending delays after a failed replay = %+v, want [%+v]", pending, delay)
+	}
+	if len(wakeUps) != 1 {
+		t.Fatal("a failed replay did not re-arm the delay wake-up")
 	}
 }
 

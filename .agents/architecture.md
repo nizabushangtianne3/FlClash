@@ -192,9 +192,13 @@ remain strings.
 Go event delivery is intentionally non-blocking:
 
 - Loaded-provider, geo-update, and route-changed events use a state queue that never evicts; the rules for it are under
-  Core API Safety in `.agents/rules.md`. Every other event except the bulk kinds, delay included, uses a 256-entry
-  priority queue. Desktop process crashes are generated locally by `CoreService` from lifecycle failures rather than
-  sent through the Go queue.
+  Core API Safety in `.agents/rules.md`. Delay updates are stored in Core as the latest value for every
+  `(test URL, proxy)` pair. A dedicated one-slot wake-up channel outside the bounded queues wakes the batcher, and a
+  wake-up batch is replaced by the pending delta for that state table, so a suspended host cannot evict a node's newest
+  state or make a large test resend the whole table once per result. Pending deltas are cleared only after the platform
+  delivery call succeeds; a failed delivery re-arms the wake-up. The table follows the applied proxy tree and is cleared
+  when that tree's generation changes. Every other event except the bulk kinds uses the priority queue. Desktop process
+  crashes are generated locally by `CoreService` from lifecycle failures rather than sent through the Go queue.
 - High-volume log, request/connection, and DNS query events use a separate 256-entry bulk queue, so bulk floods cannot
   evict state.
 - A full priority or bulk queue evicts only its own oldest event and retries the newest; DNS events never evict. Core
@@ -203,7 +207,8 @@ Go event delivery is intentionally non-blocking:
   guaranteed after eight priority messages to prevent starvation.
 - `sendMessage` drops an event before it is queued when `hasEventListener` is false. That only happens on Android, after
   the Flutter engine detaches while the service keeps the Core running; request and DNS events would otherwise be
-  encoded per connection and per query for nobody.
+  encoded per connection and per query for nobody. Delay results are recorded before that check without queueing a
+  wake-up, and a reattached listener receives the full recorded state immediately.
 
 DNS query events come from the Clash.Meta fork's `dns/patch.go` and are raised where mihomo writes its `[DNS]` debug
 log, so the DNS page lists the same resolutions: one event per cache hit, and one per upstream exchange however many

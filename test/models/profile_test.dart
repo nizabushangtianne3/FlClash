@@ -28,6 +28,30 @@ void main() {
       expect(info.total, 0);
       expect(info.expire, 0);
     });
+
+    test('survives the stray separators a panel may send', () {
+      final info = SubscriptionInfo.formHString(
+        'upload=10; ; =20; download=30; total=100; expire=200;',
+      );
+
+      expect(info.upload, 10);
+      expect(info.download, 30);
+      expect(info.total, 100);
+      expect(info.expire, 200);
+    });
+
+    test('reads the expiry only when a date can hold it', () {
+      expect(
+        SubscriptionInfo.formHString('expire=1704067200').expireDate,
+        DateTime.fromMillisecondsSinceEpoch(1704067200000),
+      );
+      expect(SubscriptionInfo.formHString('expire=0').expireDate, isNull);
+      expect(SubscriptionInfo.formHString('expire=-1').expireDate, isNull);
+      expect(
+        SubscriptionInfo.formHString('expire=999999999999999').expireDate,
+        isNull,
+      );
+    });
   });
 
   group('ProfileExtension', () {

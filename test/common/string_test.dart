@@ -238,4 +238,19 @@ void main() {
       expect(''.take(3), '');
     });
   });
+
+  group('StringExtension.uniqueTrimmedLines', () {
+    test('drops the CR, the blank lines and the repeats', () {
+      expect(
+        'com.example.a\r\n\r\n  com.example.b  \r\ncom.example.a\r\n'
+            .uniqueTrimmedLines,
+        ['com.example.a', 'com.example.b'],
+      );
+    });
+
+    test('returns nothing for an empty or blank text', () {
+      expect(''.uniqueTrimmedLines, isEmpty);
+      expect('\n \r\n'.uniqueTrimmedLines, isEmpty);
+    });
+  });
 }

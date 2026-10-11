@@ -76,17 +76,36 @@ Duration nextAutoUpdateRetryDelay(Duration previous) {
   return doubled > _autoUpdateRetryCap ? _autoUpdateRetryCap : doubled;
 }
 
-Duration? nextProfileAutoUpdateDelay(Iterable<Profile> profiles, DateTime now) {
+/// The nearest due time outside the profiles a failed sweep is backing off.
+Duration? nextAutoUpdateSweepDelay({
+  required Iterable<Profile> profiles,
+  required DateTime now,
+  required Map<int, DateTime> retryNotBefore,
+}) {
   Duration? next;
   for (final profile in profiles) {
     if (!profile.realAutoUpdate) {
       continue;
     }
-    final lastUpdateDate = profile.lastUpdateDate;
-    if (lastUpdateDate == null || profile.isAutoUpdateDue(now)) {
+    final due = profile.lastUpdateDate == null || profile.isAutoUpdateDue(now);
+    final retryTime = retryNotBefore[profile.id];
+    if (retryTime != null) {
+      if (!due) {
+        continue;
+      }
+      final remaining = retryTime.difference(now);
+      if (remaining <= Duration.zero) {
+        return Duration.zero;
+      }
+      if (next == null || remaining < next) {
+        next = remaining;
+      }
+      continue;
+    }
+    if (due) {
       return Duration.zero;
     }
-    final delay = lastUpdateDate
+    final delay = profile.lastUpdateDate!
         .add(profile.autoUpdateDuration)
         .difference(now);
     if (next == null || delay < next) {
@@ -94,6 +113,31 @@ Duration? nextProfileAutoUpdateDelay(Iterable<Profile> profiles, DateTime now) {
     }
   }
   return next;
+}
+
+bool connectivityBecameAvailable(
+  Set<ConnectivityResult> previous,
+  Set<ConnectivityResult> current,
+) {
+  bool hasNetwork(Set<ConnectivityResult> results) =>
+      results.any((result) => result != ConnectivityResult.none);
+  return previous.isNotEmpty && !hasNetwork(previous) && hasNetwork(current);
+}
+
+@visibleForTesting
+Set<int> changedAutoUpdateProfileIds(
+  List<Profile> previous,
+  List<Profile> next,
+) {
+  final previousById = {for (final profile in previous) profile.id: profile};
+  final nextById = {for (final profile in next) profile.id: profile};
+  return {
+    for (final id in previousById.keys.toSet().union(nextById.keys.toSet()))
+      if (previousById[id] == null ||
+          nextById[id] == null ||
+          profileUpdateStateChanged(previousById[id]!, nextById[id]!))
+        id,
+  };
 }
 
 Widget _backButtonIcon(BuildContext context) =>
@@ -104,7 +148,8 @@ Widget _closeButtonIcon(BuildContext context) =>
 
 class ApplicationState extends ConsumerState<Application> {
   Timer? _autoUpdateProfilesTaskTimer;
-  Duration _autoUpdateRetryDelay = _autoUpdateRetryFloor;
+  final _autoUpdateRetryDelays = <int, Duration>{};
+  final _autoUpdateRetryNotBefore = <int, DateTime>{};
   Set<ConnectivityResult>? _previousConnectivity;
 
   final _pageTransitionsTheme = const PageTransitionsTheme(
@@ -123,7 +168,8 @@ class ApplicationState extends ConsumerState<Application> {
   @override
   void initState() {
     super.initState();
-    ref.listenManual(profilesProvider, (_, _) {
+    ref.listenManual(profilesProvider, (previous, next) {
+      _clearBackoffForChangedProfiles(previous ?? const [], next);
       _scheduleAutoUpdateProfilesTask();
     });
     SystemNavigator.setFrameworkHandlesBack(true);
@@ -139,6 +185,22 @@ class ApplicationState extends ConsumerState<Application> {
         unawaited(app?.initShortcuts());
       }
     });
+  }
+
+  void _clearBackoffForChangedProfiles(
+    List<Profile> previous,
+    List<Profile> next,
+  ) {
+    if (_autoUpdateRetryNotBefore.isEmpty) {
+      return;
+    }
+    final changed = changedAutoUpdateProfileIds(previous, next);
+    for (final id in _autoUpdateRetryNotBefore.keys.toList()) {
+      if (changed.contains(id)) {
+        _autoUpdateRetryDelays.remove(id);
+        _autoUpdateRetryNotBefore.remove(id);
+      }
+    }
   }
 
   void _initLink() {
@@ -170,45 +232,75 @@ class ApplicationState extends ConsumerState<Application> {
     });
   }
 
-  void _scheduleAutoUpdateProfilesTask({Duration? minimumDelay}) {
+  void _scheduleAutoUpdateProfilesTask() {
     _autoUpdateProfilesTaskTimer?.cancel();
     _autoUpdateProfilesTaskTimer = null;
-    final delay = nextProfileAutoUpdateDelay(
-      ref.read(profilesProvider),
-      DateTime.now(),
+    final delay = nextAutoUpdateSweepDelay(
+      profiles: ref.read(profilesProvider),
+      now: DateTime.now(),
+      retryNotBefore: _autoUpdateRetryNotBefore,
     );
     if (delay == null) {
       return;
     }
-    final effectiveDelay = minimumDelay != null && delay < minimumDelay
-        ? minimumDelay
-        : delay;
     _autoUpdateProfilesTaskTimer = Timer(
-      effectiveDelay,
+      delay,
       () => unawaited(_runAutoUpdateProfilesTask()),
     );
   }
 
   Future<void> _runAutoUpdateProfilesTask() async {
-    await ref.read(profilesActionProvider.notifier).autoUpdateProfiles();
+    final startedAt = DateTime.now();
+    final skipProfileIds = {
+      for (final entry in _autoUpdateRetryNotBefore.entries)
+        if (entry.value.isAfter(startedAt)) entry.key,
+    };
+    final failed = await ref
+        .read(profilesActionProvider.notifier)
+        .autoUpdateProfiles(skipProfileIds: skipProfileIds);
     if (!mounted) {
       return;
     }
-    // An attempt that failed leaves its subscription due, and waiting the same
-    // few minutes again would keep a dead link busy all day.
-    final stillDue =
-        nextProfileAutoUpdateDelay(
-          ref.read(profilesProvider),
-          DateTime.now(),
-        ) ==
-        Duration.zero;
-    if (!stillDue) {
-      _autoUpdateRetryDelay = _autoUpdateRetryFloor;
+    final finishedAt = DateTime.now();
+    final profiles = ref.read(profilesProvider);
+    bool stillDue(int id) {
+      final profile = profiles.getProfile(id);
+      return profile != null &&
+          profile.realAutoUpdate &&
+          profile.isAutoUpdateDue(finishedAt);
+    }
+
+    final nextDelays = <int, Duration>{};
+    final nextRetryNotBefore = <int, DateTime>{};
+    for (final entry in _autoUpdateRetryNotBefore.entries) {
+      if (skipProfileIds.contains(entry.key) && stillDue(entry.key)) {
+        nextDelays[entry.key] =
+            _autoUpdateRetryDelays[entry.key] ?? _autoUpdateRetryFloor;
+        nextRetryNotBefore[entry.key] = entry.value;
+      }
+    }
+    for (final id in failed) {
+      if (!stillDue(id)) {
+        continue;
+      }
+      final previousDelay = _autoUpdateRetryDelays[id];
+      final delay = previousDelay == null
+          ? _autoUpdateRetryFloor
+          : nextAutoUpdateRetryDelay(previousDelay);
+      nextDelays[id] = delay;
+      nextRetryNotBefore[id] = finishedAt.add(delay);
+    }
+    _autoUpdateRetryDelays
+      ..clear()
+      ..addAll(nextDelays);
+    _autoUpdateRetryNotBefore
+      ..clear()
+      ..addAll(nextRetryNotBefore);
+    if (_autoUpdateRetryNotBefore.isEmpty) {
       _scheduleAutoUpdateProfilesTask();
       return;
     }
-    _autoUpdateRetryDelay = nextAutoUpdateRetryDelay(_autoUpdateRetryDelay);
-    _scheduleAutoUpdateProfilesTask(minimumDelay: _autoUpdateRetryDelay);
+    _scheduleAutoUpdateProfilesTask();
   }
 
   Future<void> _handleConnectivityChanged(
@@ -225,6 +317,14 @@ class ApplicationState extends ConsumerState<Application> {
     commonPrint.log('connectivityChanged ${results.toString()}');
     unawaited(systemDnsCoordinator?.resync() ?? Future.value());
     unawaited(ref.read(systemActionProvider.notifier).updateLocalIp());
+    if (connectivityBecameAvailable(
+      previousConnectivity ?? const {},
+      currentConnectivity,
+    )) {
+      _autoUpdateRetryDelays.clear();
+      _autoUpdateRetryNotBefore.clear();
+      _scheduleAutoUpdateProfilesTask();
+    }
     final hasVpn = currentConnectivity.contains(ConnectivityResult.vpn);
     final hadVpn = previousConnectivity?.contains(ConnectivityResult.vpn);
     if (hadVpn != null && hadVpn != hasVpn) {

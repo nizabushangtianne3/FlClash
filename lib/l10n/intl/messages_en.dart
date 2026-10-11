@@ -715,7 +715,6 @@ class MessageLookup extends MessageLookupByLibrary {
     "ignoreBatteryOptimization": MessageLookupByLibrary.simpleMessage(
       "Ignore battery optimization",
     ),
-    "import": MessageLookupByLibrary.simpleMessage("Import"),
     "importFile": MessageLookupByLibrary.simpleMessage("Import from file"),
     "importFromURL": MessageLookupByLibrary.simpleMessage("Import from URL"),
     "importUrl": MessageLookupByLibrary.simpleMessage("Import from URL"),
@@ -873,7 +872,7 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "log": MessageLookupByLibrary.simpleMessage("Log"),
     "logLevel": MessageLookupByLibrary.simpleMessage("Log level"),
-    "logcat": MessageLookupByLibrary.simpleMessage("Logcat"),
+    "logcat": MessageLookupByLibrary.simpleMessage("Log capture"),
     "logcatDesc": MessageLookupByLibrary.simpleMessage(
       "Disabling hides the log entry point",
     ),

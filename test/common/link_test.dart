@@ -55,6 +55,27 @@ void main() {
     expect(received, isEmpty);
   });
 
+  test('a link with a broken escape is ignored', () async {
+    await listen();
+
+    await emit('flclash://install-config?url=%E4%B8');
+
+    expect(received, isEmpty);
+  });
+
+  test('a qr payload resolves only when its query decodes', () {
+    expect(
+      profileUrlFromQrCodes([
+        'clash://install-config?url=https://example.com/a.yaml',
+      ]),
+      'https://example.com/a.yaml',
+    );
+    expect(
+      profileUrlFromQrCodes(['clash://install-config?url=%E4%B8']),
+      isNull,
+    );
+  });
+
   test('listening again replaces the previous subscription', () async {
     await listen();
     final first = linkManager.subscription;

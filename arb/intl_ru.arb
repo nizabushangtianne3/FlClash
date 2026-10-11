@@ -455,7 +455,6 @@
   "tproxyPort": "Порт TProxy",
   "portTip": "Значение «{label}» должно быть от 1024 до 49151",
   "portConflictTip": "Введите другой порт",
-  "import": "Импорт",
   "importFile": "Импорт из файла",
   "importUrl": "Импорт по URL",
   "startFromScratch": "С нуля",

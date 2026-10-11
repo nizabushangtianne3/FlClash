@@ -483,7 +483,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(GeneralView), findsOneWidget);
 
-      final logItem = find.text('Logcat');
+      final logItem = find.text('Log capture');
       await tester.scrollUntilVisible(
         logItem,
         500,
@@ -1274,6 +1274,49 @@ void main() {
     );
     expect(find.text('page:dashboard').hitTestable(), findsOneWidget);
   });
+
+  testWidgets('a same-length page swap takes the view with it', (tester) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final container = ProviderContainer(
+      overrides: [
+        currentNavigationItemsStateProvider.overrideWith(
+          (ref) =>
+              NavigationItemsState(value: ref.watch(_visibleItemsProvider)),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    globalState.container = container;
+    container.read(viewSizeProvider.notifier).value = const Size(1200, 800);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const TestApp(includeNavigatorKey: false, child: HomePage()),
+      ),
+    );
+    await tester.pump();
+
+    container
+        .read(currentPageLabelProvider.notifier)
+        .toPage(PageLabel.connections);
+    await tester.pumpAndSettle();
+
+    container.read(_visibleItemsProvider.notifier).swapConnectionsForLogs();
+    await tester.pumpAndSettle();
+
+    expect(container.read(currentPageLabelProvider), PageLabel.dashboard);
+    expect(
+      tester.widget<PageView>(find.byType(PageView).first).controller?.page,
+      0,
+      reason: 'the replaced slot must not keep showing the page that arrived',
+    );
+    expect(find.text('page:dashboard').hitTestable(), findsOneWidget);
+  });
 }
 
 final _visibleItemsProvider =
@@ -1284,9 +1327,15 @@ class _VisibleItems extends Notifier<List<NavigationItem>> {
   List<NavigationItem> build() => _navItems(withConnections: true);
 
   void dropConnections() => state = _navItems(withConnections: false);
+
+  void swapConnectionsForLogs() =>
+      state = _navItems(withConnections: false, withLogs: true);
 }
 
-List<NavigationItem> _navItems({required bool withConnections}) {
+List<NavigationItem> _navItems({
+  required bool withConnections,
+  bool withLogs = false,
+}) {
   Widget pageContent(String label) => Center(child: Text('page:$label'));
   return [
     NavigationItem(
@@ -1304,6 +1353,12 @@ List<NavigationItem> _navItems({required bool withConnections}) {
         glyph: AppGlyphs.connections,
         label: PageLabel.connections,
         builder: (_) => pageContent('connections'),
+      ),
+    if (withLogs)
+      NavigationItem(
+        glyph: AppGlyphs.logs,
+        label: PageLabel.logs,
+        builder: (_) => pageContent('logs'),
       ),
     NavigationItem(
       glyph: AppGlyphs.tools,

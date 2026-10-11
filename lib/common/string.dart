@@ -118,6 +118,22 @@ extension StringExtension on String {
     return length <= maxLength ? this : substring(0, maxLength);
   }
 
+  /// The lines of a pasted name list: blank ones dropped, repeats kept once,
+  /// and the order the reader gave. Windows clipboards arrive as CRLF, so the
+  /// trailing `\r` has to go with the trim.
+  List<String> get uniqueTrimmedLines {
+    final seen = <String>{};
+    final lines = <String>[];
+    for (final line in split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || !seen.add(trimmed)) {
+        continue;
+      }
+      lines.add(trimmed);
+    }
+    return lines;
+  }
+
   String get fileStem {
     final dot = lastIndexOf('.');
     return dot > 0 ? substring(0, dot) : this;

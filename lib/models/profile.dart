@@ -24,11 +24,16 @@ abstract class SubscriptionInfo with _$SubscriptionInfo {
 
   factory SubscriptionInfo.formHString(String? info) {
     if (info == null) return const SubscriptionInfo();
-    final list = info.split(';');
+    // A trailing ';' or a bare token names no value; only the first '=' splits.
     final Map<String, int?> map = {};
-    for (final i in list) {
-      final keyValue = i.trim().split('=');
-      map[keyValue[0]] = int.tryParse(keyValue[1]);
+    for (final item in info.split(';')) {
+      final separator = item.indexOf('=');
+      if (separator <= 0) {
+        continue;
+      }
+      map[item.substring(0, separator).trim()] = int.tryParse(
+        item.substring(separator + 1).trim(),
+      );
     }
     return SubscriptionInfo(
       upload: map['upload'] ?? 0,
@@ -38,6 +43,17 @@ abstract class SubscriptionInfo with _$SubscriptionInfo {
     );
   }
 }
+
+extension SubscriptionInfoExt on SubscriptionInfo {
+  DateTime? get expireDate {
+    if (expire <= 0 || expire > _maxExpireSeconds) {
+      return null;
+    }
+    return DateTime.fromMillisecondsSinceEpoch(expire * 1000);
+  }
+}
+
+const _maxExpireSeconds = 8640000000000;
 
 @freezed
 abstract class Profile with _$Profile {

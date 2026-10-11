@@ -212,8 +212,6 @@ Future<({String yaml, String md5})> _makeRealProfileTask(
   rawConfig['unified-delay'] = realPatchConfig.unifiedDelay;
   rawConfig['ipv6'] = realPatchConfig.ipv6;
   rawConfig['log-level'] = realPatchConfig.logLevel.name;
-  rawConfig['port'] = 0;
-  rawConfig['socks-port'] = 0;
   rawConfig['keep-alive-interval'] = realPatchConfig.keepAliveInterval;
   rawConfig['mixed-port'] = realPatchConfig.mixedPort;
   rawConfig['port'] = realPatchConfig.port;

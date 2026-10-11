@@ -141,6 +141,32 @@ void main() {
 
       expect(identical(result, packages), isTrue);
     });
+
+    test('keeps the source order of unpinned apps once a pin exists', () {
+      // Longer than the size at which the platform sort stops being stable.
+      final packages = [
+        for (var index = 0; index < 40; index++)
+          Package(
+            packageName: 'app.$index',
+            label: 'App ${index.toString().padLeft(2, '0')}',
+            system: false,
+            internet: true,
+            lastUpdateTime: index,
+          ),
+      ];
+
+      final result = packages.getViewList(
+        pinedList: const ['app.39'],
+        sortType: AccessSortType.none,
+        isFilterSystemApp: false,
+        isFilterNonInternetApp: false,
+      );
+
+      expect(result.map((item) => item.packageName), [
+        'app.39',
+        for (var index = 0; index < 39; index++) 'app.$index',
+      ]);
+    });
   });
 
   group('TrackerInfoExt', () {

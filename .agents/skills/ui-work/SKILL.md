@@ -37,6 +37,10 @@ dialogs, and interaction behavior.
   minimum progress duration; tap policy while work or a display hold is active; and failure/disposal cleanup, in
   `finally` for animations and timers. `CoreStatusButton` and the proxies delay test action are the reference implementations,
   described under User-Facing Core And Delay Feedback in `.agents/architecture.md`.
+- A prompt that guards unsaved work treats a dismissed dialog as "stay". `Dialogs.showMessage` answers `null` for a
+  barrier tap, so only an explicit cancel may discard the edit: `views/access.dart`, `views/config/providers.dart`,
+  `views/config/scripts.dart` and `views/proxies/providers.dart` are the reference implementations, and a prompt that
+  discards on `null` throws the edit away whenever the reader clicks beside the dialog.
 
 ## Corner Radii
 

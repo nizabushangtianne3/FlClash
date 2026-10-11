@@ -12,6 +12,11 @@ mkdir -p "$repo"
 git -C "$repo" init --quiet
 git -C "$repo" config user.email 'test@example.com'
 git -C "$repo" config user.name 'Test'
+# A host with core.autocrlf on writes "LF will be replaced by CRLF" to stderr on
+# every diff below, and the assertions that require empty stderr read that as a
+# failure. The scratch repository carries its own answer instead.
+git -C "$repo" config core.autocrlf false
+git -C "$repo" config core.safecrlf false
 printf 'void main() {}\n' >"$repo/tracked.dart"
 git -C "$repo" add tracked.dart
 git -C "$repo" commit --quiet -m 'seed'

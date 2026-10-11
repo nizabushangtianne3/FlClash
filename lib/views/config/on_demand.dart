@@ -132,11 +132,16 @@ class _OnDemandViewState extends ConsumerState<OnDemandView>
       return;
     }
     ref.read(excludeSSIDsProvider.notifier).update((state) {
-      final newSSIDS = state.toSet();
-      if (ssid != null) {
-        newSSIDS.remove(ssid);
+      if (ssid == null) {
+        return [...state, newSSID];
       }
-      return [...newSSIDS, newSSID];
+      final index = state.indexOf(ssid);
+      if (index == -1) {
+        return [...state, newSSID];
+      }
+      // The list is ordered by the reader's own dragging, so a rename keeps
+      // the entry where it was instead of sending it to the end.
+      return List<String>.from(state)..[index] = newSSID;
     });
   }
 

@@ -29,7 +29,7 @@ for manifest in "${manifests[@]}"; do
   (
     cd "$package"
     flutter pub get
-    flutter analyze --no-fatal-infos
+    dart analyze
     if compgen -G 'test/*_test.dart' > /dev/null; then
       flutter test --reporter expanded
     else

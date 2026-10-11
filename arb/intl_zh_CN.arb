@@ -455,7 +455,6 @@
   "tproxyPort": "Tproxy端口",
   "portTip": "{label} 必须在 1024 到 49151 之间",
   "portConflictTip": "请输入不同的端口",
-  "import": "导入",
   "importFile": "通过文件导入",
   "importUrl": "通过URL导入",
   "startFromScratch": "从零开始",

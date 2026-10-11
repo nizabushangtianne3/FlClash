@@ -69,4 +69,19 @@ void main() {
       throwsA(isA<MessageException>()),
     );
   });
+
+  test('rejects a result that is not json at all', () async {
+    answerWith('undefined');
+
+    await expectLater(
+      handleEvaluate('main', {}),
+      throwsA(
+        isA<MessageException>().having(
+          (error) => error.message,
+          'message',
+          contains('configuration object'),
+        ),
+      ),
+    );
+  });
 }

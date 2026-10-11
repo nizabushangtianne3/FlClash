@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:fl_clash/application.dart';
 import 'package:fl_clash/manager/hotkey_manager.dart';
 import 'package:fl_clash/manager/manager.dart';
@@ -146,82 +147,158 @@ void main() {
   group('profile auto update scheduling', () {
     final now = DateTime.utc(2026, 10, 7, 1);
 
-    test('returns null when no profile needs automatic updates', () {
-      expect(
-        nextProfileAutoUpdateDelay([
-          Profile(
-            id: 1,
-            url: 'https://example.com/a',
-            autoUpdate: false,
-            autoUpdateDuration: const Duration(hours: 1),
-            lastUpdateDate: now.subtract(const Duration(hours: 2)),
-          ),
-          Profile(
-            id: 2,
-            url: '',
-            autoUpdateDuration: const Duration(hours: 1),
-            lastUpdateDate: now.subtract(const Duration(hours: 2)),
-          ),
-        ], now),
-        isNull,
-      );
-    });
+    test('holds only the failed profile back while it still waits', () {
+      final profiles = [
+        Profile(
+          id: 1,
+          url: 'https://example.com/a',
+          autoUpdateDuration: const Duration(hours: 1),
+          lastUpdateDate: now.subtract(const Duration(hours: 2)),
+        ),
+      ];
 
-    test('returns zero for overdue and never-updated profiles', () {
       expect(
-        nextProfileAutoUpdateDelay([
-          Profile(
-            id: 1,
-            url: 'https://example.com/a',
-            autoUpdateDuration: const Duration(hours: 1),
-            lastUpdateDate: now.subtract(const Duration(hours: 2)),
-          ),
-        ], now),
-        Duration.zero,
+        nextAutoUpdateSweepDelay(
+          profiles: profiles,
+          now: now,
+          retryNotBefore: {1: now.add(const Duration(minutes: 5))},
+        ),
+        const Duration(minutes: 5),
       );
       expect(
-        nextProfileAutoUpdateDelay([
-          const Profile(
-            id: 1,
-            url: 'https://example.com/a',
-            autoUpdateDuration: Duration(hours: 1),
-          ),
-        ], now),
+        nextAutoUpdateSweepDelay(
+          profiles: profiles,
+          now: now,
+          retryNotBefore: {1: now.subtract(const Duration(minutes: 1))},
+        ),
         Duration.zero,
       );
     });
 
-    test('schedules nothing for an interval that cannot come due', () {
-      expect(
-        nextProfileAutoUpdateDelay([
-          Profile(
-            id: 1,
-            url: 'https://example.com/a',
-            autoUpdateDuration: Duration.zero,
-            lastUpdateDate: now.subtract(const Duration(hours: 2)),
-          ),
-        ], now),
-        isNull,
+    test('a healthy profile keeps its own update time during a retry', () {
+      final failed = Profile(
+        id: 1,
+        url: 'https://example.com/a',
+        autoUpdateDuration: const Duration(hours: 1),
+        lastUpdateDate: now.subtract(const Duration(hours: 2)),
       );
-    });
+      final healthy = Profile(
+        id: 2,
+        url: 'https://example.com/b',
+        autoUpdateDuration: const Duration(minutes: 30),
+        lastUpdateDate: now,
+      );
 
-    test('uses the nearest future update time', () {
       expect(
-        nextProfileAutoUpdateDelay([
-          Profile(
-            id: 1,
-            url: 'https://example.com/a',
-            autoUpdateDuration: const Duration(hours: 2),
-            lastUpdateDate: now,
-          ),
-          Profile(
-            id: 2,
-            url: 'https://example.com/b',
-            autoUpdateDuration: const Duration(minutes: 30),
-            lastUpdateDate: now,
-          ),
-        ], now),
+        nextAutoUpdateSweepDelay(
+          profiles: [failed, healthy],
+          now: now,
+          retryNotBefore: {failed.id: now.add(const Duration(hours: 1))},
+        ),
         const Duration(minutes: 30),
+      );
+
+      final dueHealthy = healthy.copyWith(
+        lastUpdateDate: now.subtract(const Duration(minutes: 31)),
+      );
+      expect(
+        nextAutoUpdateSweepDelay(
+          profiles: [failed, dueHealthy],
+          now: now,
+          retryNotBefore: {failed.id: now.add(const Duration(hours: 1))},
+        ),
+        Duration.zero,
+      );
+    });
+
+    test('lets a later due time win over the floor', () {
+      expect(
+        nextAutoUpdateSweepDelay(
+          profiles: [
+            Profile(
+              id: 1,
+              url: 'https://example.com/a',
+              autoUpdateDuration: const Duration(hours: 1),
+              lastUpdateDate: now,
+            ),
+          ],
+          now: now,
+          retryNotBefore: const {},
+        ),
+        const Duration(hours: 1),
+      );
+      expect(
+        nextAutoUpdateSweepDelay(
+          profiles: const [],
+          now: now,
+          retryNotBefore: const {},
+        ),
+        isNull,
+      );
+    });
+
+    test('a regained network clears the failed-sweep backoff', () {
+      expect(
+        connectivityBecameAvailable(
+          {ConnectivityResult.none},
+          {ConnectivityResult.wifi},
+        ),
+        isTrue,
+      );
+      expect(
+        connectivityBecameAvailable(
+          {ConnectivityResult.wifi},
+          {ConnectivityResult.mobile},
+        ),
+        isFalse,
+      );
+      expect(
+        connectivityBecameAvailable(
+          {ConnectivityResult.none},
+          {ConnectivityResult.none},
+        ),
+        isFalse,
+      );
+      expect(
+        connectivityBecameAvailable(const {}, {ConnectivityResult.wifi}),
+        isFalse,
+      );
+    });
+
+    test('only subscription changes clear a profile retry', () {
+      final first = Profile.normal(label: 'One', url: 'https://example.com/a');
+      final second = Profile.normal(label: 'Two', url: 'https://example.com/b');
+      final profiles = [first, second];
+
+      expect(
+        changedAutoUpdateProfileIds(profiles, [
+          first.copyWith(selectedMap: const {'Group': 'Proxy'}),
+          second,
+        ]),
+        isEmpty,
+      );
+      expect(
+        changedAutoUpdateProfileIds(profiles, [
+          first.copyWith(url: 'https://example.com/changed'),
+          second,
+        ]),
+        {first.id},
+      );
+      expect(
+        changedAutoUpdateProfileIds(profiles, [
+          first.copyWith(autoUpdate: false),
+          second,
+        ]),
+        {first.id},
+      );
+      expect(changedAutoUpdateProfileIds(profiles, [second]), {first.id});
+      expect(
+        changedAutoUpdateProfileIds(profiles, [
+          first,
+          second,
+          Profile.normal(label: 'Three', url: 'https://example.com/c'),
+        ]),
+        isNotEmpty,
       );
     });
   });

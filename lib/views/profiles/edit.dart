@@ -64,13 +64,18 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
 
   Future<void> _handleConfirm() async {
     if (!_formKey.currentState!.validate()) return;
+    // The interval field is out of the form while the toggle is off.
+    final typedMinutes = int.tryParse(
+      _autoUpdateDurationController.text.trim(),
+    );
+    final minutes = typedMinutes != null && typedMinutes > 0
+        ? typedMinutes
+        : widget.profile.autoUpdateDuration.inMinutes;
     var profile = widget.profile.copyWith(
       url: _urlController.text,
       label: _labelController.text,
       autoUpdate: _autoUpdate,
-      autoUpdateDuration: Duration(
-        minutes: int.parse(_autoUpdateDurationController.text),
-      ),
+      autoUpdateDuration: Duration(minutes: minutes),
     );
     final profilesAction = ref.read(profilesActionProvider.notifier);
     final appLocalizations = context.appLocalizations;
@@ -176,11 +181,13 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
           title: title,
           message: TextSpan(text: context.appLocalizations.hasCacheChange),
         );
-        if (res == true && context.mounted) {
-          unawaited(_handleSaveEdit(context, content));
-        } else {
+        if (res == null) {
+          return false;
+        }
+        if (!res || !context.mounted) {
           return true;
         }
+        unawaited(_handleSaveEdit(context, content));
         return false;
       },
     );
@@ -215,12 +222,15 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
       title: appLocalizations.tip,
       message: TextSpan(text: appLocalizations.fileIsUpdate),
     );
-    if (res == true) {
+    if (res == null) {
+      return;
+    }
+    if (res) {
       unawaited(_handleConfirm());
-    } else {
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
+      return;
+    }
+    if (mounted) {
+      Navigator.of(context).pop();
     }
   }
 

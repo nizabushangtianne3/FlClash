@@ -149,7 +149,9 @@ class Connections extends _$Connections {
           await (_countReader ??
               ref.read(coreHandlerProvider).getConnectionCount)();
       if (_canPublish) {
-        state = state.copyWith(count: count);
+        state = _snapshotWatchers == 0
+            ? ConnectionsSnapshot(count: count)
+            : state.copyWith(count: count);
       }
     } catch (error) {
       commonPrint.log(

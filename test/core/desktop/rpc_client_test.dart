@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:fl_clash/core/desktop/rpc_client.dart';
 import 'package:fl_clash/core/event.dart';
 import 'package:fl_clash/core/method.dart';
+import 'package:fl_clash/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fakes.dart';
@@ -272,6 +273,35 @@ void main() {
     await transport.close();
   });
 
+  test('forwards a Core delay event', () async {
+    final transport = FakeDesktopCoreTransport.connected();
+    final client = CoreRpcClient(transport);
+    final listener = _DelayListener();
+    coreEventManager.addListener(listener);
+
+    transport.addJson({
+      'method': CoreMethod.message.name,
+      'arguments': [
+        {
+          'type': 'delay',
+          'data': {
+            'name': 'HK-01',
+            'url': 'https://example.test/204',
+            'value': 42,
+          },
+        },
+      ],
+    });
+
+    expect(
+      await listener.delay.future,
+      const Delay(name: 'HK-01', url: 'https://example.test/204', value: 42),
+    );
+    coreEventManager.removeListener(listener);
+    await client.close();
+    await transport.close();
+  });
+
   test('close fails pending requests and is idempotent', () async {
     final transport = FakeDesktopCoreTransport.connected();
     final client = CoreRpcClient(transport);
@@ -325,5 +355,16 @@ final class _LoadedListener with CoreEventListener {
   @override
   void onLoaded(String providerName) {
     loaded.complete(providerName);
+  }
+}
+
+final class _DelayListener with CoreEventListener {
+  final Completer<Delay> _delay = Completer<Delay>();
+
+  Completer<Delay> get delay => _delay;
+
+  @override
+  void onDelay(Delay event) {
+    _delay.complete(event);
   }
 }
