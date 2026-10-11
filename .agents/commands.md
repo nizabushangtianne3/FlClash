@@ -352,7 +352,7 @@ dart format --output=none --set-exit-if-changed lib test tool plugins setup.dart
 flutter analyze --no-fatal-infos
 dart run tool/changelog.dart verify   # main and tags only
 flutter test --reporter expanded --coverage
-dart run tool/check_coverage.dart coverage/lcov.info 75
+dart run tool/check_coverage.dart coverage/lcov.info 78
 ```
 
 Run `flutter analyze` before committing; CI fails on anything it reports. On Windows a

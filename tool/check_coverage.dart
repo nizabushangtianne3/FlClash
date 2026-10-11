@@ -17,20 +17,24 @@ const _excludedPatterns = [
 //
 // Floors ratchet up only. Raise one when new tests lift a group; never lower
 // one to make a run pass.
+//
+// Each floor sits at least eight points under what a Windows checkout
+// measures, so the Linux host CI runs on cannot trip one over a platform
+// branch that only its own host exercises.
 const _groupFloors = <String, double>{
   'core': 76.0,
   'database': 81.0,
-  'widgets': 82.0,
-  'features': 81.0,
-  'models': 67.0,
-  'providers': 73.0,
-  'common': 74.0,
-  'manager': 68.0,
-  'views': 66.0,
-  'enum': 86.0,
-  'icons': 90.0,
-  'pages': 71.0,
-  'plugins': 67.0,
+  'widgets': 84.0,
+  'features': 83.0,
+  'models': 75.0,
+  'providers': 80.0,
+  'common': 77.0,
+  'manager': 73.0,
+  'views': 74.0,
+  'enum': 88.0,
+  'icons': 92.0,
+  'pages': 76.0,
+  'plugins': 71.0,
   'lib': 20.0,
 };
 

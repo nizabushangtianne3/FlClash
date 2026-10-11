@@ -74,7 +74,7 @@ jobs:
         run: flutter test --reporter expanded --coverage
 
       - name: Check coverage
-        run: dart run tool/check_coverage.dart coverage/lcov.info 75
+        run: dart run tool/check_coverage.dart coverage/lcov.info 78
 
   plugins:
     name: Plugins
