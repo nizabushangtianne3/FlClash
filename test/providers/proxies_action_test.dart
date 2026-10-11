@@ -516,6 +516,25 @@ void main() {
       },
     );
 
+    test('an unchanged switch does not leave a stale rollback armed', () async {
+      var calls = 0;
+      when(() => core.changeProxy(any())).thenAnswer((_) async {
+        calls++;
+        return calls == 1
+            ? const ChangeProxyResult(changed: false)
+            : const ChangeProxyResult(message: 'proxy not exist');
+      });
+      final container = buildContainer(profile: _selectedProfile('HK-00'));
+      final action = actionOf(container);
+
+      await action.changeProxy(groupName: 'Proxy', proxyName: 'HK-01');
+      await action.changeProxy(groupName: 'Proxy', proxyName: 'HK-02');
+
+      expect(container.read(currentProfileProvider)?.selectedMap, {
+        'Proxy': 'HK-01',
+      });
+    });
+
     test('rolls the selection back when the Core answers a message', () async {
       when(() => core.changeProxy(any())).thenAnswer(
         (_) async => const ChangeProxyResult(message: 'proxy not exist'),

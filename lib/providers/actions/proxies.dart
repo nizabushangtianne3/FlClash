@@ -381,9 +381,6 @@ class ProxiesAction extends _$ProxiesAction {
       if (result.message.isNotEmpty) {
         throw MessageException(result.message);
       }
-      if (!result.changed) {
-        return false;
-      }
       final isNewestApplied =
           selectedIntent > (_appliedSelectedIntent[groupName] ?? 0);
       if (isNewestApplied) {
@@ -394,11 +391,16 @@ class ProxiesAction extends _$ProxiesAction {
         (active) => active > selectedIntent,
       );
       if (isNewestApplied && !hasNewerIntent) {
+        // A switch the Core calls unchanged settles this intent too, and the
+        // value it accepted becomes the rollback target for the next failure;
+        // leaving the older one armed restored a pick the user had left.
         _pendingSelectedRollback.remove(groupName);
-        _patchSelectedProxy(groupName, proxyName);
-        _requestConnectionCleanup();
+        if (result.changed) {
+          _patchSelectedProxy(groupName, proxyName);
+          _requestConnectionCleanup();
+        }
       }
-      return true;
+      return result.changed;
     } catch (error) {
       if (!_isLatestSelectedIntent(groupName, selectedIntent)) {
         return false;
