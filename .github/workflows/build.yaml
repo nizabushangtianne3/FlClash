@@ -382,19 +382,20 @@ jobs:
             echo 'No SERVICE_JSON secret; using the checked-in placeholder.'
           fi
 
-          if [[ -z "$KEYSTORE_B64" && -z "$KEY_ALIAS" && -z "$STORE_PASSWORD" && -z "$KEY_PASSWORD" ]]; then
+          if [[ -z "$KEYSTORE_B64" || -z "$KEY_ALIAS" || -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" ]]; then
+            if [[ "$IS_STABLE" == 'true' ]]; then
+              echo 'A stable Android release requires KEYSTORE, KEY_ALIAS, STORE_PASSWORD and KEY_PASSWORD.' >&2
+              exit 1
+            fi
             rm -f android/app/keystore.jks
             echo 'No release signing secrets; building the debug-signed Android package.'
-          elif [[ -n "$KEYSTORE_B64" && -n "$KEY_ALIAS" && -n "$STORE_PASSWORD" && -n "$KEY_PASSWORD" ]]; then
+          else
             echo "$KEYSTORE_B64" | base64 --decode > android/app/keystore.jks
             {
               echo "keyAlias=$KEY_ALIAS"
               echo "storePassword=$STORE_PASSWORD"
               echo "keyPassword=$KEY_PASSWORD"
             } >> android/local.properties
-          else
-            echo 'Android release signing is incomplete; set KEYSTORE, KEY_ALIAS, STORE_PASSWORD and KEY_PASSWORD together.' >&2
-            exit 1
           fi
 
       - name: Setup Go
