@@ -180,7 +180,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('marks the live selected node in a computed group', (
+  testWidgets('a live computed pick is highlighted without the pin check', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(600, 800);
@@ -201,6 +201,53 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: globalContainer,
+        child: const TestApp(
+          child: Scaffold(
+            body: ProxyCard(
+              groupName: 'Auto',
+              groupType: GroupType.URLTest,
+              proxy: Proxy(name: 'Node B', type: 'ss'),
+              type: ProxyCardType.expand,
+              testUrl: null,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(SelectIcon), findsNothing);
+  });
+
+  testWidgets('marks only the manually pinned node in a computed group', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(600, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const group = Group(
+      type: GroupType.URLTest,
+      name: 'Auto',
+      now: 'Node B',
+      all: [
+        Proxy(name: 'Node A', type: 'ss'),
+        Proxy(name: 'Node B', type: 'ss'),
+      ],
+    );
+    final profile = Profile.normal().copyWith(selectedMap: {'Auto': 'Node B'});
+    final container = ProviderContainer(
+      overrides: [
+        currentProfileIdProvider.overrideWithBuild((_, _) => profile.id),
+        profilesProvider.overrideWith(() => TestProfiles([profile])),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(groupsProvider.notifier).value = [group];
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
         child: const TestApp(
           child: Scaffold(
             body: ProxyCard(
