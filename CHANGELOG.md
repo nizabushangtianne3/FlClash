@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.115 (2026-10-12)
+
+**Bug Fixes**
+
+- **release** Keep stable Android releases on the same signing key (e1ad780)
+- **proxies** Keep the auto-select check mark only for a manually pinned node (c304c22)
+
 ## v0.8.114 (2026-10-12)
 
 **Features**

@@ -2,6 +2,29 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "0.8.115",
+      "tag": "v0.8.115",
+      "date": "2026-10-12",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "e1ad780",
+              "scope": "release",
+              "text": "Keep stable Android releases on the same signing key"
+            },
+            {
+              "id": "c304c22",
+              "scope": "proxies",
+              "text": "Keep the auto-select check mark only for a manually pinned node"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.8.114",
       "tag": "v0.8.114",
       "date": "2026-10-12",
