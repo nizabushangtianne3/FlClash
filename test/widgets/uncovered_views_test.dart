@@ -199,6 +199,11 @@ void main() {
 
     expect(find.byType(AboutView), findsOneWidget);
     expect(find.text('Telegram'), findsOneWidget);
+    expect(
+      find.text('github.com/nizabushangtianne3/Clash.Meta'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('chen08209/Clash.Meta'), findsNothing);
     final hero = find.byWidgetPredicate(
       (widget) => widget.runtimeType.toString() == '_AboutHero',
     );
