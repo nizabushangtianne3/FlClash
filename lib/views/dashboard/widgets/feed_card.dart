@@ -97,6 +97,11 @@ class _ThrottledFeedCountState extends ConsumerState<ThrottledFeedCount> {
     super.initState();
     ref.listenManual(widget.provider, (_, next) {
       _latest = next;
+      if (next == _count) {
+        _repaint?.cancel();
+        _repaint = null;
+        return;
+      }
       if (!_active) {
         return;
       }
@@ -106,6 +111,9 @@ class _ThrottledFeedCountState extends ConsumerState<ThrottledFeedCount> {
 
   void _showLatest() {
     _repaint = null;
+    if (_latest == _count) {
+      return;
+    }
     setState(() => _count = _latest);
   }
 
