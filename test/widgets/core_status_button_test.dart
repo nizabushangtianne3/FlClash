@@ -181,4 +181,38 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     expect(find.byGlyph(AppGlyphs.check), findsOneWidget);
   });
+
+  testWidgets(
+    'does not extend the connecting hold on repeated status updates',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      globalState.container = container;
+      container.read(coreStatusProvider.notifier).value = CoreStatus.connected;
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: TestApp(
+            includeNavigatorKey: false,
+            setTheme: false,
+            homeBuilder: (child) => Scaffold(body: Center(child: child)),
+            child: const CoreStatusButton(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      container.read(coreStatusProvider.notifier).value = CoreStatus.connecting;
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(find.byType(CommonCircleLoading), findsOneWidget);
+
+      container.read(coreStatusProvider.notifier).value = CoreStatus.connecting;
+      await tester.pump();
+      container.read(coreStatusProvider.notifier).value = CoreStatus.connected;
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byType(IconButton), findsOneWidget);
+    },
+  );
 }

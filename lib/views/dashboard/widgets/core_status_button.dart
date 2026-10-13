@@ -22,10 +22,17 @@ class _CoreStatusButtonState extends ConsumerState<CoreStatusButton> {
   Timer? _holdTimer;
   CoreStatus _status = CoreStatus.disconnected;
 
+  /// Repeated connecting notifications must not restart the one-shot hold.
+  bool _holdUsed = false;
+
   @override
   void initState() {
     super.initState();
     _status = ref.read(coreStatusProvider);
+    if (_status == CoreStatus.connecting) {
+      _holdUsed = true;
+      _holdTimer = Timer(_holdDuration, _releaseHold);
+    }
     ref.listenManual(coreStatusProvider, (_, next) {
       _onStatusChanged(next);
     });
@@ -38,25 +45,37 @@ class _CoreStatusButtonState extends ConsumerState<CoreStatusButton> {
   }
 
   void _onStatusChanged(CoreStatus next) {
+    if (next == _status && (next != CoreStatus.connecting || _holdUsed)) {
+      return;
+    }
+    if (next == CoreStatus.connecting) {
+      _holdUsed = true;
+      _holdTimer ??= Timer(_holdDuration, _releaseHold);
+      setState(() {
+        _status = next;
+      });
+      return;
+    }
+    _holdUsed = false;
+    if (next == CoreStatus.connected && _holdTimer != null) {
+      _status = next;
+      return;
+    }
     setState(() {
       _status = next;
-      switch (next) {
-        case CoreStatus.connecting:
-          _holdTimer ??= Timer(_holdDuration, () {
-            if (mounted) {
-              setState(() {
-                _holdTimer = null;
-              });
-            }
-          });
-          break;
-        case CoreStatus.disconnected:
-          _holdTimer?.cancel();
-          _holdTimer = null;
-          break;
-        case CoreStatus.connected:
-          break;
+      if (next == CoreStatus.disconnected) {
+        _holdTimer?.cancel();
+        _holdTimer = null;
       }
+    });
+  }
+
+  void _releaseHold() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _holdTimer = null;
     });
   }
 
