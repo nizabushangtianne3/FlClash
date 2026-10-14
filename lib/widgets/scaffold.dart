@@ -688,7 +688,6 @@ class CommonScaffoldState extends State<CommonScaffold> {
         builder: (context, keywords, _) {
           if (widget.onKeywordsUpdate != null) {
             if (!listEquals(_lastKeywords, keywords)) {
-              _lastKeywords = List.of(keywords);
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 widget.onKeywordsUpdate!(keywords);
               });
