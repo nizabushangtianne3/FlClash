@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
@@ -64,6 +65,16 @@ class _RecordingCoreLostSetupAction extends SetupAction {
   @override
   void markCoreLost() {
     markCoreLostCount++;
+  }
+}
+
+class _RecordingLogs extends Logs {
+  final received = <Iterable<Log>>[];
+
+  @override
+  void addAll(Iterable<Log> values) {
+    received.add(values);
+    super.addAll(values);
   }
 }
 
@@ -359,6 +370,78 @@ void main() {
       ['alpha.test', 'beta.test'],
     );
     expect(container.read(dnsQueryCountProvider), 2);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('batched feeds keep every item in order', (tester) async {
+    final coreInterface = _coreInterface();
+    final logs = _RecordingLogs();
+    final container = await _pumpCoreManager(
+      tester,
+      coreInterface,
+      overrides: [logsProvider.overrideWith(() => logs)],
+    );
+
+    for (var i = 0; i < 3; i++) {
+      coreEventManager.sendEvent(
+        CoreEvent(
+          type: CoreEventType.log,
+          data: {'LogLevel': 'info', 'Payload': 'log-$i'},
+        ),
+      );
+      coreEventManager.sendEvent(
+        CoreEvent(
+          type: CoreEventType.request,
+          data: {
+            'id': 'request-$i',
+            'metadata': <String, Object?>{
+              'network': 'tcp',
+              'host': 'example-$i.test',
+            },
+            'upload': 0,
+            'download': 0,
+            'start': '2026-09-18T04:30:01Z',
+            'chains': <String>[],
+            'rule': 'MATCH',
+            'rulePayload': '',
+          },
+        ),
+      );
+      coreEventManager.sendEvent(
+        CoreEvent(
+          type: CoreEventType.dns,
+          data: {
+            'domain': 'dns-$i.test',
+            'type': 'A',
+            'answers': ['1.1.1.1'],
+            'delay': 3,
+            'time': '2026-09-18T04:30:01Z',
+          },
+        ),
+      );
+    }
+
+    await tester.pump();
+    await tester.pump(renderThrottleDuration);
+
+    expect(container.read(logsProvider).list.map((log) => log.payload), [
+      'log-0',
+      'log-1',
+      'log-2',
+    ]);
+    expect(
+      container
+          .read(requestsProvider)
+          .list
+          .map((request) => request.metadata.host),
+      ['example-0.test', 'example-1.test', 'example-2.test'],
+    );
+    expect(
+      container.read(dnsQueriesProvider).list.map((query) => query.domain),
+      ['dns-0.test', 'dns-1.test', 'dns-2.test'],
+    );
+    expect(logs.received.single, isA<ListQueue<Log>>());
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
