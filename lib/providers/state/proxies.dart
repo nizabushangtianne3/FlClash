@@ -15,6 +15,9 @@ GroupsState currentGroupsState(Ref ref) {
 }
 
 Group _withoutSelection(Group group) {
+  if ((group.now ?? '').isEmpty && !group.all.any(_hasSelection)) {
+    return group;
+  }
   final all = group.all.any(_hasSelection)
       ? [
           for (final proxy in group.all)
