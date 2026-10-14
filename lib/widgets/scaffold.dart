@@ -4,6 +4,7 @@ import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/app.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/widgets/pop_scope.dart';
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -91,6 +92,7 @@ class CommonScaffoldState extends State<CommonScaffold> {
   final ValueNotifier<bool> _loadingNotifier = ValueNotifier(false);
   final ValueNotifier<bool> _isFabExtendedNotifier = ValueNotifier(true);
   final ValueNotifier<List<String>> _keywordsNotifier = ValueNotifier([]);
+  List<String> _reportedKeywords = const [];
   final _textController = TextEditingController();
   final _searchFocusNode = FocusNode();
 
@@ -601,9 +603,12 @@ class CommonScaffoldState extends State<CommonScaffold> {
         valueListenable: _keywordsNotifier,
         builder: (context, keywords, _) {
           if (widget.onKeywordsUpdate != null) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              widget.onKeywordsUpdate!(keywords);
-            });
+            if (!listEquals(_reportedKeywords, keywords)) {
+              _reportedKeywords = List.of(keywords);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                widget.onKeywordsUpdate!(keywords);
+              });
+            }
           }
           final hasHeader = keywords.isNotEmpty || (isTV && fabSlot != null);
           final barInset = MediaQuery.paddingOf(context).top;
