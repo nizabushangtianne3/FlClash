@@ -76,7 +76,12 @@ class _LineChartState extends State<LineChart> {
 
 @immutable
 class _Series {
-  _Series._(this.values) : heights = _blur(values);
+  factory _Series._(List<double> values) {
+    final heights = _blur(values);
+    return _Series._create(values, heights, slopesOf(heights));
+  }
+
+  const _Series._create(this.values, this.heights, this.slopes);
 
   factory _Series.of(List<double> window, int length) {
     final count = math.min(window.length, length);
@@ -95,6 +100,8 @@ class _Series {
   final List<double> values;
 
   final List<double> heights;
+
+  final List<double> slopes;
 
   _Series append(List<double> samples) {
     final next = [...values, ...samples];
@@ -163,7 +170,7 @@ class _LineChartPainter extends CustomPainter {
     final step = size.width / (capacity - 1);
     final baseline = size.height * _baselineRatio;
     final heights = series.heights;
-    final slopes = _Series.slopesOf(heights);
+    final slopes = series.slopes;
     final firstX = size.width - (heights.length - 1) * step;
 
     var x = firstX;
