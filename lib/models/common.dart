@@ -200,12 +200,16 @@ abstract class LogsState with _$LogsState {
 }
 
 final _logSearchTexts = Expando<String>();
+final _logsSearchQueries = Expando<SearchQuery>();
 
 extension LogsStateExt on LogsState {
-  bool get isSearching => keywords.isNotEmpty || SearchQuery(query).isNotEmpty;
+  SearchQuery get _searchQuery =>
+      _logsSearchQueries[this] ??= SearchQuery(query);
+
+  bool get isSearching => keywords.isNotEmpty || _searchQuery.isNotEmpty;
 
   List<Log> get list {
-    final searchQuery = SearchQuery(query);
+    final searchQuery = _searchQuery;
     if (keywords.isEmpty && searchQuery.isEmpty) {
       return logs;
     }
@@ -233,12 +237,16 @@ abstract class TrackerInfosState with _$TrackerInfosState {
 }
 
 final _trackerInfoSearchTexts = Expando<String>();
+final _trackerInfosSearchQueries = Expando<SearchQuery>();
 
 extension TrackerInfosStateExt on TrackerInfosState {
-  bool get isSearching => keywords.isNotEmpty || SearchQuery(query).isNotEmpty;
+  SearchQuery get _searchQuery =>
+      _trackerInfosSearchQueries[this] ??= SearchQuery(query);
+
+  bool get isSearching => keywords.isNotEmpty || _searchQuery.isNotEmpty;
 
   List<TrackerInfo> get list {
-    final searchQuery = SearchQuery(query);
+    final searchQuery = _searchQuery;
     if (keywords.isEmpty && searchQuery.isEmpty) {
       return trackerInfos;
     }
@@ -315,11 +323,16 @@ abstract class DnsQueriesState with _$DnsQueriesState {
   }) = _DnsQueriesState;
 }
 
+final _dnsQueriesSearchQueries = Expando<SearchQuery>();
+
 extension DnsQueriesStateExt on DnsQueriesState {
-  bool get isSearching => keywords.isNotEmpty || SearchQuery(query).isNotEmpty;
+  SearchQuery get _searchQuery =>
+      _dnsQueriesSearchQueries[this] ??= SearchQuery(query);
+
+  bool get isSearching => keywords.isNotEmpty || _searchQuery.isNotEmpty;
 
   List<DnsQuery> get list {
-    final searchQuery = SearchQuery(query);
+    final searchQuery = _searchQuery;
     if (keywords.isEmpty && searchQuery.isEmpty) {
       return dnsQueries;
     }
