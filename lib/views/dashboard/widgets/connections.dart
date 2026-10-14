@@ -69,8 +69,10 @@ class _ConnectionsCardState extends ConsumerState<ConnectionsCard> {
       label: PageLabel.connections.label,
       glyph: AppGlyphs.connections,
       onPressed: () => _openConnections(context),
-      child: FeedCount(
-        count: ref.watch(connectionsProvider.select((state) => state.count)),
+      child: Consumer(
+        builder: (_, ref, _) => FeedCount(
+          count: ref.watch(connectionsProvider.select((state) => state.count)),
+        ),
       ),
     );
   }
