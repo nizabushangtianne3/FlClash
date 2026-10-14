@@ -61,6 +61,11 @@
           "type": "fix",
           "entries": [
             {
+              "id": "1a6caa9",
+              "scope": "ci",
+              "text": "Keep tracked google services config"
+            },
+            {
               "id": "5d13236",
               "scope": "views",
               "text": "Keep the core status hold steady during repeated updates"

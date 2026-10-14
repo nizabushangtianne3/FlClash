@@ -16,6 +16,7 @@
 
 **Bug Fixes**
 
+- **ci** Keep tracked google services config (1a6caa9)
 - **views** Keep the core status hold steady during repeated updates (5d13236)
 - **core** Use the maintained Clash.Meta repository for core updates and links (39e7d5d)
 - **release** Keep stable Android releases on the same signing key (e1ad780)
