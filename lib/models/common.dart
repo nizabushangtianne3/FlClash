@@ -201,6 +201,7 @@ abstract class LogsState with _$LogsState {
 
 final _logSearchTexts = Expando<String>();
 final _logsSearchQueries = Expando<SearchQuery>();
+final _logLists = Expando<List<Log>>();
 
 extension LogsStateExt on LogsState {
   SearchQuery get _searchQuery =>
@@ -213,7 +214,11 @@ extension LogsStateExt on LogsState {
     if (keywords.isEmpty && searchQuery.isEmpty) {
       return logs;
     }
-    return logs
+    final cached = _logLists[this];
+    if (cached != null) {
+      return cached;
+    }
+    return _logLists[this] = logs
         .where(
           (log) => keywords.every((keyword) => keyword == log.logLevel.name),
         )
@@ -238,6 +243,7 @@ abstract class TrackerInfosState with _$TrackerInfosState {
 
 final _trackerInfoSearchTexts = Expando<String>();
 final _trackerInfosSearchQueries = Expando<SearchQuery>();
+final _trackerInfoLists = Expando<List<TrackerInfo>>();
 
 extension TrackerInfosStateExt on TrackerInfosState {
   SearchQuery get _searchQuery =>
@@ -250,7 +256,11 @@ extension TrackerInfosStateExt on TrackerInfosState {
     if (keywords.isEmpty && searchQuery.isEmpty) {
       return trackerInfos;
     }
-    return trackerInfos
+    final cached = _trackerInfoLists[this];
+    if (cached != null) {
+      return cached;
+    }
+    return _trackerInfoLists[this] = trackerInfos
         .where(
           (trackerInfo) => keywords.every(
             (keyword) =>

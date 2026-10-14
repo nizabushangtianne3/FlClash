@@ -141,6 +141,12 @@ void main() {
       expect(state.list.length, 1);
     });
 
+    test('the filtered list is reused on repeat reads', () {
+      final state = LogsState(logs: [log(LogLevel.info, 'test')], query: 't');
+
+      expect(state.list, same(state.list));
+    });
+
     test('query also matches log level name', () {
       final state = LogsState(
         logs: [log(LogLevel.info, 'test'), log(LogLevel.error, 'test')],
@@ -288,6 +294,12 @@ void main() {
       );
       expect(state.copyWith(query: 'domainsuffix').list.single.id, '2');
       expect(state.copyWith(query: 'googleapis').list.single.id, '2');
+    });
+
+    test('the filtered list is reused on repeat reads', () {
+      final state = TrackerInfosState(trackerInfos: [tracker('1')], query: 'a');
+
+      expect(state.list, same(state.list));
     });
 
     test('query matches the source address and the process path', () {
