@@ -63,6 +63,7 @@ class _SelectionSheetState<T> extends ConsumerState<SelectionSheet<T>>
   final _selectedKey = GlobalKey();
   var _revealRequested = false;
   var _query = SearchQuery('');
+  final _searchTexts = Expando<String>();
 
   @override
   void initState() {
@@ -130,6 +131,7 @@ class _SelectionSheetState<T> extends ConsumerState<SelectionSheet<T>>
                         widget.labelBuilder(item),
                         section.subtitleBuilder?.call(context, item),
                       ],
+                      texts: _searchTexts,
                     )
                     .toList(),
                 subtitleBuilder: section.subtitleBuilder,
