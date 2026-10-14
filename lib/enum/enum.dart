@@ -97,17 +97,21 @@ enum IpVersion {
 }
 
 extension GroupTypeExtension on GroupType {
-  static List<String> get valueList =>
-      GroupType.values.map((e) => e.toString().split('.').last).toList();
+  static final Set<String> valueSet = Set.unmodifiable(
+    GroupType.values.map((e) => e.toString().split('.').last),
+  );
+
+  static final Map<String, GroupType> _byName = Map.unmodifiable({
+    for (final value in GroupType.values)
+      value.toString().split('.').last: value,
+  });
 
   bool get isComputedSelected {
-    return [GroupType.URLTest, GroupType.Fallback].contains(this);
+    return this == GroupType.URLTest || this == GroupType.Fallback;
   }
 
   static GroupType? getGroupType(String value) {
-    final index = GroupTypeExtension.valueList.indexOf(value);
-    if (index == -1) return null;
-    return GroupType.values[index];
+    return GroupTypeExtension._byName[value];
   }
 }
 

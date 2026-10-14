@@ -72,7 +72,7 @@ Future<List<Group>> buildGroups(ComputeGroupsState state) async {
   for (final groupName in all) {
     final raw = proxies[groupName];
     if (raw is! Map) continue;
-    if (!GroupTypeExtension.valueList.contains(raw['type'])) continue;
+    if (!GroupTypeExtension.valueSet.contains(raw['type'])) continue;
     final memberNames = raw['all'];
     final group = Map<String, dynamic>.from(raw);
     group['all'] = memberNames is List
