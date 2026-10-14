@@ -159,19 +159,16 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     _feedFlushTimer?.cancel();
     _feedFlushTimer = null;
     if (_bufferedLogs.isNotEmpty) {
-      final logs = _bufferedLogs.toList(growable: false);
+      _logsNotifier.addAll(_bufferedLogs);
       _bufferedLogs.clear();
-      _logsNotifier.addAll(logs);
     }
     if (_bufferedRequests.isNotEmpty) {
-      final requests = _bufferedRequests.toList(growable: false);
+      _requestsNotifier.addRequests(_bufferedRequests);
       _bufferedRequests.clear();
-      _requestsNotifier.addRequests(requests);
     }
     if (_bufferedDns.isNotEmpty) {
-      final queries = _bufferedDns.toList(growable: false);
+      _dnsNotifier.addQueries(_bufferedDns);
       _bufferedDns.clear();
-      _dnsNotifier.addQueries(queries);
     }
     if (_bufferedRequestCount != 0) {
       final delta = _bufferedRequestCount;
