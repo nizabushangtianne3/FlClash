@@ -513,6 +513,21 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
   });
+
+  MemorySnapshot snapshot(int app) => MemorySnapshot(app: app, coreTotal: 512);
+
+  test('equal memory snapshots do not notify listeners', () {
+    final controller = ValueNotifier<MemorySnapshot>(snapshot(1024));
+    addTearDown(controller.dispose);
+    var notifications = 0;
+    controller.addListener(() => notifications++);
+
+    controller.value = snapshot(1024);
+    expect(notifications, 0);
+
+    controller.value = snapshot(2048);
+    expect(notifications, 1);
+  });
 }
 
 const _estimateDesc =

@@ -31,6 +31,19 @@ class MemorySnapshot {
   final CoreMemoryStats? core;
   final bool coreInProcess;
 
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is MemorySnapshot &&
+            app == other.app &&
+            coreTotal == other.coreTotal &&
+            core == other.core &&
+            coreInProcess == other.coreInProcess;
+  }
+
+  @override
+  int get hashCode => Object.hash(app, coreTotal, core, coreInProcess);
+
   int get total => app + coreTotal;
 
   int get coreOther => max(0, coreTotal - (core?.runtimeTotal ?? 0));
