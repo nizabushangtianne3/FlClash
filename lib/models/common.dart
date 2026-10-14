@@ -182,6 +182,13 @@ abstract class Log with _$Log {
   factory Log.fromJson(Map<String, Object?> json) => _$LogFromJson(json);
 }
 
+final _logPayloads = Expando<LogPayload>();
+
+extension LogExt on Log {
+  LogPayload get parsedPayload =>
+      _logPayloads[this] ??= LogPayload.parse(payload);
+}
+
 @freezed
 abstract class LogsState with _$LogsState {
   const factory LogsState({

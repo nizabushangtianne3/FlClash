@@ -196,7 +196,7 @@ class LogItem extends StatelessWidget {
       LogLevel.info => RecordTone.neutral,
       LogLevel.debug || LogLevel.silent => RecordTone.muted,
     };
-    final payload = LogPayload.parse(log.payload);
+    final payload = log.parsedPayload;
     return RecordListItem(
       tone: tone,
       onTap: () {},

@@ -1,4 +1,5 @@
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -78,6 +79,12 @@ void main() {
       expect(dns.message, 'www.youtube.com --> 142.250.72.14');
       expect(dns.route, isNull);
       expect(icmp.route, isNull);
+    });
+
+    test('caches a log line so repeat renders reuse the result', () {
+      final log = Log.app('[TCP] mihomo --> dns.google:853 using DIRECT');
+
+      expect(log.parsedPayload, same(log.parsedPayload));
     });
   });
 }
