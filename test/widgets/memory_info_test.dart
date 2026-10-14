@@ -332,6 +332,16 @@ void main() {
     });
   });
 
+  group('MemorySnapshot', () {
+    test('equal snapshots skip the value-listener update', () {
+      const snapshot = MemorySnapshot(app: 1024);
+
+      expect(snapshot, const MemorySnapshot(app: 1024));
+      expect(snapshot.hashCode, const MemorySnapshot(app: 1024).hashCode);
+      expect(snapshot, isNot(const MemorySnapshot(app: 1025)));
+    });
+  });
+
   group('memory detail sheet', () {
     const stats = CoreMemoryStats(
       rss: 4 * 1024 * 1024,

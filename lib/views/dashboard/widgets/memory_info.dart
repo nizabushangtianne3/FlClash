@@ -31,6 +31,17 @@ class MemorySnapshot {
   final CoreMemoryStats? core;
   final bool coreInProcess;
 
+  @override
+  bool operator ==(Object other) =>
+      other is MemorySnapshot &&
+      other.app == app &&
+      other.coreTotal == coreTotal &&
+      other.core == core &&
+      other.coreInProcess == coreInProcess;
+
+  @override
+  int get hashCode => Object.hash(app, coreTotal, core, coreInProcess);
+
   int get total => app + coreTotal;
 
   int get coreOther => max(0, coreTotal - (core?.runtimeTotal ?? 0));
@@ -90,7 +101,9 @@ class _MemoryInfoState extends ConsumerState<MemoryInfo>
     if (memory == null || !isCurrent()) {
       return;
     }
-    _memoryStateNotifier.value = memory;
+    if (memory != _memoryStateNotifier.value) {
+      _memoryStateNotifier.value = memory;
+    }
   }
 
   Future<MemorySnapshot?> _readMemory() async {
@@ -126,7 +139,9 @@ class _MemoryInfoState extends ConsumerState<MemoryInfo>
     if (memory == null || !mounted) {
       return 0;
     }
-    _memoryStateNotifier.value = memory;
+    if (memory != _memoryStateNotifier.value) {
+      _memoryStateNotifier.value = memory;
+    }
     return max(0, before - memory.total);
   }
 
