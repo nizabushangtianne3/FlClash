@@ -22,60 +22,74 @@ class NetworkSpeed extends StatelessWidget {
         child: CommonCard(
           radius: DashboardWidgetMetrics.radiusOf(context),
           onPressed: () {},
-          child: Consumer(
-            builder: (_, ref, _) {
-              final traffics = ref.watch(trafficsProvider);
-              return Column(
-                children: [
-                  Padding(
-                    padding: DashboardWidgetMetrics.paddingOf(
-                      context,
-                    ).copyWith(bottom: 0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Flexible(
-                          child: InfoHeader(
-                            padding: EdgeInsets.zero,
-                            info: Info(
-                              label: appLocalizations.networkSpeed,
-                              glyph: AppGlyphs.speed,
-                            ),
-                          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: DashboardWidgetMetrics.paddingOf(
+                  context,
+                ).copyWith(bottom: 0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Flexible(
+                      child: InfoHeader(
+                        padding: EdgeInsets.zero,
+                        info: Info(
+                          label: appLocalizations.networkSpeed,
+                          glyph: AppGlyphs.speed,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          traffics.list.safeLast(const Traffic()).speedText,
-                          style: context.textTheme.bodySmall?.copyWith(
-                            color: color,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Flexible(
-                    child: Padding(
-                      padding: const EdgeInsets.all(
-                        16,
-                      ).copyWith(bottom: 0, left: 0, right: 0),
-                      child: LineChart(
-                        values: [
-                          for (final traffic in traffics.list)
-                            traffic.speed.toDouble(),
-                        ],
-                        revision: traffics.revision,
-                        capacity: traffics.maxLength,
-                        minScale: _minSpeedScale,
-                        color: context.colorScheme.primary,
                       ),
                     ),
-                  ),
-                ],
-              );
-            },
+                    const SizedBox(width: 8),
+                    _SpeedText(color: color),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.all(
+                    16,
+                  ).copyWith(bottom: 0, left: 0, right: 0),
+                  child: const _SpeedChart(),
+                ),
+              ),
+            ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SpeedText extends ConsumerWidget {
+  const _SpeedText({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final traffic = ref.watch(
+      trafficsProvider.select((state) => state.list.safeLast(const Traffic())),
+    );
+    return Text(
+      traffic.speedText,
+      style: context.textTheme.bodySmall?.copyWith(color: color),
+    );
+  }
+}
+
+class _SpeedChart extends ConsumerWidget {
+  const _SpeedChart();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final traffics = ref.watch(trafficsProvider);
+    return LineChart(
+      values: [for (final traffic in traffics.list) traffic.speed.toDouble()],
+      revision: traffics.revision,
+      capacity: traffics.maxLength,
+      minScale: _minSpeedScale,
+      color: context.colorScheme.primary,
     );
   }
 }
