@@ -40,10 +40,16 @@ class TrackerSpeedRanker {
       ..clear()
       ..addAll(samples);
 
-    int bucketOf(TrackerInfo trackerInfo) {
-      final speed = samples[trackerInfo.id]!.rankSpeed;
-      return speed < 1 ? 0 : (log(speed) / ln2).floor() + 1;
-    }
+    final buckets = {
+      for (final trackerInfo in trackerInfos)
+        trackerInfo.id: samples[trackerInfo.id]!.rankSpeed < 1
+            ? 0
+            : (log(samples[trackerInfo.id]!.rankSpeed) / ln2).floor() + 1,
+    };
+    final trafficBy = {
+      for (final trackerInfo in trackerInfos)
+        trackerInfo.id: trackerInfo.upload + trackerInfo.download,
+    };
 
     final ranked =
         [
@@ -53,8 +59,8 @@ class TrackerSpeedRanker {
               downloadSpeed: samples[trackerInfo.id]!.downloadSpeed,
             ),
         ]..sort((a, b) {
-          final bucketA = bucketOf(a);
-          final bucket = bucketOf(b).compareTo(bucketA);
+          final bucketA = buckets[a.id]!;
+          final bucket = buckets[b.id]!.compareTo(bucketA);
           if (bucket != 0) {
             return bucket;
           }
@@ -65,9 +71,7 @@ class TrackerSpeedRanker {
               return position;
             }
           }
-          final traffic = (b.upload + b.download).compareTo(
-            a.upload + a.download,
-          );
+          final traffic = trafficBy[b.id]!.compareTo(trafficBy[a.id]!);
           if (traffic != 0) {
             return traffic;
           }
