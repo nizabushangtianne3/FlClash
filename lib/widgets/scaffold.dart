@@ -7,6 +7,7 @@ import 'package:fl_clash/providers/app.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/widgets/pop_scope.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -100,6 +101,7 @@ class CommonScaffoldState extends State<CommonScaffold> {
   final ValueNotifier<bool> _loadingNotifier = ValueNotifier(false);
   final ValueNotifier<bool> _isFabExtendedNotifier = ValueNotifier(true);
   final ValueNotifier<List<String>> _keywordsNotifier = ValueNotifier([]);
+  List<String>? _lastKeywords;
   final _textController = TextEditingController();
   final _searchFocusNode = FocusNode();
   var _sorting = false;
@@ -685,9 +687,12 @@ class CommonScaffoldState extends State<CommonScaffold> {
         valueListenable: _keywordsNotifier,
         builder: (context, keywords, _) {
           if (widget.onKeywordsUpdate != null) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              widget.onKeywordsUpdate!(keywords);
-            });
+            if (!listEquals(_lastKeywords, keywords)) {
+              _lastKeywords = List.of(keywords);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                widget.onKeywordsUpdate!(keywords);
+              });
+            }
           }
           final tvFab = isTV && !_sorting ? fabSlot : null;
           final hasHeader = keywords.isNotEmpty || tvFab != null;
