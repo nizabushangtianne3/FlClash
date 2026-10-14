@@ -210,6 +210,26 @@ void main() {
       );
       expect(state.delay, 80);
     });
+
+    test('uses the group map to resolve a proxy', () {
+      const group = Group(
+        name: 'auto',
+        type: GroupType.URLTest,
+        all: [Proxy(name: 'proxy-a', type: 'ss')],
+      );
+      final state = computeProxyDelayState(
+        proxyName: 'auto',
+        testUrl: 'http://test.com',
+        groups: [],
+        selectedMap: {'auto': 'proxy-a'},
+        delayMap: {
+          'http://test.com': {'proxy-a': 70},
+        },
+        groupsByName: {'auto': group},
+      );
+      expect(state.delay, 70);
+      expect(state.group, true);
+    });
   });
 
   group('computeSort', () {
