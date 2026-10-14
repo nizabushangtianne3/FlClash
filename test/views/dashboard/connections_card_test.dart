@@ -7,6 +7,7 @@ import 'package:fl_clash/providers/state.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/views/connection/connections.dart';
 import 'package:fl_clash/views/dashboard/widgets/connections.dart';
+import 'package:fl_clash/widgets/widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -113,6 +114,23 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ConnectionsView), findsOneWidget);
+
+    await teardownCard(tester);
+  });
+
+  testWidgets('a count update reuses the static header', (tester) async {
+    var count = 1;
+    await pumpCard(tester, countReader: () async => count);
+
+    final headerBefore = tester.widget<InfoHeader>(find.byType(InfoHeader));
+
+    count = 2;
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+
+    final headerAfter = tester.widget<InfoHeader>(find.byType(InfoHeader));
+    expect(identical(headerAfter, headerBefore), isTrue);
+    expect(find.text('2'), findsOneWidget);
 
     await teardownCard(tester);
   });
