@@ -63,6 +63,10 @@ class _ListEditorPageState<T, K> extends ConsumerState<ListEditorPage<T, K>> {
   var _query = SearchQuery('');
   final _searchTexts = Expando<String>();
   var _selected = <K>{};
+  var _queryText = '';
+  List<T>? _visibleSource;
+  String? _visibleQueryText;
+  List<T>? _visibleResult;
 
   @override
   void initState() {
@@ -88,13 +92,20 @@ class _ListEditorPageState<T, K> extends ConsumerState<ListEditorPage<T, K>> {
     if (searchFieldsOf == null) {
       return items;
     }
-    return items
-        .whereMatches(_query, searchFieldsOf, texts: _searchTexts)
-        .toList();
+    if (!identical(_visibleSource, items) || _visibleQueryText != _queryText) {
+      _visibleSource = items;
+      _visibleQueryText = _queryText;
+      _visibleResult =
+          items
+              .whereMatches(_query, searchFieldsOf, texts: _searchTexts)
+              .toList();
+    }
+    return _visibleResult!;
   }
 
   void _handleSearch(String query) {
     setState(() {
+      _queryText = query;
       _query = SearchQuery(query);
     });
   }
