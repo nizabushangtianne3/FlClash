@@ -146,6 +146,13 @@ void main() {
       expect(traffic.trayTitle, '1 KB/s\n2 KB/s');
       expect(traffic.speed, 3072);
     });
+
+    test('caches the display strings for repeat reads', () {
+      const traffic = Traffic(up: 1024, down: 2048);
+
+      expect(traffic.speedText, same(traffic.speedText));
+      expect(traffic.trayTitle, same(traffic.trayTitle));
+    });
   });
 
   group('GroupsExt', () {

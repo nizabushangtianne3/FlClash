@@ -503,13 +503,18 @@ abstract class Traffic with _$Traffic {
       _$TrafficFromJson(json);
 }
 
+final _trafficSpeedTexts = Expando<String>();
+final _trafficTrayTitles = Expando<String>();
+
 extension TrafficExt on Traffic {
   String get speedText {
-    return '↑ ${up.traffic.show}/s   ↓ ${down.traffic.show}/s';
+    return _trafficSpeedTexts[this] ??=
+        '↑ ${up.traffic.show}/s   ↓ ${down.traffic.show}/s';
   }
 
   String get trayTitle {
-    return '${up.shortTraffic.show}/s\n${down.shortTraffic.show}/s';
+    return _trafficTrayTitles[this] ??=
+        '${up.shortTraffic.show}/s\n${down.shortTraffic.show}/s';
   }
 
   num get speed => up + down;
