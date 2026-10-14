@@ -51,6 +51,12 @@ void main() {
       expect(state.dnsQueries[3].tags, ['A', 'Direct', 'Cache']);
     });
 
+    test('the filtered list is reused on repeat reads', () {
+      final filteredState = state.copyWith(query: 'test');
+
+      expect(filteredState.list, same(filteredState.list));
+    });
+
     test('an unknown initiator and a clean rcode are not chips', () {
       expect(state.dnsQueries[1].tags, ['AAAA']);
     });

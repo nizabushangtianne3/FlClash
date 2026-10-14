@@ -334,6 +334,7 @@ abstract class DnsQueriesState with _$DnsQueriesState {
 }
 
 final _dnsQueriesSearchQueries = Expando<SearchQuery>();
+final _dnsQueryLists = Expando<List<DnsQuery>>();
 
 extension DnsQueriesStateExt on DnsQueriesState {
   SearchQuery get _searchQuery =>
@@ -346,7 +347,11 @@ extension DnsQueriesStateExt on DnsQueriesState {
     if (keywords.isEmpty && searchQuery.isEmpty) {
       return dnsQueries;
     }
-    return dnsQueries
+    final cached = _dnsQueryLists[this];
+    if (cached != null) {
+      return cached;
+    }
+    return _dnsQueryLists[this] = dnsQueries
         .where((dnsQuery) => keywords.every(dnsQuery.tags.contains))
         .whereMatches(searchQuery, (dnsQuery) => dnsQuery.searchFields)
         .toList();
