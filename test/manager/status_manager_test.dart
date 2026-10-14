@@ -236,6 +236,23 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('a merged repeat does not rebuild the visible message', (
+    tester,
+  ) async {
+    final state = await _pumpStatusManager(tester);
+    state.message('same');
+    await tester.pumpAndSettle();
+
+    final before = tester.widget<Text>(find.text('same'));
+    state.message('same');
+    await tester.pumpAndSettle();
+    final after = tester.widget<Text>(find.text('same'));
+
+    expect(identical(after, before), isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('an error preempts a low priority message when full', (
     tester,
   ) async {

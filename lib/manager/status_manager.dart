@@ -110,8 +110,10 @@ class StatusManagerState extends ConsumerState<StatusManager> {
     );
     if (index != -1) {
       final merged = message.copyWith(id: entries[index].message.id);
-      _entriesNotifier.value = List<_MessageEntry>.from(entries)
-        ..[index] = entries[index].copyWith(message: merged);
+      if (merged != entries[index].message) {
+        _entriesNotifier.value = List<_MessageEntry>.from(entries)
+          ..[index] = entries[index].copyWith(message: merged);
+      }
       _startTimer(merged);
       return true;
     }
