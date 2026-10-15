@@ -19,7 +19,7 @@ func TestProxyOnlyTrafficLeavesOutADirectProxyOfAnyName(t *testing.T) {
 	reject := outbound.NewRejectWithOption(outbound.RejectOption{Name: "HK"})
 	tunnel.UpdateProxies(map[string]C.Proxy{
 		"直连": adapter.NewProxy(direct),
-		"HK":  adapter.NewProxy(reject),
+		"HK": adapter.NewProxy(reject),
 	}, nil)
 	t.Cleanup(func() { tunnel.UpdateProxies(nil, nil) })
 
