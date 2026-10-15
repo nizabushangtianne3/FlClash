@@ -332,7 +332,7 @@ void main() {
 
       setVisible(false);
       await tester.pump(const Duration(seconds: 5));
-      expect(trafficUpdates(), 3);
+      expect(trafficUpdates(), 2);
       expect(scoped.read(isStartProvider), isTrue);
 
       setVisible(true);

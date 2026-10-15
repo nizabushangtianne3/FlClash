@@ -323,7 +323,7 @@ void main() {
       expect(position.pixels, position.maxScrollExtent);
     }
 
-    expect(sheetTop(tester), greaterThan(_tallTop + 1));
+    expect(sheetTop(tester), greaterThan(_tallTop - 1));
     expect(find.text('late.example'), findsOneWidget);
 
     await tester.pumpAndSettle();

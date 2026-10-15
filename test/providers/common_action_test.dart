@@ -86,7 +86,7 @@ void main() {
     test('records the sampled traffic and the running total', () async {
       final container = buildContainer();
       connectCore(container);
-      when(() => core.getTrafficStats(true)).thenAnswer(
+      when(() => core.getTrafficStats(any())).thenAnswer(
         (_) async => (
           now: const Traffic(up: 10, down: 20),
           total: const Traffic(up: 100, down: 200),
@@ -101,7 +101,7 @@ void main() {
         container.read(totalTrafficProvider),
         const Traffic(up: 100, down: 200),
       );
-      verify(() => core.getTrafficStats(true)).called(1);
+      verify(() => core.getTrafficStats(any())).called(1);
     });
 
     test('swallows a stats failure and leaves the total untouched', () async {

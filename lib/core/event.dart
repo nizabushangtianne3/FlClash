@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
@@ -51,29 +49,7 @@ abstract mixin class CoreEventListener {
 }
 
 class CoreEventManager {
-  final _controller = StreamController<CoreEvent>();
-
-  CoreEventManager._() {
-    _controller.stream.listen((event) {
-      Object? payload;
-      try {
-        payload = _parseEventPayload(event);
-      } catch (error) {
-        commonPrint.log(
-          'Unable to parse Core event ${event.type.name}: $error',
-          logLevel: LogLevel.error,
-        );
-        return;
-      }
-      final listeners = _listenerSnapshot ??= List.unmodifiable(_listeners);
-      final filter = _filterFor(event);
-      for (final listener in listeners) {
-        if (filter == null || filter(listener)) {
-          _sendToListener(listener, event, payload);
-        }
-      }
-    });
-  }
+  CoreEventManager._();
 
   static final CoreEventManager instance = CoreEventManager._();
 
@@ -85,12 +61,29 @@ class CoreEventManager {
     return _listeners.isNotEmpty;
   }
 
+  /// Dispatches on the calling stack so a disposed listener is not hit by a
+  /// late stream microtask after the widget tree is already torn down.
   void sendEvent(CoreEvent event) {
+    final listeners = _listenerSnapshot ??= List.unmodifiable(_listeners);
     final filter = _filterFor(event);
-    if (filter != null && !_listeners.any(filter)) {
+    if (filter != null && !listeners.any(filter)) {
       return;
     }
-    _controller.add(event);
+    Object? payload;
+    try {
+      payload = _parseEventPayload(event);
+    } catch (error) {
+      commonPrint.log(
+        'Unable to parse Core event ${event.type.name}: $error',
+        logLevel: LogLevel.error,
+      );
+      return;
+    }
+    for (final listener in listeners) {
+      if (filter == null || filter(listener)) {
+        _sendToListener(listener, event, payload);
+      }
+    }
   }
 
   bool Function(CoreEventListener listener)? _filterFor(CoreEvent event) {
