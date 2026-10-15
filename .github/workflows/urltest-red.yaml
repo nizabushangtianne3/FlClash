@@ -11,7 +11,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+      - name: Point the submodule at the fork
+        run: git config --file .gitmodules submodule.core/Clash.Meta.url https://github.com/nizabushangtianne3/Clash.Meta.git
+      - name: Checkout the submodule
+        run: git submodule update --init --recursive
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.1"
