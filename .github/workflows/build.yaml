@@ -196,6 +196,12 @@ jobs:
           go vet . ./cmd/...
           GOOS=linux go vet ./platform
 
+      - name: Test Clash.Meta proxy groups
+        working-directory: core/Clash.Meta
+        env:
+          CGO_ENABLED: 0
+        run: go test ./adapter/outboundgroup -count=1
+
       - name: Validate the Android core library
         working-directory: core
         env:
