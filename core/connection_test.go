@@ -10,8 +10,6 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/tunnel"
 	"github.com/metacubex/mihomo/tunnel/statistic"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestProxyOnlyTrafficLeavesOutADirectProxyOfAnyName(t *testing.T) {
@@ -85,6 +83,10 @@ func TestResetNetworkClosesConnectionsBeforeResettingPools(t *testing.T) {
 		order <- "reset"
 	})
 
-	require.Equal(t, "close", <-order)
-	require.Equal(t, "reset", <-order)
+	if got := <-order; got != "close" {
+		t.Fatalf("first reset network action = %q, want close", got)
+	}
+	if got := <-order; got != "reset" {
+		t.Fatalf("second reset network action = %q, want reset", got)
+	}
 }
