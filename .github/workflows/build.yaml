@@ -189,7 +189,7 @@ jobs:
             exit 1
           fi
           test -z "$(gofmt -l ./*.go ./cmd ./mobile ./platform ./tun)" || {
-            gofmt -l ./*.go ./cmd ./mobile ./platform ./tun >&2
+            gofmt -d ./*.go ./cmd ./mobile ./platform ./tun >&2
             exit 1
           }
           go test -count=1 .
