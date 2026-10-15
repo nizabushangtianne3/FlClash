@@ -197,7 +197,7 @@ final class TrayDelaysProvider
   }
 }
 
-String _$trayDelaysHash() => r'266ed418b13319a7fcc6a3d8307b6786f6ce89bf';
+String _$trayDelaysHash() => r'0c4d9a22b45ad597c4f4278b0ed2cadc9c1861e6';
 
 @ProviderFor(trayTitleState)
 final trayTitleStateProvider = TrayTitleStateProvider._();
@@ -238,7 +238,7 @@ final class TrayTitleStateProvider
   }
 }
 
-String _$trayTitleStateHash() => r'aacf3779c879f7f1144484a80043679020bf8424';
+String _$trayTitleStateHash() => r'aacef4ae3642d8368b252bfb24e3de288849619e';
 
 @ProviderFor(packageListSelectorState)
 final packageListSelectorStateProvider = PackageListSelectorStateProvider._();
@@ -1955,7 +1955,7 @@ final class DelaysAtLastTestBatchProvider
 }
 
 String _$delaysAtLastTestBatchHash() =>
-    r'830e4b670d6a0ffa5ea8edc112a1d591a5adfaec';
+    r'b7bf68c5f406a472e8b4e300f30e345801f4df41';
 
 @ProviderFor(visibleGroupsState)
 final visibleGroupsStateProvider = VisibleGroupsStateProvider._();
@@ -2056,7 +2056,7 @@ final class FilterGroupsStateProvider
   }
 }
 
-String _$filterGroupsStateHash() => r'187b758f3bddcf66e429eda99dfcb4254f9e4583';
+String _$filterGroupsStateHash() => r'5911b39b019755fc8c559d3e942aec3e1132c6c3';
 
 final class FilterGroupsStateFamily extends $Family
     with $FunctionalFamilyOverride<GroupsState, String> {
@@ -2317,7 +2317,7 @@ final class ProxyGroupSelectorStateProvider
 }
 
 String _$proxyGroupSelectorStateHash() =>
-    r'afa6c749b28aa2a2c4d3b120ab16e46c46306040';
+    r'663756bce080b112aa84c93dcc7c202e1d070ffd';
 
 final class ProxyGroupSelectorStateFamily extends $Family
     with $FunctionalFamilyOverride<ProxyGroupSelectorState, (String, String)> {
@@ -2739,7 +2739,7 @@ final class RealSelectedProxyStateProvider
 }
 
 String _$realSelectedProxyStateHash() =>
-    r'42fa131419f0a26e30c4f5269bf020893b7f828c';
+    r'e4631375393da75c2fd2025715b9664f14710212';
 
 final class RealSelectedProxyStateFamily extends $Family
     with $FunctionalFamilyOverride<SelectedProxyState, String> {
@@ -2921,7 +2921,7 @@ final class ProxyDescProvider
     with $Provider<String> {
   ProxyDescProvider._({
     required ProxyDescFamily super.from,
-    required Proxy super.argument,
+    required ({String name, String type}) super.argument,
   }) : super(
          retry: null,
          name: r'proxyDescProvider',
@@ -2947,7 +2947,7 @@ final class ProxyDescProvider
 
   @override
   String create(Ref ref) {
-    final argument = this.argument as Proxy;
+    final argument = this.argument as ({String name, String type});
     return proxyDesc(ref, argument);
   }
 
@@ -2970,10 +2970,10 @@ final class ProxyDescProvider
   }
 }
 
-String _$proxyDescHash() => r'16dbf0d090ba4699b1a282d804d1e75a9910696f';
+String _$proxyDescHash() => r'51e05ee6692e26b066ca5bf1d6ab420df6cda947';
 
 final class ProxyDescFamily extends $Family
-    with $FunctionalFamilyOverride<String, Proxy> {
+    with $FunctionalFamilyOverride<String, ({String name, String type})> {
   ProxyDescFamily._()
     : super(
         retry: null,
@@ -2983,7 +2983,7 @@ final class ProxyDescFamily extends $Family
         isAutoDispose: true,
       );
 
-  ProxyDescProvider call(Proxy proxy) =>
+  ProxyDescProvider call(({String name, String type}) proxy) =>
       ProxyDescProvider._(argument: proxy, from: this);
 
   @override
@@ -3087,7 +3087,7 @@ final class NavigationItemsStateProvider
 }
 
 String _$navigationItemsStateHash() =>
-    r'3c633d4f3e5f2e80b7cfd166a46397f9a207bb1e';
+    r'97ece0a0161b0bf04178b1fb1004f9588886fa06';
 
 @ProviderFor(currentNavigationItemsState)
 final currentNavigationItemsStateProvider =
