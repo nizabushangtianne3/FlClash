@@ -111,7 +111,7 @@ class Database extends _$Database {
             customProxies.emptyOptions,
           );
         }
-      },
+      }),
       beforeOpen: (_) async {
         await customStatement('PRAGMA foreign_keys = ON');
         await customStatement('PRAGMA busy_timeout = 5000');

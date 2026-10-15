@@ -95,10 +95,9 @@ class _ListEditorPageState<T, K> extends ConsumerState<ListEditorPage<T, K>> {
     if (!identical(_visibleSource, items) || _visibleQueryText != _queryText) {
       _visibleSource = items;
       _visibleQueryText = _queryText;
-      _visibleResult =
-          items
-              .whereMatches(_query, searchFieldsOf, texts: _searchTexts)
-              .toList();
+      _visibleResult = items
+          .whereMatches(_query, searchFieldsOf, texts: _searchTexts)
+          .toList();
     }
     return _visibleResult!;
   }

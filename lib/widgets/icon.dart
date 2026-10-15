@@ -224,6 +224,7 @@ var _readRemoteIcon = _readCachedIcon;
 set readRemoteIcon(Stream<Uint8List> Function(String src)? value) {
   _readRemoteIcon = value ?? _readCachedIcon;
 }
+
 final _iconPrecachePool = TaskPool(maxConcurrentIconLoads);
 final _iconPrefetchesInFlight = <String>{};
 

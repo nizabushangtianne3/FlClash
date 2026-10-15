@@ -29,11 +29,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Editor unavailable'), findsOneWidget);
-    for (final glyph in [
-      AppGlyphs.copy,
-      AppGlyphs.search,
-      AppGlyphs.check,
-    ]) {
+    for (final glyph in [AppGlyphs.copy, AppGlyphs.search, AppGlyphs.check]) {
       expect(
         tester
             .widget<IconButton>(find.widgetWithGlyph(IconButton, glyph))

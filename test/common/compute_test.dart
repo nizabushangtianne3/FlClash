@@ -624,10 +624,7 @@ void main() {
     });
 
     test('keeps the source groups when no proxy is hidden', () {
-      final groups = hide(
-        groups: [group],
-        delayMap: {},
-      );
+      final groups = hide(groups: [group], delayMap: {});
       expect(identical(groups.single, group), isTrue);
       expect(groups.single.all.map((proxy) => proxy.name), [
         'fast',

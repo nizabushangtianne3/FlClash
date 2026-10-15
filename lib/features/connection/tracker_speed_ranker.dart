@@ -100,25 +100,25 @@ class TrackerSpeedRanker {
     final ranked =
         [for (final trackerInfo in trackerInfos) withSpeed(trackerInfo)]
           ..sort((a, b) {
-          final bucketA = buckets[a.id]!;
-          final bucket = buckets[b.id]!.compareTo(bucketA);
-          if (bucket != 0) {
-            return bucket;
-          }
-          if (bucketA > 0) {
-            final position = (_positions[a.id] ?? trackerInfos.length)
-                .compareTo(_positions[b.id] ?? trackerInfos.length);
-            if (position != 0) {
-              return position;
+            final bucketA = buckets[a.id]!;
+            final bucket = buckets[b.id]!.compareTo(bucketA);
+            if (bucket != 0) {
+              return bucket;
             }
-          }
-          final traffic = trafficBy[b.id]!.compareTo(trafficBy[a.id]!);
-          if (traffic != 0) {
-            return traffic;
-          }
-          final start = b.start.compareTo(a.start);
-          return start != 0 ? start : a.id.compareTo(b.id);
-        });
+            if (bucketA > 0) {
+              final position = (_positions[a.id] ?? trackerInfos.length)
+                  .compareTo(_positions[b.id] ?? trackerInfos.length);
+              if (position != 0) {
+                return position;
+              }
+            }
+            final traffic = trafficBy[b.id]!.compareTo(trafficBy[a.id]!);
+            if (traffic != 0) {
+              return traffic;
+            }
+            final start = b.start.compareTo(a.start);
+            return start != 0 ? start : a.id.compareTo(b.id);
+          });
     _positions = {
       for (final (index, trackerInfo) in ranked.indexed) trackerInfo.id: index,
     };

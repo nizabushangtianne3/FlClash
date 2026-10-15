@@ -443,8 +443,7 @@ class SetupAction extends _$SetupAction {
             ),
           })
         : _core.getConfig(profileId);
-    final scriptFuture =
-        !isCustom && setupState.extendType == ExtendType.script
+    final scriptFuture = !isCustom && setupState.extendType == ExtendType.script
         ? setupState.script?.content ?? Future<String?>.value(null)
         : Future<String?>.value(null);
     final directoryFuture = appPath.profilesPath;

@@ -93,7 +93,6 @@ class CoreEventManager {
     }
     _controller.add(event);
   }
-  }
 
   bool Function(CoreEventListener listener)? _filterFor(CoreEvent event) {
     return switch (event.type) {

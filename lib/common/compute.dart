@@ -205,6 +205,7 @@ List<Group> computeHideTimeout({
     final groupWithNow = groupsByName[group.name] ?? group;
     final selectedName = groupWithNow.getCurrentSelectedName(
       selectedMap[group.name] ?? '',
+    );
     final visible = group.all.where((proxy) {
       if (proxy.name == selectedName) {
         return true;
@@ -225,8 +226,7 @@ List<Group> computeHideTimeout({
       final delay = delayMap[testUrl]?[state.proxyName];
       return delay == null || delay > 0;
     }).toList();
-    return visible.length == group.all.length &&
-            _sameOrder(visible, group.all)
+    return visible.length == group.all.length && _sameOrder(visible, group.all)
         ? group
         : group.copyWith(all: visible.isEmpty ? group.all : visible);
   }).toList();

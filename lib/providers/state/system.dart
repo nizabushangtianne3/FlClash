@@ -149,10 +149,7 @@ TrayTitleState trayTitleState(Ref ref) {
   // traffic push would otherwise rebuild this provider and call setTitle('')
   // on macOS, burning CPU in NSStatusItem redraws.
   if (!showTrayTitle) {
-    return const TrayTitleState(
-      showTrayTitle: false,
-      traffic: Traffic(),
-    );
+    return const TrayTitleState(showTrayTitle: false, traffic: Traffic());
   }
   final traffic = ref.watch(
     trafficsProvider.select((state) => state.list.safeLast(const Traffic())),
