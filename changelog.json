@@ -2,6 +2,547 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "0.9.2",
+      "tag": "v0.9.2",
+      "date": "2026-10-15",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "b4083f9",
+              "scope": "core",
+              "text": "Fix Core event delivery during page teardown"
+            },
+            {
+              "id": "b4e77d6",
+              "scope": "app",
+              "text": "Fix event dispatch, profile groups, and editor copying"
+            },
+            {
+              "id": "63b8540",
+              "scope": "app",
+              "text": "Copy profile files reliably and remove first-launch prompts"
+            }
+          ]
+        },
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "862315a",
+              "scope": "ui",
+              "text": "Cache line chart slopes"
+            },
+            {
+              "id": "1be55b3",
+              "scope": "core,manager",
+              "text": "Avoid copying batched Core feeds before they reach the UI"
+            },
+            {
+              "id": "e984ace",
+              "scope": "ui",
+              "text": "Avoid rebuilding repeated notifications that stay unchanged"
+            },
+            {
+              "id": "a055436",
+              "scope": "views",
+              "text": "Avoid rebuilding the connections card header on count updates"
+            },
+            {
+              "id": "4d10783",
+              "scope": "views",
+              "text": "Avoid rebuilding the network speed card header on traffic updates"
+            },
+            {
+              "id": "d8545a6",
+              "scope": "ui",
+              "text": "Reduce repeated work when list pages rebuild"
+            },
+            {
+              "id": "1b1ee8e",
+              "scope": "views",
+              "text": "Keep the memory card steady when memory usage is unchanged"
+            },
+            {
+              "id": "9d066f9",
+              "scope": "views",
+              "text": "Stop feed cards from repainting for unchanged counts"
+            },
+            {
+              "id": "7f8b23c",
+              "scope": "common,profiles",
+              "text": "Trim repeated UI work"
+            },
+            {
+              "id": "d42dccd",
+              "scope": "connections,models",
+              "text": "Share connection polling and skip no-op sorting"
+            },
+            {
+              "id": "23f1b9e",
+              "scope": "proxies",
+              "text": "Smoother proxy list updates with large subscriptions"
+            },
+            {
+              "id": "ba41c60",
+              "scope": "core,proxies",
+              "text": "Faster automatic node failover and reliable selected-node locating"
+            },
+            {
+              "id": "22a5aac",
+              "scope": "proxies",
+              "text": "Reuse group lists when no selection strip is needed"
+            },
+            {
+              "id": "48d5fa6",
+              "scope": "proxies",
+              "text": "Lower proxy card memory and rebuild churn"
+            },
+            {
+              "id": "895e6a3",
+              "scope": "startup",
+              "text": "Faster startup with no profile rewrite"
+            },
+            {
+              "id": "9c9fb28",
+              "scope": "proxies",
+              "text": "Lower delay batch snapshot overhead"
+            },
+            {
+              "id": "f5fdf74",
+              "scope": "proxies",
+              "text": "Lower proxy card provider churn"
+            },
+            {
+              "id": "b222c0b",
+              "scope": "proxies",
+              "text": "Combine delay and phase watches"
+            },
+            {
+              "id": "4b63281",
+              "scope": "connection",
+              "text": "Reuse rows when speeds are unchanged"
+            },
+            {
+              "id": "8416a37",
+              "scope": "core,proxies",
+              "text": "Smoother large proxy lists and lower event overhead"
+            },
+            {
+              "id": "66f0a80",
+              "scope": "proxies",
+              "text": "Smoother proxy tab updates"
+            },
+            {
+              "id": "5405455",
+              "scope": "proxies,startup",
+              "text": "More stable proxy sorting and faster startup updates"
+            },
+            {
+              "id": "d7bb950",
+              "scope": "proxies,tray,core",
+              "text": "Faster tray refreshes and system proxy transitions"
+            },
+            {
+              "id": "1ec5f79",
+              "scope": "proxies,core,ui",
+              "text": "Faster proxy updates and switching under load"
+            },
+            {
+              "id": "c96cd92",
+              "scope": "core",
+              "text": "Parse Core events once when several listeners are active"
+            },
+            {
+              "id": "af7f4aa",
+              "scope": "proxies",
+              "text": "Coalesce cleanup and skip redundant work"
+            },
+            {
+              "id": "820c8d2",
+              "scope": "ui",
+              "text": "Narrow navigation setting watches"
+            },
+            {
+              "id": "24d8cfd",
+              "scope": "core",
+              "text": "Drop buffered feeds when hidden"
+            },
+            {
+              "id": "051a2f8",
+              "scope": "icons",
+              "text": "Coalesce concurrent prefetches"
+            },
+            {
+              "id": "46bce8c",
+              "scope": "profiles",
+              "text": "Coalesce concurrent auto updates"
+            },
+            {
+              "id": "6482793",
+              "scope": "startup",
+              "text": "Skip unused dynamic color probe"
+            },
+            {
+              "id": "35a225c",
+              "scope": "proxies",
+              "text": "Keep equal-delay order stable"
+            },
+            {
+              "id": "1467344",
+              "scope": "providers",
+              "text": "Skip unchanged group publishes"
+            },
+            {
+              "id": "f44d4a7",
+              "scope": "proxies",
+              "text": "Build proxy rows without chunk lists"
+            },
+            {
+              "id": "776c6fe",
+              "scope": "proxies",
+              "text": "Avoid row builder allocations"
+            },
+            {
+              "id": "21c9082",
+              "scope": "startup",
+              "text": "Load profiles, localization, and window setup in parallel"
+            },
+            {
+              "id": "3c82946",
+              "scope": "proxies",
+              "text": "Avoid rebuilding groups when every proxy matches"
+            },
+            {
+              "id": "2b1878c",
+              "scope": "config",
+              "text": "Skip rewriting unchanged configuration"
+            },
+            {
+              "id": "c5a25e0",
+              "scope": "proxies",
+              "text": "Reuse normalized proxy search text across queries"
+            },
+            {
+              "id": "914f5a8",
+              "scope": "startup",
+              "text": "Start migration reads in parallel"
+            },
+            {
+              "id": "d976979",
+              "scope": "ui",
+              "text": "Stop repeated writes for unchanged view sizes"
+            },
+            {
+              "id": "a5fb3ab",
+              "scope": "startup",
+              "text": "Read boot recovery probes concurrently"
+            },
+            {
+              "id": "fe1c839",
+              "scope": "startup",
+              "text": "Start dynamic color probes in parallel"
+            },
+            {
+              "id": "c97d74d",
+              "scope": "ui",
+              "text": "Avoid redundant sidebar layout writes"
+            },
+            {
+              "id": "5db3b04",
+              "scope": "startup",
+              "text": "Avoid an empty first frame during startup"
+            },
+            {
+              "id": "fd478f2",
+              "scope": "core",
+              "text": "Stop request and DNS event delivery while hidden"
+            },
+            {
+              "id": "69fc4ae",
+              "scope": "ui",
+              "text": "Pause icon prefetching while the app is hidden"
+            },
+            {
+              "id": "7ff64cc",
+              "scope": "tray",
+              "text": "Reduce macOS tray delay menu rebuilds"
+            },
+            {
+              "id": "7735961",
+              "scope": "app",
+              "text": "Schedule profile updates only when they are due"
+            },
+            {
+              "id": "47cda7b",
+              "scope": "app",
+              "text": "Reduce idle traffic polling and icon prefetch pressure"
+            },
+            {
+              "id": "2acdc84",
+              "scope": "proxies",
+              "text": "Interactive delay tests jump ahead of bulk probes"
+            },
+            {
+              "id": "ced9d88",
+              "scope": "database",
+              "text": "Improve database write responsiveness"
+            },
+            {
+              "id": "c3492a5",
+              "scope": "proxies",
+              "text": "Faster proxy list updates and node switching"
+            },
+            {
+              "id": "8f4a969",
+              "scope": "core",
+              "text": "Reduce Core event dispatch and buffering overhead"
+            },
+            {
+              "id": "525b52a",
+              "scope": "proxies",
+              "text": "Trim repeat work on group updates"
+            },
+            {
+              "id": "bfcf525",
+              "scope": "views,common",
+              "text": "Improve profile, app, and startup responsiveness"
+            },
+            {
+              "id": "d72f460",
+              "scope": "core,providers",
+              "text": "Cut redundant setup and feed work"
+            },
+            {
+              "id": "c47d2f7",
+              "scope": "proxies",
+              "text": "Cache resolved proxy state and narrow watches"
+            },
+            {
+              "id": "0ed3ade",
+              "scope": "common",
+              "text": "Keep unchanged groups during timeout filtering"
+            },
+            {
+              "id": "9b93f92",
+              "scope": "common",
+              "text": "Cache proxy types for timeout filtering"
+            },
+            {
+              "id": "9277b47",
+              "scope": "common",
+              "text": "Reuse groups when sorting does not change order"
+            },
+            {
+              "id": "9010a79",
+              "scope": "common",
+              "text": "Reuse real proxy states while sorting"
+            },
+            {
+              "id": "e9a3c92",
+              "text": "Skip computeSort after buildGroups when sort is none"
+            },
+            {
+              "id": "d6d705d",
+              "text": "Short-circuit computeSort for none and singleton groups"
+            },
+            {
+              "id": "131d953",
+              "text": "Patch group.now locally after proxy switch"
+            },
+            {
+              "id": "9142bee",
+              "text": "Skip groups isolate below 80 proxy-map entries"
+            },
+            {
+              "id": "1277a2e",
+              "text": "Wire delay resort and invalidate proxies cache on provider load"
+            },
+            {
+              "id": "b5636c0",
+              "text": "Skip AutoDisposeNotifier no-op value writes"
+            },
+            {
+              "id": "9652fff",
+              "text": "Skip groups refetch fan-out when proxy switch is a no-op"
+            },
+            {
+              "id": "89f38d7",
+              "text": "Cap Core feed buffers between flushes"
+            },
+            {
+              "id": "b5e4513",
+              "text": "Reuse Core message batch buffer capacity"
+            },
+            {
+              "id": "89b2d41",
+              "text": "Skip connections list notifier when live data is unchanged"
+            },
+            {
+              "id": "1ebe3bb",
+              "text": "Skip full connection sort when idle or empty"
+            },
+            {
+              "id": "e006867",
+              "text": "Lighter connections page polling"
+            },
+            {
+              "id": "d1f5a38",
+              "text": "Cache groups-by-name map for proxyDesc"
+            },
+            {
+              "id": "7f41f2e",
+              "scope": "desktop",
+              "text": "MacOS tray title throttle 1.5s -> 2s"
+            },
+            {
+              "id": "27ecf4e",
+              "text": "Coarser feed throttle and smaller live buffers"
+            },
+            {
+              "id": "0efd88a",
+              "text": "Visible traffic ticker 1s -> 1.5s"
+            },
+            {
+              "id": "cb27736",
+              "text": "Skip identical traffic samples on the chart buffer"
+            },
+            {
+              "id": "ff5c54f",
+              "text": "Use groups.getGroup in proxyDesc with select"
+            },
+            {
+              "id": "5d73f39",
+              "scope": "android",
+              "text": "Refresh foreground notification every 2s"
+            },
+            {
+              "id": "19a0262",
+              "text": "Shrink traffic chart sample buffer 30 -> 24"
+            },
+            {
+              "id": "d77a4c5",
+              "text": "Poll connection count every 3s on dashboard"
+            },
+            {
+              "id": "23065ae",
+              "text": "Poll memory stats every 3s"
+            },
+            {
+              "id": "2cc3a15",
+              "text": "Coarser Core event batches under load"
+            },
+            {
+              "id": "01e61a4",
+              "text": "Always use combined traffic IPC when window is visible"
+            },
+            {
+              "id": "774b691",
+              "text": "Cut traffic IPC and skip delay-driven group rebuilds"
+            },
+            {
+              "id": "c08e87b",
+              "text": "Quieter traffic sampling and coarser core event batches"
+            },
+            {
+              "id": "b16003f",
+              "text": "Cheaper background polls and accurate tray delay rebuilds"
+            },
+            {
+              "id": "3f9b6bc",
+              "text": "Close dead sockets in background and batch UI feeds"
+            },
+            {
+              "id": "66b651c",
+              "text": "Faster proxy switch and lower background UI work"
+            },
+            {
+              "id": "d545d62",
+              "scope": "macos",
+              "text": "Cut NSStatusItem redraw CPU from tray title/menu"
+            },
+            {
+              "id": "b8e2b85",
+              "scope": "proxies",
+              "text": "Subscribe cards to selection state"
+            },
+            {
+              "id": "61ea03c",
+              "scope": "sheets",
+              "text": "Cache selection search text"
+            },
+            {
+              "id": "7b94b4d",
+              "scope": "scaffold",
+              "text": "Skip unchanged keyword syncs"
+            },
+            {
+              "id": "4e3288c",
+              "scope": "editors",
+              "text": "Cache visible search results"
+            },
+            {
+              "id": "b0094a0",
+              "scope": "traffic",
+              "text": "Cache display strings"
+            },
+            {
+              "id": "d255491",
+              "scope": "dns",
+              "text": "Cache filtered query list"
+            },
+            {
+              "id": "829c5e8",
+              "scope": "lists",
+              "text": "Cache filtered view results"
+            },
+            {
+              "id": "33e05cf",
+              "scope": "ui",
+              "text": "Skip unchanged memory updates"
+            },
+            {
+              "id": "512d714",
+              "scope": "proxies",
+              "text": "Reuse groups without selections"
+            },
+            {
+              "id": "b810510",
+              "scope": "search",
+              "text": "Cache list query terms"
+            },
+            {
+              "id": "42c47ca",
+              "scope": "logs",
+              "text": "Cache parsed payloads"
+            },
+            {
+              "id": "7ecb97c",
+              "scope": "connections",
+              "text": "Precompute speed ranking keys"
+            },
+            {
+              "id": "deb2cd8",
+              "scope": "tray",
+              "text": "Cache resolved proxy states"
+            },
+            {
+              "id": "fb65545",
+              "scope": "proxies",
+              "text": "Reuse group type lookups"
+            },
+            {
+              "id": "94e0a84",
+              "scope": "proxies",
+              "text": "Index group lookups during sorting"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.9.1",
       "tag": "v0.9.1",
       "date": "2026-10-15",
