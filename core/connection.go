@@ -43,16 +43,25 @@ func handleGetConnectionCount() int {
 	return count
 }
 
-func handleCloseConnections() bool {
+func collectTrackers() []statistic.Tracker {
 	var trackers []statistic.Tracker
 	statistic.DefaultManager.Range(func(c statistic.Tracker) bool {
 		trackers = append(trackers, c)
 		return true
 	})
+	return trackers
+}
+
+func closeTrackers(trackers []statistic.Tracker) {
+	for _, c := range trackers {
+		_ = c.Close()
+	}
+}
+
+func handleCloseConnections() bool {
+	trackers := collectTrackers()
 	safeGo("closeConnections", func() {
-		for _, c := range trackers {
-			_ = c.Close()
-		}
+		closeTrackers(trackers)
 	})
 	return true
 }
@@ -64,9 +73,13 @@ func handleResetConnections() bool {
 
 // A connection that went out over a network the device has left hangs until
 // TCP gives up on it, and so do the DNS clients' pooled connections.
+func resetNetwork(trackers []statistic.Tracker, resetConnections func()) {
+	closeTrackers(trackers)
+	resetConnections()
+}
+
 func handleResetNetwork() {
-	handleCloseConnections()
-	resolver.ResetConnection()
+	resetNetwork(collectTrackers(), resolver.ResetConnection)
 }
 
 func handleCloseConnection(connectionId string) bool {
