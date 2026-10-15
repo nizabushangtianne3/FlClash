@@ -1,0 +1,21 @@
+name: URLTest red test
+
+on:
+  push:
+    branches:
+      - codex/urltest-red-ci
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+          cache-dependency-path: core/Clash.Meta/go.sum
+      - name: Run the focused URLTest regression test
+        working-directory: core/Clash.Meta
+        run: go test ./adapter/outboundgroup -run "^TestURLTestMarksFailedProxyDownAndSelectsHealthy$" -count=1
