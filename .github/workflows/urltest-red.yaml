@@ -18,4 +18,4 @@ jobs:
           cache-dependency-path: core/Clash.Meta/go.sum
       - name: Run the focused URLTest regression test
         working-directory: core/Clash.Meta
-        run: go test ./adapter/outboundgroup -run "^TestURLTestMarksFailedProxyDownAndSelectsHealthy$" -count=1
+        run: go test ./adapter/outboundgroup -count=1
