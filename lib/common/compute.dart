@@ -204,7 +204,7 @@ List<Group> computeHideTimeout({
     final groupTestUrl = group.testUrl.takeFirstValid([defaultTestUrl]);
     final groupWithNow = groupsByName[group.name] ?? group;
     final selectedName = groupWithNow.getCurrentSelectedName(
-      selectedMap[group.name] ?? ',
+      selectedMap[group.name] ?? '',
     final visible = group.all.where((proxy) {
       if (proxy.name == selectedName) {
         return true;

@@ -16,6 +16,7 @@ extension _RendererPointer on _CodeFieldRenderer {
     if (_pastCut(content)) _showWholeLines();
     switch (event.buttons) {
       case kSecondaryButton:
+        _takeFocus();
         _openContextMenu(position);
       case kPrimaryButton:
         _onPrimaryDown(event, content);

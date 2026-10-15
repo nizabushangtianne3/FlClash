@@ -50,7 +50,7 @@ func scheduleRouteRefresh() {
 		routeRefreshPending.Store(false)
 		return
 	}
-	safeGoDetached("route invalidate", func() {
+	safeGo("route invalidate", func() {
 		defer routeRefreshPending.Store(false)
 		refreshRoute()
 	})

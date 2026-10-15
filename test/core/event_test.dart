@@ -216,26 +216,29 @@ void main() {
     expect(uninterested.dnsQueries, isEmpty);
   });
 
-  test('parses event data once when multiple listeners are registered', () async {
-    final first = _RecordingListener();
-    final second = _RecordingListener();
-    coreEventManager.addListener(first);
-    coreEventManager.addListener(second);
-    addTearDown(() {
-      coreEventManager.removeListener(first);
-      coreEventManager.removeListener(second);
-    });
+  test(
+    'parses event data once when multiple listeners are registered',
+    () async {
+      final first = _RecordingListener();
+      final second = _RecordingListener();
+      coreEventManager.addListener(first);
+      coreEventManager.addListener(second);
+      addTearDown(() {
+        coreEventManager.removeListener(first);
+        coreEventManager.removeListener(second);
+      });
 
-    coreEventManager.sendEvent(
-      const CoreEvent(
-        type: CoreEventType.log,
-        data: {'LogLevel': 'info', 'Payload': 'shared-event'},
-      ),
-    );
-    await pumpEventQueue();
+      coreEventManager.sendEvent(
+        const CoreEvent(
+          type: CoreEventType.log,
+          data: {'LogLevel': 'info', 'Payload': 'shared-event'},
+        ),
+      );
+      await pumpEventQueue();
 
-    expect(first.logs.single.payload, 'shared-event');
-    expect(second.logs.single.payload, 'shared-event');
-    expect(identical(first.logs.single, second.logs.single), isTrue);
-  });
+      expect(first.logs.single.payload, 'shared-event');
+      expect(second.logs.single.payload, 'shared-event');
+      expect(identical(first.logs.single, second.logs.single), isTrue);
+    },
+  );
 }

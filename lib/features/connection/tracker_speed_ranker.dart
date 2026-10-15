@@ -80,7 +80,8 @@ class TrackerSpeedRanker {
               return start != 0 ? start : a.id.compareTo(b.id);
             });
       _positions = {
-        for (final (index, trackerInfo) in ranked.indexed) trackerInfo.id: index,
+        for (final (index, trackerInfo) in ranked.indexed)
+          trackerInfo.id: index,
       };
       return ranked;
     }

@@ -192,7 +192,6 @@ class Bootstrap {
     unawaited(
       _container.read(profilesActionProvider.notifier).autoUpdateProfiles(),
     );
-    unawaited(_container.read(commonActionProvider.notifier).autoCheckUpdate());
     unawaited(
       autoLaunch?.updateStatus(_container.read(appSettingProvider).autoLaunch),
     );
@@ -202,11 +201,21 @@ class Bootstrap {
       unawaited(window?.hide());
     }
     await _handleFailedPreference();
-    if (!await _handlerDisclaimer()) {
+    final isFirstLaunch =
+        _container.read(
+          appSettingProvider.select((state) => state.acceptedDisclaimerVersion),
+        ) ==
+        0;
+    if (!isFirstLaunch) {
+      unawaited(
+        _container.read(commonActionProvider.notifier).autoCheckUpdate(),
+      );
+    }
+    if (!await _handlerDisclaimer(isFirstLaunch)) {
       return;
     }
     await _showCrashRecoveryTip();
-    await _showCrashlyticsTip();
+    await _showCrashlyticsTip(isFirstLaunch: isFirstLaunch);
     await _container.read(coreActionProvider.notifier).startCore();
     if (!_bootDecision.isDegraded) {
       await _container.read(setupActionProvider.notifier).initStatus();
@@ -214,7 +223,11 @@ class Bootstrap {
     _container.read(initProvider.notifier).value = true;
     unawaited(_container.read(resourcesActionProvider.notifier).autoUpdate());
     await bootGuard.markRunning();
-    unawaited(_container.read(locationPermissionsProvider.notifier).refresh());
+    if (!isFirstLaunch) {
+      unawaited(
+        _container.read(locationPermissionsProvider.notifier).refresh(),
+      );
+    }
   }
 
   Future<void> _showCrashRecoveryTip() async {
@@ -263,18 +276,20 @@ class Bootstrap {
     await _container.read(systemActionProvider.notifier).handleExit(false);
   }
 
-  Future<void> _showCrashlyticsTip() async {
+  Future<void> _showCrashlyticsTip({required bool isFirstLaunch}) async {
     if (!system.isAndroid) return;
     if (_container.read(
       appSettingProvider.select((state) => state.crashlyticsTip),
     )) {
       return;
     }
-    await dialogs.showMessage(
-      title: currentAppLocalizations.dataCollectionTip,
-      cancelable: false,
-      message: TextSpan(text: currentAppLocalizations.dataCollectionContent),
-    );
+    if (!isFirstLaunch) {
+      await dialogs.showMessage(
+        title: currentAppLocalizations.dataCollectionTip,
+        cancelable: false,
+        message: TextSpan(text: currentAppLocalizations.dataCollectionContent),
+      );
+    }
     _container
         .read(appSettingProvider.notifier)
         .update((state) => state.copyWith(crashlyticsTip: true));
@@ -282,17 +297,19 @@ class Bootstrap {
 
   /// Android's exit only finishes the activity, so Dart keeps running after
   /// [SystemAction.handleExit] returns and must not go on to start the app.
-  Future<bool> _handlerDisclaimer() async {
-    final acceptedVersion = _container.read(
-      appSettingProvider.select((state) => state.acceptedDisclaimerVersion),
-    );
-    if (acceptedVersion >= disclaimerVersion) {
-      return true;
-    }
-    final isDisclaimerAccepted = await requestDisclaimerConsent();
-    if (!isDisclaimerAccepted) {
-      await _container.read(systemActionProvider.notifier).handleExit();
-      return false;
+  Future<bool> _handlerDisclaimer(bool isFirstLaunch) async {
+    if (!isFirstLaunch) {
+      final acceptedVersion = _container.read(
+        appSettingProvider.select((state) => state.acceptedDisclaimerVersion),
+      );
+      if (acceptedVersion >= disclaimerVersion) {
+        return true;
+      }
+      final isDisclaimerAccepted = await requestDisclaimerConsent();
+      if (!isDisclaimerAccepted) {
+        await _container.read(systemActionProvider.notifier).handleExit();
+        return false;
+      }
     }
     _container
         .read(appSettingProvider.notifier)

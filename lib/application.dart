@@ -206,13 +206,16 @@ class ApplicationState extends ConsumerState<Application> {
 
   void _scheduleAutoUpdateResourcesTask() {
     _autoUpdateResourcesTaskTimer?.cancel();
-    _autoUpdateResourcesTaskTimer = Timer(const Duration(minutes: 20), () async {
-      await ref.read(resourcesActionProvider.notifier).autoUpdate();
-      if (!mounted) {
-        return;
-      }
-      _scheduleAutoUpdateResourcesTask();
-    });
+    _autoUpdateResourcesTaskTimer = Timer(
+      const Duration(minutes: 20),
+      () async {
+        await ref.read(resourcesActionProvider.notifier).autoUpdate();
+        if (!mounted) {
+          return;
+        }
+        _scheduleAutoUpdateResourcesTask();
+      },
+    );
   }
 
   Future<void> _handleConnectivityChanged(
