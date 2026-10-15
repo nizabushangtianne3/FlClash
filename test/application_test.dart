@@ -1,4 +1,5 @@
 import 'package:fl_clash/application.dart';
+import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/manager/hotkey_manager.dart';
 import 'package:fl_clash/manager/manager.dart';
 import 'package:fl_clash/models/models.dart';
