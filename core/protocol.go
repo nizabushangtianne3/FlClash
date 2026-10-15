@@ -32,7 +32,7 @@ const (
 	changeProxyMethod              CoreMethod = "changeProxy"
 	getTrafficMethod               CoreMethod = "getTraffic"
 	getTotalTrafficMethod          CoreMethod = "getTotalTraffic"
-	getTrafficStatsMethod           CoreMethod = "getTrafficStats"
+	getTrafficStatsMethod          CoreMethod = "getTrafficStats"
 	resetTrafficMethod             CoreMethod = "resetTraffic"
 	asyncTestDelayMethod           CoreMethod = "asyncTestDelay"
 	probeMethod                    CoreMethod = "probe"
