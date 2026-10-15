@@ -114,7 +114,9 @@ void main() {
     await tester.pumpAndSettle();
 
     final header = tester.getRect(headerOf('G1'));
-    final card = tester.getRect(find.byKey(const ValueKey('G1.G1-25')).first);
+    final card = tester.getRect(
+      find.byKey(const ValueKey(('G1', 'G1-25'))).first,
+    );
     expect(card.top, header.bottom + 8);
   });
 

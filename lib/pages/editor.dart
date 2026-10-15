@@ -277,13 +277,6 @@ class _EditorPageState extends ConsumerState<EditorPage> {
             ),
             iconActions: [
               IconButtonData(
-                glyph: AppGlyphs.copy,
-                tooltip: appLocalizations.copy,
-                onPressed: isReady
-                    ? () => unawaited(_editor?.controller?.copy())
-                    : null,
-              ),
-              IconButtonData(
                 glyph: AppGlyphs.search,
                 tooltip: appLocalizations.search,
                 onPressed: isReady ? _handleSearch : null,
@@ -296,6 +289,13 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                 ),
             ],
             menuItems: [
+              CommonPopupMenuItem(
+                glyph: AppGlyphs.copy,
+                label: appLocalizations.copy,
+                onPressed: isReady
+                    ? () => unawaited(_editor?.controller?.copy())
+                    : null,
+              ),
               CommonPopupMenuItem(
                 glyph: AppGlyphs.undo,
                 label: appLocalizations.undo,

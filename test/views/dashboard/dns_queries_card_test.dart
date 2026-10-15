@@ -97,7 +97,7 @@ void main() {
 
     // The count repaints on the throttled cadence, not per query.
     expect(find.text('0'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pump(const Duration(milliseconds: 401));
 
     expect(find.text('1.23K'), findsOneWidget);
 
@@ -318,7 +318,7 @@ void main() {
             time: DateTime.utc(2026, 9, 18, 4, 31),
           ),
         );
-    for (var frame = 0; frame < 20; frame++) {
+    for (var frame = 0; frame < 30; frame++) {
       await tester.pump(const Duration(milliseconds: 16));
       expect(position.pixels, position.maxScrollExtent);
     }

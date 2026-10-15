@@ -328,6 +328,7 @@ void main() {
     final first = _items(showCall()).map((item) => item['id']).toList();
 
     Tray.instance.resetForTesting();
+    tray = AppTray.forPlatform(isMacOS: true, isWindows: false);
     calls.clear();
 
     await update(_trayState());

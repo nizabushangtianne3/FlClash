@@ -101,7 +101,7 @@ class CommonScaffoldState extends State<CommonScaffold> {
   final ValueNotifier<bool> _loadingNotifier = ValueNotifier(false);
   final ValueNotifier<bool> _isFabExtendedNotifier = ValueNotifier(true);
   final ValueNotifier<List<String>> _keywordsNotifier = ValueNotifier([]);
-  List<String>? _lastKeywords;
+  List<String>? _lastKeywords = const [];
   final _textController = TextEditingController();
   final _searchFocusNode = FocusNode();
   var _sorting = false;
@@ -688,6 +688,7 @@ class CommonScaffoldState extends State<CommonScaffold> {
         builder: (context, keywords, _) {
           if (widget.onKeywordsUpdate != null) {
             if (!listEquals(_lastKeywords, keywords)) {
+              _lastKeywords = List.of(keywords);
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 widget.onKeywordsUpdate!(keywords);
               });

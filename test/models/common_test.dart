@@ -186,8 +186,24 @@ void main() {
   group('GroupsExt', () {
     test('finds group by name and resolves current selection', () {
       const groups = [
-        Group(name: 'Auto', type: GroupType.URLTest, now: 'Proxy A'),
-        Group(name: 'Manual', type: GroupType.Selector, now: 'Proxy B'),
+        Group(
+          name: 'Auto',
+          type: GroupType.URLTest,
+          now: 'Proxy A',
+          all: [
+            Proxy(name: 'Proxy A', type: 'Direct'),
+            Proxy(name: 'Proxy C', type: 'Direct'),
+          ],
+        ),
+        Group(
+          name: 'Manual',
+          type: GroupType.Selector,
+          now: 'Proxy B',
+          all: [
+            Proxy(name: 'Proxy B', type: 'Direct'),
+            Proxy(name: 'Proxy C', type: 'Direct'),
+          ],
+        ),
       ];
 
       expect(

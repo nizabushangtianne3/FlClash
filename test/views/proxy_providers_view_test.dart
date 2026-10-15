@@ -449,6 +449,7 @@ void main() {
     );
     expect(find.textContaining('503 Service Unavailable'), findsNothing);
     expect(find.byType(AlertDialog), findsNothing);
+    await tester.pump(const Duration(milliseconds: 700));
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

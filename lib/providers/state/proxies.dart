@@ -10,12 +10,7 @@ GroupsState currentGroupsState(Ref ref) {
     Mode.direct => const <Group>[],
     Mode.global => groups,
     Mode.rule =>
-      groups
-          .where(
-            (item) =>
-                item.hidden == false && item.name != GroupName.GLOBAL.name,
-          )
-          .toList(growable: false),
+      groups.where((item) => item.hidden == false).toList(growable: false),
   };
   final values = <Group>[];
   var changed = false;

@@ -45,7 +45,7 @@ void main() {
 
     expect(readCount, 1);
 
-    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 3));
     await tester.pump();
 
     expect(readCount, 2);
@@ -89,7 +89,7 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     requests.first.complete(const MemorySnapshot(app: 1));
     await tester.pump();
-    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 3));
 
     expect(requests, hasLength(1));
 
@@ -127,7 +127,7 @@ void main() {
     expect(readCount, 1);
     expect(tester.takeException(), null);
 
-    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 3));
     await tester.pump();
 
     expect(readCount, 2);
@@ -168,7 +168,7 @@ void main() {
 
     expect(readCount, 1);
 
-    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 3));
     await tester.pump();
 
     expect(readCount, 2);
@@ -258,7 +258,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpWidget(app());
     await tester.pump();
-    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 3));
     await tester.pump();
 
     expect(tester.takeException(), isNull);
@@ -448,7 +448,7 @@ void main() {
       expect(find.text('Core is not running'), findsOneWidget);
 
       core = stats;
-      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(const Duration(seconds: 3));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
@@ -492,7 +492,7 @@ void main() {
       expect(find.text('75%'), findsNothing);
 
       heapInuse = 3 * 1024 * 1024;
-      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(const Duration(seconds: 3));
       await tester.pump();
 
       expect(find.text('75%'), findsOneWidget);

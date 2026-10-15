@@ -172,6 +172,7 @@ void main() {
         nextProfileAutoUpdateDelay([
           Profile(
             id: 1,
+            type: ProfileType.url,
             url: 'https://example.com/a',
             autoUpdateDuration: const Duration(hours: 1),
             lastUpdateDate: now.subtract(const Duration(hours: 2)),
@@ -183,6 +184,7 @@ void main() {
         nextProfileAutoUpdateDelay([
           const Profile(
             id: 1,
+            type: ProfileType.url,
             url: 'https://example.com/a',
             autoUpdateDuration: Duration(hours: 1),
           ),
@@ -196,12 +198,14 @@ void main() {
         nextProfileAutoUpdateDelay([
           Profile(
             id: 1,
+            type: ProfileType.url,
             url: 'https://example.com/a',
             autoUpdateDuration: const Duration(hours: 2),
             lastUpdateDate: now,
           ),
           Profile(
             id: 2,
+            type: ProfileType.url,
             url: 'https://example.com/b',
             autoUpdateDuration: const Duration(minutes: 30),
             lastUpdateDate: now,

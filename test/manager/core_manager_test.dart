@@ -386,6 +386,7 @@ void main() {
       ),
     );
     await tester.pump();
+    await tester.pump(renderThrottleDuration);
 
     expect(
       container.read(logsProvider).list.map((log) => log.payload),
@@ -414,6 +415,7 @@ void main() {
       );
     }
     await tester.pump();
+    await tester.pump(renderThrottleDuration);
 
     expect(
       container.read(dnsQueriesProvider).list.map((query) => query.domain),

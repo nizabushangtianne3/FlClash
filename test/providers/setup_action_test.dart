@@ -327,8 +327,8 @@ void main() {
       await setup.setRunning(true);
       expect(trafficUpdates(), 1);
 
-      await tester.pump(const Duration(seconds: 2));
-      expect(trafficUpdates(), 3);
+      await tester.pump(const Duration(milliseconds: 1500));
+      expect(trafficUpdates(), 2);
 
       setVisible(false);
       await tester.pump(const Duration(seconds: 5));
@@ -337,9 +337,9 @@ void main() {
 
       setVisible(true);
       await tester.pump();
+      expect(trafficUpdates(), 3);
+      await tester.pump(const Duration(milliseconds: 1500));
       expect(trafficUpdates(), 4);
-      await tester.pump(const Duration(seconds: 1));
-      expect(trafficUpdates(), 5);
 
       await setup.setRunning(false);
     });

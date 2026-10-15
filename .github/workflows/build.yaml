@@ -510,7 +510,7 @@ jobs:
             ./.github/homebrew_cask_template.rb > ./brew/Casks/flclash.rb
 
       - name: Push to Homebrew tap
-        if: ${{ env.IS_STABLE == 'true' }}
+        if: ${{ env.IS_STABLE == 'true' && github.repository_owner == 'chen08209' }}
         uses: cpina/github-action-push-to-another-repository@v1.7.2
         env:
           SSH_DEPLOY_KEY: ${{ secrets.HOMEBREW_SSH_DEPLOY_KEY }}
@@ -532,7 +532,7 @@ jobs:
           echo "Files copied successfully"
 
       - name: Push to fdroid repo
-        if: ${{ env.IS_STABLE == 'true' }}
+        if: ${{ env.IS_STABLE == 'true' && github.repository_owner == 'chen08209' }}
         uses: cpina/github-action-push-to-another-repository@v1.7.2
         env:
           SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}

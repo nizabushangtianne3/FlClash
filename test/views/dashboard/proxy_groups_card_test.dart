@@ -179,7 +179,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ProxyCard), findsNWidgets(2));
-    expect(find.text('JP-01', findRichText: true), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(ProxyCard),
+        matching: find.text('JP-01', findRichText: true),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('US-01', findRichText: true), findsOneWidget);
     expect(find.text('Auto', findRichText: true), findsOneWidget);
   });

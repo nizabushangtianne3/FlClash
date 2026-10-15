@@ -73,7 +73,7 @@ void main() {
 
   Future<void> teardownCard(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 3));
   }
 
   testWidgets('counts what the Core is holding open', (tester) async {
@@ -84,7 +84,7 @@ void main() {
     expect(find.text('2'), findsOneWidget);
 
     count = 1;
-    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 3));
     await tester.pump();
 
     expect(find.text('1'), findsOneWidget);

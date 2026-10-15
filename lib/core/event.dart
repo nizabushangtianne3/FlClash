@@ -86,9 +86,8 @@ class CoreEventManager {
   }
 
   void sendEvent(CoreEvent event) {
-    final listeners = _listenerSnapshot ??= List.unmodifiable(_listeners);
     final filter = _filterFor(event);
-    if (filter != null && !listeners.any(filter)) {
+    if (filter != null && !_listeners.any(filter)) {
       return;
     }
     _controller.add(event);

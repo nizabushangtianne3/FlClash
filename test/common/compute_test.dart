@@ -88,7 +88,7 @@ void main() {
       expect(state.testUrl, 'http://test-b.com');
     });
 
-    test('stops at group when selectedMap has no entry', () {
+    test('falls back to the first member when selectedMap has no entry', () {
       final groups = [
         const Group(
           name: 'group-a',
@@ -101,7 +101,7 @@ void main() {
         groups: groups,
         selectedMap: {},
       );
-      expect(state.proxyName, 'group-a');
+      expect(state.proxyName, 'proxy-a');
       expect(state.group, true);
     });
 
@@ -501,12 +501,17 @@ void main() {
         name: 'auto',
         type: GroupType.URLTest,
         now: 'proxy-fast',
+        all: [Proxy(name: 'proxy-fast', type: 'ss')],
       );
       expect(group.getCurrentSelectedName('proxy-input'), 'proxy-fast');
     });
 
     test('URLTest group falls back to proxyName when now is null', () {
-      const group = Group(name: 'auto', type: GroupType.URLTest);
+      const group = Group(
+        name: 'auto',
+        type: GroupType.URLTest,
+        all: [Proxy(name: 'proxy-input', type: 'ss')],
+      );
       expect(group.getCurrentSelectedName('proxy-input'), 'proxy-input');
     });
 
@@ -520,6 +525,10 @@ void main() {
         name: 'sel',
         type: GroupType.Selector,
         now: 'proxy-now',
+        all: [
+          Proxy(name: 'proxy-now', type: 'ss'),
+          Proxy(name: 'proxy-selected', type: 'ss'),
+        ],
       );
       expect(group.getCurrentSelectedName('proxy-selected'), 'proxy-selected');
     });
@@ -529,6 +538,7 @@ void main() {
         name: 'sel',
         type: GroupType.Selector,
         now: 'proxy-now',
+        all: [Proxy(name: 'proxy-now', type: 'ss')],
       );
       expect(group.getCurrentSelectedName(''), 'proxy-now');
     });
@@ -615,6 +625,7 @@ void main() {
         delayMap: {
           defaultTestUrl: {'slow': -1, 'REJECT': -1, 'PASS': -1},
         },
+        selectedMap: {'sel': 'REJECT'},
       );
       expect(groups.first.all.map((proxy) => proxy.name), [
         'REJECT',
