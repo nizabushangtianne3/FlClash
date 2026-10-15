@@ -452,7 +452,7 @@ class SetupAction extends _$SetupAction {
       proxyGroups: proxyGroups,
       rules: rules,
     );
-    final rawConfig = await configMapFuture;
+    var rawConfig = await configMapFuture;
     final scriptContent = await scriptFuture;
     if (scriptContent?.isNotEmpty == true) {
       rawConfig = await handleEvaluate(scriptContent!, rawConfig);

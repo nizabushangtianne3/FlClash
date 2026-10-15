@@ -58,15 +58,6 @@ const _nullProfileSetupState = SetupState(
 
 const _crash = CoreEvent(type: CoreEventType.crash, data: 'boom');
 
-class _RecordingCoreLostSetupAction extends SetupAction {
-  int markCoreLostCount = 0;
-
-  @override
-  void markCoreLost() {
-    markCoreLostCount++;
-  }
-}
-
 class _RecordingLogs extends Logs {
   final received = <Iterable<Log>>[];
 

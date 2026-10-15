@@ -183,8 +183,6 @@ class _LogsViewState extends ConsumerState<LogsView>
 }
 
 class LogItem extends StatelessWidget {
-  static final _payloads = Expando<LogPayload>();
-
   final Log log;
   final Function(String)? onClick;
 

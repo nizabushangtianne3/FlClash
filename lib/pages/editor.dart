@@ -21,6 +21,7 @@ import 'package:code_forge/code_forge.dart'
         CodeForgeCompletionSource,
         CodeForgeController,
         CodeForgeKeyboardShortcuts,
+        CodeForgeControllerEditing,
         CodeSelectionStyle,
         FindController,
         UndoRedoController;
