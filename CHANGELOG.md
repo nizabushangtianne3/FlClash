@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.9.3 (2026-10-16)
+
+**Bug Fixes**
+
+- **release** Send update checks and release downloads to the maintained repository (5eae18a)
+- **proxy,android** Prevent stale failover state and VPN options from surviving updates (bbb2958)
+- **core** Close old sockets before resetting network pools (b08bb05)
+- **core** Update proxy recovery submodule (9b8178a)
+- **core** Validate proxy failover state (03854cf)
+
 ## v0.9.2 (2026-10-15)
 
 **Bug Fixes**

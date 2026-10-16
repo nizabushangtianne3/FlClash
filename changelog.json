@@ -2,6 +2,44 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "0.9.3",
+      "tag": "v0.9.3",
+      "date": "2026-10-16",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "5eae18a",
+              "scope": "release",
+              "text": "Send update checks and release downloads to the maintained repository"
+            },
+            {
+              "id": "bbb2958",
+              "scope": "proxy,android",
+              "text": "Prevent stale failover state and VPN options from surviving updates"
+            },
+            {
+              "id": "b08bb05",
+              "scope": "core",
+              "text": "Close old sockets before resetting network pools"
+            },
+            {
+              "id": "9b8178a",
+              "scope": "core",
+              "text": "Update proxy recovery submodule"
+            },
+            {
+              "id": "03854cf",
+              "scope": "core",
+              "text": "Validate proxy failover state"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.9.2",
       "tag": "v0.9.2",
       "date": "2026-10-15",
