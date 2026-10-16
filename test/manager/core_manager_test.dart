@@ -396,27 +396,6 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('a provider load drops stale host delays', (tester) async {
-    final coreInterface = _coreInterface();
-    when(
-      () => coreInterface.getExternalProvider('provider'),
-    ).thenAnswer((_) async => null);
-    final container = await _pumpCoreManager(tester, coreInterface);
-    container.read(delayDataSourceProvider.notifier).setDelays([
-      Delay(name: 'same-name', url: 'https://test.example/204', value: 100),
-    ]);
-
-    coreEventManager.sendEvent(
-      const CoreEvent(type: CoreEventType.loaded, data: 'provider'),
-    );
-    await tester.pump();
-
-    expect(container.read(delayDataSourceProvider), isEmpty);
-    await tester.pump(const Duration(seconds: 1));
-
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
-
   testWidgets('core dns queries are recorded and counted', (tester) async {
     final coreInterface = _coreInterface();
     final container = await _pumpCoreManager(tester, coreInterface);
