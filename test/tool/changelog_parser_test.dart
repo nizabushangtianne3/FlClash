@@ -221,8 +221,14 @@ Note: the old handle still works
     test('ignores fixup and squash commits without warning', () {
       final parser = ChangelogParser();
 
-      expect(parser.parse(commit('fixup! fix(core): keep the socket alive')), isEmpty);
-      expect(parser.parse(commit('squash! fix(core): keep the socket alive')), isEmpty);
+      expect(
+        parser.parse(commit('fixup! fix(core): keep the socket alive')),
+        isEmpty,
+      );
+      expect(
+        parser.parse(commit('squash! fix(core): keep the socket alive')),
+        isEmpty,
+      );
       expect(parser.warnings, isEmpty);
     });
 
