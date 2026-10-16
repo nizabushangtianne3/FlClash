@@ -210,7 +210,7 @@ extension MessageLevelExt on MessageLevel {
     return switch (this) {
       MessageLevel.info || MessageLevel.success => const Duration(seconds: 3),
       MessageLevel.warning => const Duration(seconds: 5),
-      MessageLevel.error => const Duration(seconds: 6),
+      MessageLevel.error => const Duration(seconds: 3),
     };
   }
 }

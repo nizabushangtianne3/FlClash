@@ -293,7 +293,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('an error carries a level icon and outlives an info message', (
+  testWidgets('an error carries a level icon and expires after three seconds', (
     tester,
   ) async {
     final state = await _pumpStatusManager(tester);
@@ -303,10 +303,6 @@ void main() {
     expect(find.byGlyph(AppGlyphs.error), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 4));
-    await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('boom'), findsOneWidget);
-
-    await tester.pump(const Duration(seconds: 2));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('boom'), findsNothing);
 

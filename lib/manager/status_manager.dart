@@ -14,7 +14,7 @@ import 'package:fl_clash/widgets/theme.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-const _actionMinDuration = Duration(seconds: 6);
+const _actionMinDuration = Duration(seconds: 3);
 const _maxBufferedMessages = 8;
 const _mobileMaxVisibleMessages = 2;
 const _desktopMaxVisibleMessages = 4;
