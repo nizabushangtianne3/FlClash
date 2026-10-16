@@ -24,6 +24,7 @@ class _HostAdapter implements HttpClientAdapter {
   _HostAdapter(this.byHost);
 
   final Map<String, ResponseBody Function()> byHost;
+  final requests = <Uri>[];
 
   @override
   Future<ResponseBody> fetch(
@@ -31,6 +32,7 @@ class _HostAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    requests.add(options.uri);
     return byHost[options.uri.host]!();
   }
 
@@ -89,6 +91,10 @@ void main() {
         'tag_name': 'v1.2.3',
         'body': 'notes',
       });
+      expect(
+        (request.dio.httpClientAdapter as _HostAdapter).requests.single.path,
+        '/repos/$repository/releases/latest',
+      );
     });
 
     test(

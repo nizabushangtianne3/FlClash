@@ -7,6 +7,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: write
     steps:
       - name: Checkout main
@@ -34,3 +35,26 @@ jobs:
 
       - name: Release
         run: bash tool/release.sh stable --push --yes
+
+      - name: Build release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(sed -n 's/^version: \([0-9]*\.[0-9]*\.[0-9]*\)+.*/\1/p' pubspec.yaml)"
+          test -n "$version"
+          gh workflow run build.yaml --ref "v$version"
+          run_id=""
+          for _ in $(seq 1 30); do
+            run_id="$(gh run list \
+              --workflow build.yaml \
+              --limit 20 \
+              --json databaseId,event,headBranch \
+              --jq ".[] | select(.event == \"workflow_dispatch\" and .headBranch == \"v$version\") | .databaseId" |
+              head -n 1)"
+            if [ -n "$run_id" ]; then
+              break
+            fi
+            sleep 2
+          done
+          test -n "$run_id"
+          gh run watch "$run_id" --exit-status

@@ -198,9 +198,7 @@ jobs:
 
       - name: Test Clash.Meta proxy groups
         working-directory: core/Clash.Meta
-        env:
-          CGO_ENABLED: 0
-        run: go test ./adapter/outboundgroup -count=1
+        run: go test -race ./adapter/outboundgroup ./adapter/provider -count=1
 
       - name: Validate the Android core library
         working-directory: core
@@ -318,7 +316,11 @@ jobs:
 
   build:
     # Releases publish where the release links point: the public repository.
-    if: (github.repository == 'chen08209/FlClash' || github.repository == 'nizabushangtianne3/FlClash') && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      (github.repository == 'chen08209/FlClash' ||
+      github.repository == 'nizabushangtianne3/FlClash') &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      startsWith(github.ref, 'refs/tags/v')
     needs: [ dart, plugins, go, android, rust, windows-helper-test ]
     runs-on: ${{ matrix.os }}
     strategy:
@@ -486,7 +488,10 @@ jobs:
       - name: Patch release.md
         run: |
           version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
-          sed "s|VERSION|$version|g" ./.github/release_template.md >> release.md
+          sed \
+            -e "s|REPOSITORY|${{ github.repository }}|g" \
+            -e "s|VERSION|$version|g" \
+            ./.github/release_template.md >> release.md
 
       - name: Generate sha256
         if: ${{ env.IS_STABLE == 'true' }}

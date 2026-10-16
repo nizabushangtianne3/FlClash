@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo="${SITE_REPOSITORY:-chen08209/FlClash}"
+repo="${SITE_REPOSITORY:-nizabushangtianne3/FlClash}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 out="${1:-$root/build/site}"
 
