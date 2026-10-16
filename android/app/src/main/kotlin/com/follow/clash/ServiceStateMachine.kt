@@ -252,7 +252,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         return transitionLock.withLock {
             when {
                 !isCurrent(request) -> false
-                host.runtime?.vpn == options.enable -> true
+                host.runtime?.options == options -> true
                 else -> transitioning(RunState.STARTING) {
                     host.startService(withLocalNetworkFallback(options)) && isCurrent(request)
                 }
