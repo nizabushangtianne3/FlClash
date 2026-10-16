@@ -398,8 +398,9 @@ void main() {
 
   testWidgets('a provider load drops stale host delays', (tester) async {
     final coreInterface = _coreInterface();
-    when(() => coreInterface.getExternalProvider('provider'))
-        .thenAnswer((_) async => null);
+    when(
+      () => coreInterface.getExternalProvider('provider'),
+    ).thenAnswer((_) async => null);
     final container = await _pumpCoreManager(tester, coreInterface);
     container.read(delayDataSourceProvider.notifier).setDelays([
       Delay(name: 'same-name', url: 'https://test.example/204', value: 100),

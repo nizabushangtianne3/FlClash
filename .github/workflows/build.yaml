@@ -53,7 +53,7 @@ jobs:
         run: flutter pub get
 
       - name: Check format
-        run: dart format --output=none --set-exit-if-changed lib test tool plugins setup.dart
+        run: dart format --output=show --set-exit-if-changed lib test tool plugins setup.dart
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
