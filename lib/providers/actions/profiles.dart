@@ -137,10 +137,25 @@ class ProfilesAction extends _$ProfilesAction {
   }
 
   Future<void> updateProfiles() async {
+    final failures = <UpdatingMessage>[];
     for (final profile in ref.read(profilesProvider)) {
       if (profile.type != ProfileType.url) continue;
-      await updateProfile(profile, showLoading: true);
+      try {
+        await updateProfile(profile, showLoading: true);
+      } catch (e, s) {
+        commonPrint.log(
+          '${profile.realLabel} ===> ${compactError(e)}, $s',
+          logLevel: LogLevel.warning,
+        );
+        failures.add(
+          UpdatingMessage(
+            label: profile.realLabel,
+            message: userFacingErrorMessage(e, currentAppLocalizations),
+          ),
+        );
+      }
     }
+    dialogs.showFailures(failures);
   }
 
   Future<void> updateProfile(

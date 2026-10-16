@@ -21,6 +21,18 @@ import '../helpers/test_profiles.dart';
 
 class _MockCoreHandlerInterface extends Mock implements CoreHandlerInterface {}
 
+class _RecordingProfiles extends TestProfiles {
+  final List<String> attemptedLabels;
+
+  _RecordingProfiles(super.initial, this.attemptedLabels);
+
+  @override
+  void put(Profile profile) {
+    attemptedLabels.add(profile.label);
+    super.put(profile);
+  }
+}
+
 void main() {
   group('ProfilesAction', () {
     test('keeps edited profile data when remote update fails', () async {
@@ -109,6 +121,29 @@ void main() {
         expect(container.read(profilesProvider), profiles);
       },
     );
+
+    test('continues profile updates after a failure', () async {
+      final profiles = [
+        Profile.normal(label: 'First', url: 'bad-url'),
+        Profile.normal(label: 'Second', url: 'bad-url'),
+      ];
+      final attemptedLabels = <String>[];
+      final container = ProviderContainer(
+        overrides: [
+          currentProfileIdProvider.overrideWithBuild((_, _) => null),
+          profilesProvider.overrideWith(
+            () => _RecordingProfiles(profiles, attemptedLabels),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await expectLater(
+        container.read(profilesActionProvider.notifier).updateProfiles(),
+        completes,
+      );
+      expect(attemptedLabels, ['First', 'Second']);
+    });
 
     test('setProfileAndAutoApply stores a non-current profile', () {
       final current = Profile.normal(label: 'Current');
