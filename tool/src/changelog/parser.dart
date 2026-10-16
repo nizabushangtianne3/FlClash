@@ -46,7 +46,11 @@ class ChangelogParser {
       commits.expand(parse).toList();
 
   List<ChangelogItem> parse(RawCommit commit) {
-    final match = _subjectPattern.firstMatch(commit.subject.trim());
+    final subject = commit.subject.trim();
+    if (subject.startsWith('fixup! ') || subject.startsWith('squash! ')) {
+      return const <ChangelogItem>[];
+    }
+    final match = _subjectPattern.firstMatch(subject);
     if (match == null) {
       warnings.add(
         '${commit.shortHash} is not a conventional commit: ${commit.subject}',

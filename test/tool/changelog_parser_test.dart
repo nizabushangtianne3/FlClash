@@ -218,6 +218,14 @@ Note: the old handle still works
       expect(parser.warnings.single, contains('not a conventional commit'));
     });
 
+    test('ignores fixup and squash commits without warning', () {
+      final parser = ChangelogParser();
+
+      expect(parser.parse(commit('fixup! fix(core): keep the socket alive')), isEmpty);
+      expect(parser.parse(commit('squash! fix(core): keep the socket alive')), isEmpty);
+      expect(parser.warnings, isEmpty);
+    });
+
     test('handles a missing scope', () {
       final items = ChangelogParser().parse(commit('feat: add a thing'));
 

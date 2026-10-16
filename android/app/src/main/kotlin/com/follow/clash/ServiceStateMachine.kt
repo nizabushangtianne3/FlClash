@@ -142,6 +142,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     private fun isStartedAs(options: VpnOptions?): Boolean =
         runState.value == RunState.STARTED &&
             options != null &&
+            host.runtime?.vpn == options.enable &&
             host.runtime?.options == options
 
     // The intent is claimed before the Core is set up, so a second action that lands meanwhile
@@ -252,7 +253,8 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         return transitionLock.withLock {
             when {
                 !isCurrent(request) -> false
-                host.runtime?.options == options -> true
+                host.runtime?.vpn == options.enable &&
+                    host.runtime?.options == options -> true
                 else -> transitioning(RunState.STARTING) {
                     host.startService(withLocalNetworkFallback(options)) && isCurrent(request)
                 }
