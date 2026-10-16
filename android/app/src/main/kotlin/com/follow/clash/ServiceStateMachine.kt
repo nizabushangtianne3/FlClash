@@ -140,7 +140,9 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
 
     // No new request for a settled run: one refused at a prompt would take the service down.
     private fun isStartedAs(options: VpnOptions?): Boolean =
-        runState.value == RunState.STARTED && host.runtime?.vpn == options?.enable
+        runState.value == RunState.STARTED &&
+            options != null &&
+            host.runtime?.options == options
 
     // The intent is claimed before the Core is set up, so a second action that lands meanwhile
     // toggles this start off instead of racing a second setup against it.

@@ -76,6 +76,19 @@ class ProxiesAction extends _$ProxiesAction {
     ref.read(pendingDelayTestsProvider.notifier).clear();
   }
 
+  void invalidateDelayTests() {
+    cancelDelayTests();
+    ref.read(delayDataSourceProvider.notifier).value = {};
+  }
+
+  void resetSelectionState() {
+    _pendingSelectedRollback.clear();
+    _appliedSelected.clear();
+    _appliedSelectedIntent.clear();
+    _selectedIntent.clear();
+    _activeSelectedIntents.clear();
+  }
+
   void _scheduleDelayFlush() {
     _delayFlushTimer ??= Timer(renderThrottleDuration, _flushDelayResults);
   }

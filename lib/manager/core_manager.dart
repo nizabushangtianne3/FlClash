@@ -269,9 +269,6 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     // Provider load advances the Core generation immediately; drop the host
     // cache now so a concurrent getProxies cannot serve the previous tree.
     _core.invalidateProxiesCache();
-    // A provider may replace a node with another server that keeps its name.
-    // The old name-keyed delay must not speak for the replacement node.
-    ref.read(delayDataSourceProvider.notifier).value = {};
     final providerFuture = _core.getExternalProvider(providerName);
     debouncer.call(FunctionTag.loadedProvider, () async {
       if (!mounted) {
@@ -282,6 +279,14 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     final provider = await providerFuture;
     if (!mounted) {
       return;
+    }
+    final wasProxyProvider = ref
+        .read(providersProvider)
+        .any((item) => item.name == providerName && item.type == 'Proxy');
+    if (provider?.type == 'Proxy' || wasProxyProvider) {
+      // A proxy provider may replace a node with another server that keeps its
+      // name, and its in-flight probes must not write into the replacement.
+      ref.read(proxiesActionProvider.notifier).invalidateDelayTests();
     }
     ref.read(providersProvider.notifier).setProvider(provider);
     super.onLoaded(providerName);

@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 
 internal data class ServiceRuntime(
     val vpn: Boolean,
+    val options: VpnOptions,
     val startedAtMillis: Long,
 )
 

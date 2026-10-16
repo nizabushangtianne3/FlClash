@@ -161,7 +161,11 @@ private class FakeHost(override val scope: CoroutineScope) : ServiceStateHost {
         if (!startSucceeds) {
             return false
         }
-        runtime = ServiceRuntime(vpn = runsAsVpn ?: options.enable, startedAtMillis = STARTED_AT)
+        runtime = ServiceRuntime(
+            vpn = runsAsVpn ?: options.enable,
+            options = options,
+            startedAtMillis = STARTED_AT,
+        )
         return true
     }
 
@@ -294,6 +298,22 @@ class ServiceStateMachineTest {
         assertTrue(machine.captureRequestToken() === token)
         assertEquals(0, app.localNetworkRequests)
         assertEquals(1, host.startCalls)
+        assertEquals(0, host.stopCalls)
+        assertEquals(RunState.STARTED, machine.runState.value)
+    }
+
+    @Test
+    fun `a start on changed vpn options applies them without stopping the service`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState(stack = "gvisor"))
+        machine.requestStart().await()
+        machine.syncSharedState(configuredState(stack = "system"))
+
+        assertTrue(machine.requestStart().await())
+
+        assertEquals(2, host.startCalls)
+        assertEquals("system", host.lastStartOptions?.stack)
         assertEquals(0, host.stopCalls)
         assertEquals(RunState.STARTED, machine.runState.value)
     }

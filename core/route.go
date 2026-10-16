@@ -31,7 +31,10 @@ type routeTracker struct {
 	stopPoll         context.CancelFunc
 }
 
-var routeRefreshPending atomic.Bool
+var (
+	routeRefreshPending atomic.Bool
+	routeRefreshDirty   atomic.Bool
+)
 
 func routeWatched() bool {
 	currentRoute.mu.Lock()
@@ -43,16 +46,29 @@ func scheduleRouteRefresh() {
 	if !isRunning.Load() {
 		return
 	}
+	routeRefreshDirty.Store(true)
 	if !routeRefreshPending.CompareAndSwap(false, true) {
 		return
 	}
 	if !routeWatched() {
 		routeRefreshPending.Store(false)
+		routeRefreshDirty.Store(false)
 		return
 	}
 	safeGo("route invalidate", func() {
-		defer routeRefreshPending.Store(false)
-		refreshRoute()
+		for {
+			dirty := routeRefreshDirty.Swap(false)
+			if dirty && isRunning.Load() {
+				refreshRoute()
+			}
+			routeRefreshPending.Store(false)
+			if !routeRefreshDirty.Load() {
+				return
+			}
+			if !routeRefreshPending.CompareAndSwap(false, true) {
+				return
+			}
+		}
 	})
 }
 
