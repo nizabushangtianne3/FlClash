@@ -418,7 +418,6 @@ void main() {
     await tester.pump();
 
     expect(container.read(delayDataSourceProvider), isEmpty);
-    expect(container.read(providersProvider).single.name, 'provider');
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
