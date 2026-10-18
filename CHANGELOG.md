@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.7 (2026-10-18)
+
+**Bug Fixes**
+
+- **proxies** Remove unused delay view provider (af63d16)
+
 ## v0.9.6 (2026-10-18)
 
 Internal improvements only.
