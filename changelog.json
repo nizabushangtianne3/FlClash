@@ -2,6 +2,29 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "0.9.4",
+      "tag": "v0.9.4",
+      "date": "2026-10-18",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "fb86c1c",
+              "scope": "ui",
+              "text": "Shorten error notices to three seconds"
+            },
+            {
+              "id": "eacc28a",
+              "scope": "profiles",
+              "text": "Continue profile updates after a failure"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.9.3",
       "tag": "v0.9.3",
       "date": "2026-10-16",

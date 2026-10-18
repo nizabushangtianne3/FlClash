@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.9.4 (2026-10-18)
+
+**Bug Fixes**
+
+- **ui** Shorten error notices to three seconds (fb86c1c)
+- **profiles** Continue profile updates after a failure (eacc28a)
+
 ## v0.9.3 (2026-10-16)
 
 **Bug Fixes**
