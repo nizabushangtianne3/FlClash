@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.9.5 (2026-10-18)
+
+**Breaking Changes**
+
+- **network** Desktop TUN keys follow the profile unless picked; changed values carry over (cb08088)
+
+**Features**
+
+- **app** Adopt upstream 0.9.1 (3356b82)
+- **l10n** French, Spanish and Korean translations (f43755c)
+- **android** No more Firebase analytics or crash reporting (bc72bba)
+- **network** Per-key desktop TUN settings; system proxy and tray fixes (cb08088)
+- **theme** Redesigned theme colors and color styles (5eafd7a)
+- **dashboard** A redesigned dashboard around the current exit (9bd258f)
+- **profiles** Profile-detail resources and include-all in custom groups (0bac500)
+- **proxies** Proxy groups as cards, group tabs as chips (2ea52fd)
+- **views** Sortable tables for connections, requests and DNS (da6fb0a)
+- **ui** Optional two-tier Liquid Glass and slide-to-pick menus (7c9627f)
+- **ui** iOS-style surfaces, alerts and sheets; clearer TV focus (9bd2286)
+
+**Bug Fixes**
+
+- **ui** Fix pasting and Chinese input in text fields (5607f70)
+- **core** Large profiles no longer crash; downloads trust core CAs (5984c16)
+
+**Performance**
+
+- **android** Smoother Android UI while the proxy is busy (2201c19)
+
 ## v0.9.4 (2026-10-18)
 
 **Bug Fixes**
@@ -338,17 +367,10 @@
 - **desktop** Windows and Linux desktop fixes (94a25f4)
 - **core,helper** The elevated Core only answers its owner (d780cb8)
 
-## v0.8.99 (2026-10-05)
+## v0.8.99 (2026-10-03)
 
 **Features**
 
-- **proxies** ResortGroupsByDelay without Core getProxies (8b4bce5)
-- **core** Cache full proxies tree and merge selection deltas (7aad516)
-- **core** ProxiesSnapshot and getProxies(since) on the host interface (863c8ab)
-- **core** GetProxies accepts optional ProxiesQuery.Since (5157d11)
-- **core** Bump proxiesGeneration on applyConfig and updateConfig (b5e5dca)
-- **core** Incremental getProxies with generation + selected map (60689f8)
-- **core** ProxiesData generation and selection delta fields (1cf6ade)
 - **editor** Editor word wrap and snippets (e131675)
 - **dashboard** More dashboard cards (e62afb7)
 - **views** Hide timed-out nodes and search every list (8378c70)
@@ -361,63 +383,11 @@
 
 **Bug Fixes**
 
-- **changelog** Fall back to release commit when the boundary tag is missing (f7fe00c)
-- **core,dart** Align proxy snapshot and route builds (7a8788c)
-- **macos** Keep visible dashboard watching after activity change (2d1cb0f)
-- **providers** Return typed empty group list (4ef7cd0)
-- Import TrayTitleState for tray title throttle (1219f47)
-- **macos** The macOS build stays responsive in the background, and Intel Macs render through Skia (e866f74)
 - **core** A changed resource link is now used by the next sync and by auto update (ff23f30)
 - **core** DNS lookups no longer fail on networks that report no DNS servers (e55f6d1)
 - **proxies** Smaller icons in icon-only group headers (786a6ab)
 - **core,android** Push notifications reconnect in Doze (1e9955d)
 - **backup,database** Restores never apply halfway (bee8f24)
-
-**Performance**
-
-- **proxies** Trim repeat work on group updates (ffba619)
-- **views,common** Improve profile, app, and startup responsiveness (9d4c8ad)
-- **core,providers** Cut redundant setup and feed work (3dd8bbe)
-- **proxies** Watch only the selected proxy group (74a7402)
-- **proxies** Cache resolved proxy state and narrow watches (0b32dd8)
-- **common** Keep unchanged groups during timeout filtering (57b78c7)
-- **common** Cache proxy types for timeout filtering (7d0bd61)
-- **common** Reuse groups when sorting does not change order (624b62e)
-- **common** Reuse real proxy states while sorting (d33a08f)
-- Skip computeSort after buildGroups when sort is none (00d22eb)
-- Short-circuit computeSort for none and singleton groups (bec9898)
-- Keep group identity when stripping empty selection (e332b37)
-- Patch group.now locally after proxy switch (a01da4f)
-- **core** Encode only groups and referenced members in getProxies (eef0212)
-- Skip groups isolate below 80 proxy-map entries (7ed09b6)
-- Apply getProxies selection delta without isolate rebuild (fb3777e)
-- Wire delay resort and invalidate proxies cache on provider load (f6e6a06)
-- Skip AutoDisposeNotifier no-op value writes (3a7664e)
-- Skip groups refetch fan-out when proxy switch is a no-op (b843f86)
-- Drop per-call updateGroups log line (8f771d0)
-- Cap Core feed buffers between flushes (d22c830)
-- Reuse Core message batch buffer capacity (d3c0458)
-- Skip connections list notifier when live data is unchanged (073e31d)
-- Skip full connection sort when idle or empty (472f7b0)
-- Lighter connections page polling (6f82188)
-- Cache groups-by-name map for proxyDesc (fa8ae28)
-- **desktop** MacOS tray title throttle 1.5s -> 2s (bde0dbc)
-- Coarser feed throttle and smaller live buffers (8799ef4)
-- Visible traffic ticker 1s -> 1.5s (b4dca35)
-- Skip identical traffic samples on the chart buffer (3bbac1e)
-- Use groups.getGroup in proxyDesc with select (bbca9f1)
-- **android** Refresh foreground notification every 2s (a52eaa4)
-- Shrink traffic chart sample buffer 30 -> 24 (8880038)
-- Poll connection count every 3s on dashboard (8316056)
-- Poll memory stats every 3s (dc5f719)
-- Coarser Core event batches under load (56d6da6)
-- Always use combined traffic IPC when window is visible (88ce17f)
-- Cut traffic IPC and skip delay-driven group rebuilds (f702724)
-- Quieter traffic sampling and coarser core event batches (285e378)
-- Cheaper background polls and accurate tray delay rebuilds (4498941)
-- Close dead sockets in background and batch UI feeds (82ac652)
-- Faster proxy switch and lower background UI work (89c13e8)
-- **macos** Cut NSStatusItem redraw CPU from tray title/menu (598a056)
 
 ## v0.8.98 (2026-09-14)
 
