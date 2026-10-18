@@ -4,6 +4,10 @@ enum ItemPosition {
   end,
   startAndEnd;
 
+  bool get isStart => this == start || this == startAndEnd;
+
+  bool get isEnd => this == end || this == startAndEnd;
+
   static ItemPosition get(int index, int length) {
     ItemPosition position = ItemPosition.middle;
     if (length == 1) {

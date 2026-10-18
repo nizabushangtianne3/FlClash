@@ -116,6 +116,14 @@ class CoreEventManager {
         return TrackerInfo.fromJson(
           Map<String, Object?>.from(event.data as Map),
         );
+      case CoreEventType.requestTraffic:
+        return {
+          for (final Map item in event.data as List)
+            item['id'] as String: (
+              upload: (item['upload'] as num).toInt(),
+              download: (item['download'] as num).toInt(),
+            ),
+        };
       case CoreEventType.dns:
         return DnsQuery.fromJson(Map<String, Object?>.from(event.data as Map));
       case CoreEventType.loaded:
@@ -154,6 +162,9 @@ void _sendToListener(
         break;
       case CoreEventType.request:
         listener.onRequest(payload as TrackerInfo);
+        break;
+      case CoreEventType.requestTraffic:
+        listener.onRequestTraffic(payload as Map<String, RequestTraffic>);
         break;
       case CoreEventType.dns:
         listener.onDns(payload as DnsQuery);

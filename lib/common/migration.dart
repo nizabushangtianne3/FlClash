@@ -99,13 +99,13 @@ class Migration {
   };
 
   Future<Config> run() async {
-  Future<Config> run() async {
     final initial = await Future.wait<Object?>([
       _store.getConfigMap(),
       _store.getVersion(),
     ]);
     final configMap = initial[0] as Map<String, Object?>?;
-    final oldVersion = initial[1] as int;
+    final initialVersion = initial[1] as int;
+    final oldVersion = initialVersion;
     final config = await _migrate(configMap, oldVersion);
     return _upgrade(config, installed: configMap != null);
   }
@@ -128,7 +128,11 @@ class Migration {
     return upgraded;
   }
 
-  Future<Config> _migrate(Map<String, Object?>? configMap, int oldVersion) async {
+  Future<Config> _migrate(
+    Map<String, Object?>? configMap,
+    int initialVersion,
+  ) async {
+    var oldVersion = initialVersion;
     Config? config;
     if (oldVersion > currentVersion) {
       throw StateError(

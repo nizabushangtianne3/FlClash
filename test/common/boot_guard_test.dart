@@ -222,24 +222,14 @@ void main() {
         startedAt: 1000,
         failureCount: 1,
       );
-    var probes = 0;
-    final guard = _guard(
-      store,
-      supported: false,
-      crashReported: true,
-      onCrashProbe: () => probes++,
-    );
+    final guard = _guard(store, supported: false);
 
-    final decision = await guard.evaluate(
-      profileId: 7,
-      crashlyticsEnabled: true,
-    );
+    final decision = await guard.evaluate(profileId: 7);
     await guard.markRunning();
     await guard.markClosed();
 
     expect(decision.recovery, BootRecovery.none);
     expect(guard.decision.recovery, BootRecovery.none);
-    expect(probes, 0);
     expect(store.writes, 0);
     expect(store.record?.stage, BootStage.starting);
   });

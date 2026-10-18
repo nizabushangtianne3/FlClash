@@ -60,11 +60,6 @@ class Application extends ConsumerStatefulWidget {
   ConsumerState<Application> createState() => ApplicationState();
 }
 
-const _actionIconTheme = ActionIconThemeData(
-  backButtonIconBuilder: _backButtonIcon,
-  closeButtonIconBuilder: _closeButtonIcon,
-);
-
 Duration? nextProfileAutoUpdateDelay(Iterable<Profile> profiles, DateTime now) {
   Duration? next;
   for (final profile in profiles) {
@@ -86,12 +81,6 @@ Duration? nextProfileAutoUpdateDelay(Iterable<Profile> profiles, DateTime now) {
   }
   return next;
 }
-
-Widget _backButtonIcon(BuildContext context) =>
-    GlyphIcon(AppGlyphs.backFor(Theme.of(context).platform));
-
-Widget _closeButtonIcon(BuildContext context) =>
-    const GlyphIcon(AppGlyphs.close);
 
 class ApplicationState extends ConsumerState<Application> {
   Timer? _autoUpdateProfilesTaskTimer;

@@ -60,11 +60,11 @@ void main() {
 
     expect(
       config['proxy-providers']['a']['path'],
-      join(proxiesDir, 'a@$proxiesUrl'.toMd5()),
+      join(proxiesDir, 'a@$proxiesUrl'.toMd5()).replaceAll('\\', '/'),
     );
     expect(
       config['rule-providers']['b']['path'],
-      join(rulesDir, 'b@$rulesUrl'.toMd5()),
+      join(rulesDir, 'b@$rulesUrl'.toMd5()).replaceAll('\\', '/'),
     );
   });
 
@@ -107,16 +107,16 @@ void main() {
 
     expect(
       config['proxy-providers']['escape']['path'],
-      join(proxiesDir, 'proxy-providers/escape'.toMd5()),
+      join(proxiesDir, 'proxy-providers/escape'.toMd5()).replaceAll('\\', '/'),
     );
     expect(
       config['proxy-providers']['urlless']['path'],
-      join(proxiesDir, 'proxy-providers/urlless'.toMd5()),
+      join(proxiesDir, 'proxy-providers/urlless'.toMd5()).replaceAll('\\', '/'),
     );
     expect(config['proxy-providers']['literal']['path'], isNull);
     expect(
       config['rule-providers']['sneak']['path'],
-      join(rulesDir, 'rule-providers/sneak'.toMd5()),
+      join(rulesDir, 'rule-providers/sneak'.toMd5()).replaceAll('\\', '/'),
     );
   });
 

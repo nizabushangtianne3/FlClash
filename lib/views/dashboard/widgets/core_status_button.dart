@@ -113,6 +113,7 @@ class _CoreStatusButtonState extends ConsumerState<CoreStatusButton> {
                       ),
                     ),
                 onPressed: _handleConnection,
+                tooltip: appLocalizations.coreStatus,
                 icon: const GlyphIcon(AppGlyphs.check, fill: 1),
               )
             : FilledButton.icon(

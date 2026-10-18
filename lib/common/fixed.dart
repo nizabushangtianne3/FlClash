@@ -53,9 +53,6 @@ class FixedList<T> {
     _snapshot = null;
     return FixedList._(maxLength, _list, _revision + 1);
   }
-    _snapshot = null;
-    return FixedList._(maxLength, _list, _revision + 1);
-  }
 
   List<T> get list => _snapshot ??= List.unmodifiable(_list);
 

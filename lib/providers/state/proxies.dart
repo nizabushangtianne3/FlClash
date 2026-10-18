@@ -131,10 +131,9 @@ GroupsState filterGroupsState(Ref ref, String query) {
         return group.copyWith(
           all: group.all
               .where(
-                (proxy) =>
-                    matches[proxy] ??= searchQuery.matchesText(
-                      _searchTextOf(proxy),
-                    ),
+                (proxy) => matches[proxy] ??= searchQuery.matchesText(
+                  _searchTextOf(proxy),
+                ),
               )
               .toList(),
         );

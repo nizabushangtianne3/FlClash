@@ -40,10 +40,7 @@ class BootGuard {
     final exitInfoFuture = _readExitInfoSafely();
     final record = await recordFuture;
     final exitInfo = await exitInfoFuture;
-    final decision = resolveBootDecision(
-      record: record,
-      exitInfo: exitInfo,
-    );
+    final decision = resolveBootDecision(record: record, exitInfo: exitInfo);
     if (decision.isDegraded) {
       commonPrint.log(
         'Previous launch did not finish: $decision',

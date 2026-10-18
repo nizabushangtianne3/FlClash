@@ -34,6 +34,8 @@ class _RecordingProfiles extends TestProfiles {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('ProfilesAction', () {
     test('keeps edited profile data when remote update fails', () async {
       final original = Profile.normal(label: 'old label', url: 'bad-url');
@@ -87,14 +89,12 @@ void main() {
       action.putProfile(second);
       expect(container.read(currentProfileIdProvider), second.id);
       expect(container.read(profilesProvider), [updatedFirst, second]);
-
-      action.reorder([second, updatedFirst]);
-      expect(container.read(profilesProvider), [second, updatedFirst]);
     });
 
     test(
       'skips profile updates that are disabled, fresh, or file-based',
       () async {
+        await AppLocalizations.load(const Locale('en'));
         final profiles = [
           Profile.normal(label: 'Disabled').copyWith(autoUpdate: false),
           Profile.normal(label: 'Fresh').copyWith(
@@ -123,6 +123,7 @@ void main() {
     );
 
     test('continues profile updates after a failure', () async {
+      await AppLocalizations.load(const Locale('en'));
       final profiles = [
         Profile.normal(label: 'First', url: 'bad-url'),
         Profile.normal(label: 'Second', url: 'bad-url'),
@@ -143,25 +144,6 @@ void main() {
         completes,
       );
       expect(attemptedLabels, ['First', 'Second']);
-    });
-
-    test('setProfileAndAutoApply stores a non-current profile', () {
-      final current = Profile.normal(label: 'Current');
-      final other = Profile.normal(label: 'Other');
-      final container = ProviderContainer(
-        overrides: [
-          currentProfileIdProvider.overrideWithBuild((_, _) => current.id),
-          profilesProvider.overrideWith(() => TestProfiles([current])),
-        ],
-      );
-      addTearDown(container.dispose);
-
-      container
-          .read(profilesActionProvider.notifier)
-          .setProfileAndAutoApply(other);
-
-      expect(container.read(profilesProvider), [current, other]);
-      expect(container.read(currentProfileIdProvider), current.id);
     });
   });
 

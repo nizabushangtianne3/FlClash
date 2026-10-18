@@ -44,7 +44,7 @@ void main() {
             entity.path.contains('/generated/')) {
           continue;
         }
-        final path = p.relative(entity.path);
+        final path = p.relative(entity.path).replaceAll('\\', '/');
         if (_allowed.contains(path)) {
           continue;
         }

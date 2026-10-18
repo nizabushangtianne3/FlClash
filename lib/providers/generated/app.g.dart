@@ -185,7 +185,7 @@ final class RequestsProvider
   }
 }
 
-String _$requestsHash() => r'd9b73870782dcefbc8865cca46753e1b9ba8d404';
+String _$requestsHash() => r'b6fa02678867966a99359b33b91294dad157c5a9';
 
 abstract class _$Requests extends $Notifier<FixedList<TrackerInfo>> {
   FixedList<TrackerInfo> build();
@@ -1468,7 +1468,7 @@ final class DelayDataSourceProvider
   }
 }
 
-String _$delayDataSourceHash() => r'0d0fb2faccb3ce4539ce683b1a2bc4dcb8c8f3c0';
+String _$delayDataSourceHash() => r'1953f18f65c0fb6ef6c0d078febbce97121aa8e3';
 
 abstract class _$DelayDataSource extends $Notifier<DelayMap> {
   DelayMap build();

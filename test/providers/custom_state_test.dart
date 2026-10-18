@@ -902,7 +902,7 @@ void main() {
       ).listSync().whereType<File>())
         if (!file.path.endsWith('_test.go'))
           for (final match in RegExp(
-            r'^type (\w+) struct \{\n([\s\S]*?)\n\}',
+            r'^type (\w+) struct \{\r?\n([\s\S]*?)\r?\n\}',
             multiLine: true,
           ).allMatches(file.readAsStringSync()))
             match.group(1)!: match.group(2)!,
@@ -915,7 +915,7 @@ void main() {
     final embeddedPattern = RegExp(r'^\t(\w+Option)$', multiLine: true);
     final bodies = {
       for (final match in RegExp(
-        r'^\tcase "([^"]+)":\n\t\t\w+ := &outbound\.(\w+)\{',
+        r'^\tcase "([^"]+)":\r?\n\t\t\w+ := &outbound\.(\w+)\{',
         multiLine: true,
       ).allMatches(File('$root/parser.go').readAsStringSync()))
         match.group(1)!: [

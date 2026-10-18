@@ -605,10 +605,6 @@ extension GroupExt on Group {
     }
     return fallback ?? all.firstOrNull?.name ?? '';
   }
-
-  /// A saved pick outlives a subscription update that renames or drops it.
-  bool _isMember(String proxyName) =>
-      all.isEmpty || all.any((proxy) => proxy.name == proxyName);
 }
 
 @freezed

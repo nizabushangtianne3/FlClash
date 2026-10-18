@@ -31,7 +31,6 @@ class Preferences {
     _store = ResolveOnce(_open);
     await _store.value;
   }
-  }
 
   factory Preferences() {
     _instance ??= Preferences._internal();

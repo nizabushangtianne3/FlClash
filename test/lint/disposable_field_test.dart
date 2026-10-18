@@ -17,6 +17,13 @@ const _disposableTypes = {
 /// Fields the analyzer would flag that are deliberately never released, keyed by
 /// `<path>#<field>`. Everything here has to outlive the process, not a widget.
 const _allowed = <String>{};
+const _allowedByReason = {
+  // The Android plugin owns the process-wide floating keyboard notifier.
+  'lib/plugins/app.dart#floatingKeyboard',
+};
+
+String _keyOf(String path, String field) =>
+    '${path.replaceAll('\\', '/')}#$field';
 
 final _declaration = RegExp(
   r'^\s+(?:late\s+)?final\s+(?:[A-Za-z][\w<>,\s?]*\s+)?(_?[A-Za-z]\w*)\s*=\s*'
@@ -65,7 +72,8 @@ void main() {
         }
         final field = match?.group(1) ?? lateMatch!.group(2)!;
         final type = match?.group(2) ?? lateMatch!.group(1)!;
-        if (_allowed.contains('$relative#$field')) {
+        final key = _keyOf(relative, field);
+        if (_allowed.contains(key) || _allowedByReason.contains(key)) {
           continue;
         }
         final released =

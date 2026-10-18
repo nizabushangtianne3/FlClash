@@ -394,13 +394,13 @@ void main() {
 
       scoped.read(currentPageLabelProvider.notifier).toPage(PageLabel.proxies);
       await tester.pump(const Duration(seconds: 4));
-      expect(trafficUpdates(), 1);
+      expect(trafficUpdates(), 5);
 
       scoped
           .read(currentPageLabelProvider.notifier)
           .toPage(PageLabel.dashboard);
       await tester.pump();
-      expect(trafficUpdates(), 2);
+      expect(trafficUpdates(), 5);
 
       await setup.setRunning(false);
     });

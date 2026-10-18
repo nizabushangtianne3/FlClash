@@ -825,6 +825,7 @@ void main() {
       );
       final legacyPath = join(providerDir, url.toMd5());
       final newPath = join(providerDir, '$name@$url'.toMd5());
+      final normalizedNewPath = newPath.replaceAll('\\', '/');
 
       final result = await makeRealProfileTask(
         MakeRealProfileState(
@@ -844,8 +845,8 @@ void main() {
         ),
       );
       final config = loadYaml(result.yaml) as YamlMap;
-      expect(config['proxy-providers'][name]['path'], newPath);
-      return (legacyPath: legacyPath, newPath: newPath);
+      expect(config['proxy-providers'][name]['path'], normalizedNewPath);
+      return (legacyPath: legacyPath, newPath: normalizedNewPath);
     }
 
     test('renames a file cached under the legacy url-only key', () async {

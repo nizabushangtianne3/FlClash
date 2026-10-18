@@ -22,7 +22,7 @@ void main() {
     final offenders = <String>[];
 
     for (final entity in Directory('lib').listSync(recursive: true)) {
-      final path = p.relative(entity.path);
+      final path = p.relative(entity.path).replaceAll('\\', '/');
       if (entity is! File || !path.endsWith('.dart') || _isGenerated(path)) {
         continue;
       }

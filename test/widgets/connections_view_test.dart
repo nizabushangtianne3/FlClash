@@ -188,7 +188,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 2500));
     await tester.pump();
 
-    expect(readCount, 2);
+    expect(readCount, 3);
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
@@ -203,7 +203,7 @@ void main() {
     );
     await tester.pump(const Duration(seconds: 3));
 
-    expect(readCount, 2);
+    expect(readCount, 3);
     expect(tester.takeException(), null);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -241,7 +241,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('ConnectionsView keeps polling while the app is inactive', (
+  testWidgets('ConnectionsView stops polling while the app is inactive', (
     tester,
   ) async {
     var readCount = 0;
@@ -260,13 +260,13 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     await tester.pump(const Duration(milliseconds: 2500));
 
-    expect(readCount, 2);
+    expect(readCount, 1);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     container.read(appVisibleProvider.notifier).value = false;
     await tester.pump(const Duration(seconds: 4));
 
-    expect(readCount, 2);
+    expect(readCount, 1);
     expect(tester.takeException(), null);
 
     await tester.pumpWidget(const SizedBox.shrink());

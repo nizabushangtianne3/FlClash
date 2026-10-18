@@ -181,7 +181,7 @@ Future<RealProfile> _makeRealProfileTask(MakeRealProfileState data) async {
       profileId.toString(),
       type,
       key.toMd5(),
-    );
+    ).replaceAll('\\', '/');
   }
 
   void confineProviders(String section, String type) {
