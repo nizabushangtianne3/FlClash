@@ -2,6 +2,13 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "0.9.6",
+      "tag": "v0.9.6",
+      "date": "2026-10-18",
+      "prerelease": false,
+      "groups": []
+    },
+    {
       "version": "0.9.5",
       "tag": "v0.9.5",
       "date": "2026-10-18",
@@ -1629,12 +1636,47 @@
     {
       "version": "0.8.99",
       "tag": "v0.8.99",
-      "date": "2026-10-03",
+      "date": "2026-10-05",
       "prerelease": false,
       "groups": [
         {
           "type": "feat",
           "entries": [
+            {
+              "id": "8b4bce5",
+              "scope": "proxies",
+              "text": "ResortGroupsByDelay without Core getProxies"
+            },
+            {
+              "id": "7aad516",
+              "scope": "core",
+              "text": "Cache full proxies tree and merge selection deltas"
+            },
+            {
+              "id": "863c8ab",
+              "scope": "core",
+              "text": "ProxiesSnapshot and getProxies(since) on the host interface"
+            },
+            {
+              "id": "5157d11",
+              "scope": "core",
+              "text": "GetProxies accepts optional ProxiesQuery.Since"
+            },
+            {
+              "id": "b5e5dca",
+              "scope": "core",
+              "text": "Bump proxiesGeneration on applyConfig and updateConfig"
+            },
+            {
+              "id": "60689f8",
+              "scope": "core",
+              "text": "Incremental getProxies with generation + selected map"
+            },
+            {
+              "id": "1cf6ade",
+              "scope": "core",
+              "text": "ProxiesData generation and selection delta fields"
+            },
             {
               "id": "e131675",
               "scope": "editor",
@@ -1686,6 +1728,35 @@
           "type": "fix",
           "entries": [
             {
+              "id": "f7fe00c",
+              "scope": "changelog",
+              "text": "Fall back to release commit when the boundary tag is missing"
+            },
+            {
+              "id": "7a8788c",
+              "scope": "core,dart",
+              "text": "Align proxy snapshot and route builds"
+            },
+            {
+              "id": "2d1cb0f",
+              "scope": "macos",
+              "text": "Keep visible dashboard watching after activity change"
+            },
+            {
+              "id": "4ef7cd0",
+              "scope": "providers",
+              "text": "Return typed empty group list"
+            },
+            {
+              "id": "1219f47",
+              "text": "Import TrayTitleState for tray title throttle"
+            },
+            {
+              "id": "e866f74",
+              "scope": "macos",
+              "text": "The macOS build stays responsive in the background, and Intel Macs render through Skia"
+            },
+            {
               "id": "ff23f30",
               "scope": "core",
               "text": "A changed resource link is now used by the next sync and by auto update"
@@ -1709,6 +1780,196 @@
               "id": "bee8f24",
               "scope": "backup,database",
               "text": "Restores never apply halfway"
+            }
+          ]
+        },
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "ffba619",
+              "scope": "proxies",
+              "text": "Trim repeat work on group updates"
+            },
+            {
+              "id": "9d4c8ad",
+              "scope": "views,common",
+              "text": "Improve profile, app, and startup responsiveness"
+            },
+            {
+              "id": "3dd8bbe",
+              "scope": "core,providers",
+              "text": "Cut redundant setup and feed work"
+            },
+            {
+              "id": "74a7402",
+              "scope": "proxies",
+              "text": "Watch only the selected proxy group"
+            },
+            {
+              "id": "0b32dd8",
+              "scope": "proxies",
+              "text": "Cache resolved proxy state and narrow watches"
+            },
+            {
+              "id": "57b78c7",
+              "scope": "common",
+              "text": "Keep unchanged groups during timeout filtering"
+            },
+            {
+              "id": "7d0bd61",
+              "scope": "common",
+              "text": "Cache proxy types for timeout filtering"
+            },
+            {
+              "id": "624b62e",
+              "scope": "common",
+              "text": "Reuse groups when sorting does not change order"
+            },
+            {
+              "id": "d33a08f",
+              "scope": "common",
+              "text": "Reuse real proxy states while sorting"
+            },
+            {
+              "id": "00d22eb",
+              "text": "Skip computeSort after buildGroups when sort is none"
+            },
+            {
+              "id": "bec9898",
+              "text": "Short-circuit computeSort for none and singleton groups"
+            },
+            {
+              "id": "e332b37",
+              "text": "Keep group identity when stripping empty selection"
+            },
+            {
+              "id": "a01da4f",
+              "text": "Patch group.now locally after proxy switch"
+            },
+            {
+              "id": "eef0212",
+              "scope": "core",
+              "text": "Encode only groups and referenced members in getProxies"
+            },
+            {
+              "id": "7ed09b6",
+              "text": "Skip groups isolate below 80 proxy-map entries"
+            },
+            {
+              "id": "fb3777e",
+              "text": "Apply getProxies selection delta without isolate rebuild"
+            },
+            {
+              "id": "f6e6a06",
+              "text": "Wire delay resort and invalidate proxies cache on provider load"
+            },
+            {
+              "id": "3a7664e",
+              "text": "Skip AutoDisposeNotifier no-op value writes"
+            },
+            {
+              "id": "b843f86",
+              "text": "Skip groups refetch fan-out when proxy switch is a no-op"
+            },
+            {
+              "id": "8f771d0",
+              "text": "Drop per-call updateGroups log line"
+            },
+            {
+              "id": "d22c830",
+              "text": "Cap Core feed buffers between flushes"
+            },
+            {
+              "id": "d3c0458",
+              "text": "Reuse Core message batch buffer capacity"
+            },
+            {
+              "id": "073e31d",
+              "text": "Skip connections list notifier when live data is unchanged"
+            },
+            {
+              "id": "472f7b0",
+              "text": "Skip full connection sort when idle or empty"
+            },
+            {
+              "id": "6f82188",
+              "text": "Lighter connections page polling"
+            },
+            {
+              "id": "fa8ae28",
+              "text": "Cache groups-by-name map for proxyDesc"
+            },
+            {
+              "id": "bde0dbc",
+              "scope": "desktop",
+              "text": "MacOS tray title throttle 1.5s -> 2s"
+            },
+            {
+              "id": "8799ef4",
+              "text": "Coarser feed throttle and smaller live buffers"
+            },
+            {
+              "id": "b4dca35",
+              "text": "Visible traffic ticker 1s -> 1.5s"
+            },
+            {
+              "id": "3bbac1e",
+              "text": "Skip identical traffic samples on the chart buffer"
+            },
+            {
+              "id": "bbca9f1",
+              "text": "Use groups.getGroup in proxyDesc with select"
+            },
+            {
+              "id": "a52eaa4",
+              "scope": "android",
+              "text": "Refresh foreground notification every 2s"
+            },
+            {
+              "id": "8880038",
+              "text": "Shrink traffic chart sample buffer 30 -> 24"
+            },
+            {
+              "id": "8316056",
+              "text": "Poll connection count every 3s on dashboard"
+            },
+            {
+              "id": "dc5f719",
+              "text": "Poll memory stats every 3s"
+            },
+            {
+              "id": "56d6da6",
+              "text": "Coarser Core event batches under load"
+            },
+            {
+              "id": "88ce17f",
+              "text": "Always use combined traffic IPC when window is visible"
+            },
+            {
+              "id": "f702724",
+              "text": "Cut traffic IPC and skip delay-driven group rebuilds"
+            },
+            {
+              "id": "285e378",
+              "text": "Quieter traffic sampling and coarser core event batches"
+            },
+            {
+              "id": "4498941",
+              "text": "Cheaper background polls and accurate tray delay rebuilds"
+            },
+            {
+              "id": "82ac652",
+              "text": "Close dead sockets in background and batch UI feeds"
+            },
+            {
+              "id": "89c13e8",
+              "text": "Faster proxy switch and lower background UI work"
+            },
+            {
+              "id": "598a056",
+              "scope": "macos",
+              "text": "Cut NSStatusItem redraw CPU from tray title/menu"
             }
           ]
         }
