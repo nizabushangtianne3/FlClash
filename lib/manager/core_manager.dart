@@ -242,6 +242,12 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   }
 
   @override
+  void onRequestTraffic(Map<String, RequestTraffic> traffic) {
+    ref.read(requestsProvider.notifier).updateTraffic(traffic);
+    super.onRequestTraffic(traffic);
+  }
+
+  @override
   void onDns(DnsQuery dnsQuery) {
     if (!mounted) {
       return;

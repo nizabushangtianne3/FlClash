@@ -1,7 +1,4 @@
 import 'package:fl_clash/common/proxy.dart';
-import 'package:fl_clash/common/print.dart';
-import 'package:fl_clash/enum/enum.dart';
-import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/state.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -70,7 +67,7 @@ class _ProxyManagerState extends ConsumerState<ProxyManager> {
     super.initState();
     ref.listenManual(proxyStateProvider, (prev, next) {
       if (prev != next) {
-        _scheduleUpdateProxy(next);
+        systemProxyQueue?.apply(next);
       }
     }, fireImmediately: true);
   }

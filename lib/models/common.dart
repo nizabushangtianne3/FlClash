@@ -5,7 +5,7 @@ import 'dart:math';
 import 'package:collection/collection.dart';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
-import 'package:fl_clash/icons/glyph.dart';
+import 'package:fl_clash/ui/icons/glyph.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
@@ -21,7 +21,6 @@ abstract class NavigationItem with _$NavigationItem {
     required Glyph glyph,
     required PageLabel label,
     required WidgetBuilder builder,
-    @Default(true) bool keep,
     String? path,
     @Default([NavigationItemMode.mobile, NavigationItemMode.desktop])
     List<NavigationItemMode> modes,
@@ -133,6 +132,20 @@ abstract class TrackerInfo with _$TrackerInfo {
   factory TrackerInfo.fromJson(Map<String, Object?> json) =>
       _$TrackerInfoFromJson(json);
 }
+
+/// Reads the Core's `getConnections` answer.
+List<TrackerInfo> trackerInfosOf(Object? data) {
+  final connections = data is Map ? data['connections'] : null;
+  if (connections is! List) {
+    return const [];
+  }
+  return [
+    for (final item in connections.whereType<Map>())
+      TrackerInfo.fromJson(Map<String, Object?>.from(item)),
+  ];
+}
+
+typedef RequestTraffic = ({int upload, int download});
 
 extension TrackerInfoExt on TrackerInfo {
   String get title {
@@ -311,6 +324,8 @@ extension DnsQueryExt on DnsQuery {
   bool get hasFailureRcode => rcode.isNotEmpty && rcode != 'NOERROR';
 
   bool get isFailed => error.isNotEmpty || hasFailureRcode;
+
+  String get summary => error.isNotEmpty ? error : answers.join(', ');
 
   List<String> get tags => [type, ...resultTags];
 
@@ -499,17 +514,6 @@ extension FileInfoFileExt on File {
 }
 
 @freezed
-abstract class VersionInfo with _$VersionInfo {
-  const factory VersionInfo({
-    @Default('') String clashName,
-    @Default('') String version,
-  }) = _VersionInfo;
-
-  factory VersionInfo.fromJson(Map<String, Object?> json) =>
-      _$VersionInfoFromJson(json);
-}
-
-@freezed
 abstract class Traffic with _$Traffic {
   const factory Traffic({@Default(0) num up, @Default(0) num down}) = _Traffic;
 
@@ -559,11 +563,13 @@ abstract class Group with _$Group {
   factory Group.fromJson(Map<String, Object?> json) => _$GroupFromJson(json);
 }
 
+final _groupsByName = Expando<Map<String, Group>>();
+
 extension GroupsExt on List<Group> {
-  Group? getGroup(String groupName) {
-    final index = indexWhere((element) => element.name == groupName);
-    return index != -1 ? this[index] : null;
-  }
+  /// Indexed once per list, so a list must not change after its first lookup.
+  Group? getGroup(String groupName) => (_groupsByName[this] ??= {
+    for (final group in this) group.name: group,
+  })[groupName];
 }
 
 extension GroupExt on Group {
@@ -580,7 +586,6 @@ extension GroupExt on Group {
       }
       return '';
     }
-
     final storedName = proxyName.isNotEmpty ? proxyName : realNow;
     final selected = type.isComputedSelected && realNow.isNotEmpty
         ? realNow
@@ -600,44 +605,10 @@ extension GroupExt on Group {
     }
     return fallback ?? all.firstOrNull?.name ?? '';
   }
-}
 
-@freezed
-abstract class ColorSchemes with _$ColorSchemes {
-  const factory ColorSchemes({
-    ColorScheme? lightColorScheme,
-    ColorScheme? darkColorScheme,
-  }) = _ColorSchemes;
-}
-
-extension ColorSchemesExt on ColorSchemes {
-  ColorScheme getColorSchemeForBrightness(
-    Brightness brightness,
-    DynamicSchemeVariant schemeVariant,
-  ) {
-    if (brightness == Brightness.dark) {
-      return darkColorScheme != null
-          ? ColorScheme.fromSeed(
-              seedColor: darkColorScheme!.primary,
-              brightness: Brightness.dark,
-              dynamicSchemeVariant: schemeVariant,
-            )
-          : ColorScheme.fromSeed(
-              seedColor: const Color(defaultPrimaryColor),
-              brightness: Brightness.dark,
-              dynamicSchemeVariant: schemeVariant,
-            );
-    }
-    return lightColorScheme != null
-        ? ColorScheme.fromSeed(
-            seedColor: lightColorScheme!.primary,
-            dynamicSchemeVariant: schemeVariant,
-          )
-        : ColorScheme.fromSeed(
-            seedColor: const Color(defaultPrimaryColor),
-            dynamicSchemeVariant: schemeVariant,
-          );
-  }
+  /// A saved pick outlives a subscription update that renames or drops it.
+  bool _isMember(String proxyName) =>
+      all.isEmpty || all.any((proxy) => proxy.name == proxyName);
 }
 
 @freezed
@@ -859,15 +830,6 @@ extension ScriptExt on Script {
     final response = await request.getTextResponseForUrl(url!);
     return save(response.data ?? '');
   }
-
-  Future<Script> saveWithPath(String copyPath) async {
-    final file = File(await path);
-    if (!await file.exists()) {
-      await file.create(recursive: true);
-    }
-    await File(copyPath).copy(copyPath);
-    return copyWith(lastUpdateTime: DateTime.now());
-  }
 }
 
 @freezed
@@ -1006,9 +968,6 @@ extension IconSetIconsExt on List<IconSetIcon> {
 
   List<ScoredIcon> scoreFor(String name) =>
       scoredBy(matchIconNames([for (final icon in this) icon.name], name));
-
-  List<IconSetIcon> recommendFor(String name, {int limit = 24}) =>
-      rankIconMatches(scoreFor(name), limit: limit);
 }
 
 @freezed
@@ -1104,17 +1063,4 @@ abstract class UpdatingMessage with _$UpdatingMessage {
     required String label,
     required String message,
   }) = _UpdatingMessage;
-}
-
-@freezed
-abstract class IconButtonData with _$IconButtonData {
-  const factory IconButtonData({
-    required Glyph glyph,
-    required VoidCallback? onPressed,
-    String? tooltip,
-    @Default(false) bool isLoading,
-
-    /// Non-null makes the button a toggle that shows this state.
-    bool? isSelected,
-  }) = _IconButtonData;
 }

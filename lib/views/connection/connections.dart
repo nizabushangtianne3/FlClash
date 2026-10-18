@@ -5,9 +5,9 @@ import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/method.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/features/features.dart';
-import 'package:fl_clash/icons/icons.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,31 +27,26 @@ class ConnectionsView extends ConsumerStatefulWidget {
 }
 
 class _ConnectionsViewState extends ConsumerState<ConnectionsView>
-    with RouteMotionHoldMixin<ConnectionsView> {
+    with
+        WidgetsBindingObserver,
+        ActivePollingMixin<ConnectionsView>,
+        RouteMotionHoldMixin<ConnectionsView> {
   CoreController get _core => ref.read(coreHandlerProvider);
 
   final _listController = TrackerInfoListController();
   final _speedRanker = TrackerSpeedRanker();
   late final ScrollController _scrollController;
-  bool _watching = false;
-  Connections? _connections;
+  var _loaded = false;
 
   @override
   void initState() {
     super.initState();
     _scrollController =
         widget.scrollController ?? sheetScrollController(context);
-    ref.listenManual(connectionsProvider, (_, next) {
-      updateWhenRouteSettled(() => _applyConnections(next.connections));
-    });
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _connections ??= ref.read(connectionsProvider.notifier);
-    _setWatching(PageActivityScope.isActiveOf(context));
-  }
+  Duration get pollInterval => const Duration(seconds: 1);
 
   List<IconButtonData> _buildActions() {
     return [
@@ -66,12 +61,21 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
     ];
   }
 
+  @override
+  Future<void> poll(PollGuard isCurrent) async {
+    final trackerInfos = await _readConnections();
+    if (!isCurrent()) {
+      return;
+    }
+    _showConnections(trackerInfos);
+  }
+
   Future<void> _refreshConnections() async {
     final trackerInfos = await _readConnections();
     if (!mounted) {
       return;
     }
-    _applyConnections(trackerInfos);
+    _showConnections(trackerInfos);
   }
 
   Future<List<TrackerInfo>?> _readConnections() async {
@@ -89,33 +93,21 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
     }
   }
 
-  void _applyConnections(List<TrackerInfo>? trackerInfos) {
+  void _showConnections(List<TrackerInfo>? trackerInfos) {
+    final readAt = DateTime.now();
+    if (!_loaded) {
+      setState(() => _loaded = true);
+      _applyConnections(trackerInfos, readAt);
+      return;
+    }
+    updateWhenRouteSettled(() => _applyConnections(trackerInfos, readAt));
+  }
+
+  void _applyConnections(List<TrackerInfo>? trackerInfos, DateTime readAt) {
     if (trackerInfos == null) {
       return;
     }
-    // Idle page: avoid rank + notifier work when nothing is open.
-    if (trackerInfos.isEmpty && _listController.value.trackerInfos.isEmpty) {
-      return;
-    }
-    _listController.setTrackerInfos(
-      _speedRanker.rank(trackerInfos, DateTime.now()),
-    );
-  }
-
-  void _setWatching(bool active) {
-    if (_watching == active) {
-      return;
-    }
-    _watching = active;
-    final connections = _connections;
-    if (connections == null) {
-      return;
-    }
-    if (active) {
-      connections.attachSnapshot(widget.connectionsReader);
-    } else {
-      connections.detachSnapshot();
-    }
+    _listController.setTrackerInfos(_speedRanker.rank(trackerInfos, readAt));
   }
 
   Future<void> _handleBlockConnection(String id) async {
@@ -125,10 +117,6 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
 
   @override
   void dispose() {
-    if (_watching) {
-      _connections?.detachSnapshot();
-      _watching = false;
-    }
     _listController.dispose();
     if (widget.scrollController == null) {
       _scrollController.dispose();
@@ -148,28 +136,43 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
         valueListenable: _listController,
         builder: (context, state, _) {
           final connections = state.list;
+          Widget buildAction(TrackerInfo trackerInfo) {
+            return _BlockConnectionButton(
+              onPressed: () {
+                _handleBlockConnection(trackerInfo.id);
+              },
+            );
+          }
+
           return NullStatusSwitcher(
+            isLoading: !_loaded,
             isEmpty: connections.isEmpty,
             isSearching: state.isSearching,
-            holdsArrival: true,
             nullStatus: NullStatus(
               label: appLocalizations.nullTip(appLocalizations.connections),
               illustration: NullStatusIllustration.connections,
             ),
-            child: TrackerInfoAnimatedList(
-              controller: _scrollController,
-              padding: EdgeInsets.only(
-                top: context.contentTopPadding,
-                bottom: 16 + BottomInsetScope.of(context),
+            child: RecordTableFrame<TrackerInfo>(
+              tableId: 'connections',
+              items: connections,
+              columnsOf: (width) => trackerInfoColumns(
+                context,
+                width: width,
+                isLive: true,
+                actionBuilder: buildAction,
               ),
-              trackerInfos: connections,
-              detailTitle: appLocalizations.details(
-                appLocalizations.connection,
-              ),
-              actionBuilder: (trackerInfo) => _BlockConnectionButton(
-                onPressed: () {
-                  _handleBlockConnection(trackerInfo.id);
-                },
+              builder: (context, table, connections) => TrackerInfoAnimatedList(
+                controller: _scrollController,
+                padding: EdgeInsets.only(
+                  top: context.contentTopPadding,
+                  bottom: 16 + BottomInsetScope.of(context),
+                ),
+                trackerInfos: connections,
+                table: table,
+                detailTitle: appLocalizations.details(
+                  appLocalizations.connection,
+                ),
+                actionBuilder: buildAction,
               ),
             ),
           );
@@ -191,9 +194,9 @@ class _BlockConnectionButton extends StatelessWidget {
       message: context.appLocalizations.blockConnection,
       child: Semantics(
         button: true,
-        child: InkResponse(
+        child: InkWell(
           onTap: onPressed,
-          radius: 14,
+          customBorder: AppShape.circle,
           child: SizedBox.square(
             dimension: 28,
             child: Center(

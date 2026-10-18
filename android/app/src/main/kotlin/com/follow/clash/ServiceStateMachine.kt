@@ -185,7 +185,6 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     }
 
     private fun applySharedState() {
-        host.setCrashlytics(sharedState.crashlytics)
         host.updateNotificationParams(notificationParams(sharedState))
     }
 

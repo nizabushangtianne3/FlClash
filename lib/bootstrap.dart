@@ -124,7 +124,6 @@ class Bootstrap {
     var config = initialConfig;
     _bootDecision = await bootGuard.evaluate(
       profileId: config.currentProfileId,
-      crashlyticsEnabled: config.appSettingProps.crashlytics,
     );
     if (_bootDecision.recovery == BootRecovery.clearProfile) {
       config = config.copyWith(currentProfileId: null);
@@ -215,7 +214,6 @@ class Bootstrap {
       return;
     }
     await _showCrashRecoveryTip();
-    await _showCrashlyticsTip(isFirstLaunch: isFirstLaunch);
     await _container.read(coreActionProvider.notifier).startCore();
     if (!_bootDecision.isDegraded) {
       await _container.read(setupActionProvider.notifier).initStatus();
@@ -274,25 +272,6 @@ class Bootstrap {
     }
     // Saving here would rewrite the preferences file the user just chose to delete.
     await _container.read(systemActionProvider.notifier).handleExit(false);
-  }
-
-  Future<void> _showCrashlyticsTip({required bool isFirstLaunch}) async {
-    if (!system.isAndroid) return;
-    if (_container.read(
-      appSettingProvider.select((state) => state.crashlyticsTip),
-    )) {
-      return;
-    }
-    if (!isFirstLaunch) {
-      await dialogs.showMessage(
-        title: currentAppLocalizations.dataCollectionTip,
-        cancelable: false,
-        message: TextSpan(text: currentAppLocalizations.dataCollectionContent),
-      );
-    }
-    _container
-        .read(appSettingProvider.notifier)
-        .update((state) => state.copyWith(crashlyticsTip: true));
   }
 
   /// Android's exit only finishes the activity, so Dart keeps running after

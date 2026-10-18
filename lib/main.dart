@@ -53,6 +53,8 @@ void main(List<String> args) {
         await RustLib.init();
         final version = await system.init();
         final container = await bootstrap.init(version, viewSize: viewSize);
+        final container = await bootstrap.init(version);
+        await FlClashHttpOverrides.trustCoreRoots();
         HttpOverrides.global = FlClashHttpOverrides(container);
         request.attach(container.read);
         runApp(

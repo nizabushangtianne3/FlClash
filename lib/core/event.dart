@@ -30,6 +30,8 @@ abstract mixin class CoreEventListener {
 
   void onRequest(TrackerInfo connection) {}
 
+  void onRequestTraffic(Map<String, RequestTraffic> traffic) {}
+
   void onDns(DnsQuery dnsQuery) {}
 
   void onLoaded(String providerName) {}

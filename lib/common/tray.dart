@@ -114,6 +114,11 @@ class AppTray implements TrayPort {
     _isShutDown = true;
     _lastTitle = null;
     _lastTrayFingerprint = null;
+    // Removing a status item makes macOS forget where the user dragged it in
+    // the menu bar; one that goes away with the process keeps its place.
+    if (isMacOS) {
+      return;
+    }
     await Tray.instance.hide();
   }
 
@@ -126,7 +131,6 @@ class AppTray implements TrayPort {
     if (_isShutDown) {
       return;
     }
-
     final delays = isMacOS
         ? read(trayDelaysProvider)
         : const <String, Map<String, int>>{};
@@ -139,7 +143,7 @@ class AppTray implements TrayPort {
         TraySpec(
           icon: TrayIcon.asset(
             getTrayIcon(
-              isStart: trayState.isStart,
+              isStart: trayState.isStart && !trayState.suspended,
               tunEnable: trayState.tunEnable,
               safeMode: trayState.safeMode,
             ),

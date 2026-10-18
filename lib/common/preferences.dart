@@ -6,26 +6,31 @@ import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/common/system_dns.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class Preferences {
   static Preferences? _instance;
   String? _lastSavedConfig;
-  Completer<SharedPreferences?> sharedPreferencesCompleter = Completer();
-  Completer<bool> isInitCompleter = Completer();
+  var _store = ResolveOnce(_open);
 
-  Future<bool> get isInit async => isInitCompleter.future;
+  Future<bool> get isInit async => await _store.value != null;
 
-  Preferences._internal() {
-    SharedPreferences.getInstance()
-        .then((value) {
-          sharedPreferencesCompleter.complete(value);
-          isInitCompleter.complete(true);
-        })
-        .onError((_, _) {
-          sharedPreferencesCompleter.complete(null);
-          isInitCompleter.complete(false);
-        });
+  Preferences._internal();
+
+  static Future<SharedPreferences?> _open() async {
+    try {
+      return await SharedPreferences.getInstance();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @visibleForTesting
+  Future<void> rebind() async {
+    _store = ResolveOnce(_open);
+    await _store.value;
+  }
   }
 
   factory Preferences() {
@@ -34,23 +39,33 @@ class Preferences {
   }
 
   Future<int> getVersion() async {
-    final preferences = await sharedPreferencesCompleter.future;
+    final preferences = await _store.value;
     return preferences?.getInt('version') ?? 0;
   }
 
   Future<void> setVersion(int version) async {
-    final preferences = await sharedPreferencesCompleter.future;
+    final preferences = await _store.value;
     await preferences?.setInt('version', version);
   }
 
+  Future<int> getUpgradeVersion() async {
+    final preferences = await _store.value;
+    return preferences?.getInt('upgradeVersion') ?? 0;
+  }
+
+  Future<void> setUpgradeVersion(int version) async {
+    final preferences = await _store.value;
+    await preferences?.setInt('upgradeVersion', version);
+  }
+
   Future<void> saveShareState(SharedState shareState) async {
-    final preferences = await sharedPreferencesCompleter.future;
+    final preferences = await _store.value;
     await preferences?.setString('sharedState', json.encode(shareState));
   }
 
   Future<Map<String, Object?>?> getConfigMap() async {
     try {
-      final preferences = await sharedPreferencesCompleter.future;
+      final preferences = await _store.value;
       final configString = preferences?.getString(configKey);
       _lastSavedConfig = null;
       if (configString == null) return null;
@@ -68,7 +83,7 @@ class Preferences {
 
   Future<Map<String, Object?>?> getClashConfigMap() async {
     try {
-      final preferences = await sharedPreferencesCompleter.future;
+      final preferences = await _store.value;
       final clashConfigString = preferences?.getString(clashConfigKey);
       if (clashConfigString == null) return null;
       return json.decode(clashConfigString);
@@ -83,7 +98,7 @@ class Preferences {
 
   Future<void> clearClashConfig() async {
     try {
-      final preferences = await sharedPreferencesCompleter.future;
+      final preferences = await _store.value;
       await preferences?.remove(clashConfigKey);
       return;
     } catch (e) {
@@ -104,7 +119,7 @@ class Preferences {
   }
 
   Future<bool> saveConfig(Config config) async {
-    final preferences = await sharedPreferencesCompleter.future;
+    final preferences = await _store.value;
     final encoded = json.encode(config);
     if (_lastSavedConfig == encoded) {
       return true;
@@ -118,7 +133,7 @@ class Preferences {
 
   Future<SystemDnsRecord?> getSystemDnsRecord() async {
     try {
-      final sharedPreferencesIns = await sharedPreferencesCompleter.future;
+      final sharedPreferencesIns = await _store.value;
       final raw = sharedPreferencesIns?.getString(systemDnsRecordKey);
       if (raw == null) {
         return null;
@@ -134,7 +149,7 @@ class Preferences {
   }
 
   Future<void> saveSystemDnsRecord(SystemDnsRecord record) async {
-    final sharedPreferencesIns = await sharedPreferencesCompleter.future;
+    final sharedPreferencesIns = await _store.value;
     await sharedPreferencesIns?.setString(
       systemDnsRecordKey,
       json.encode(record),
@@ -142,13 +157,13 @@ class Preferences {
   }
 
   Future<void> clearSystemDnsRecord() async {
-    final sharedPreferencesIns = await sharedPreferencesCompleter.future;
+    final sharedPreferencesIns = await _store.value;
     await sharedPreferencesIns?.remove(systemDnsRecordKey);
   }
 
   Future<BootRecord?> getBootRecord() async {
     try {
-      final sharedPreferencesIns = await sharedPreferencesCompleter.future;
+      final sharedPreferencesIns = await _store.value;
       final raw = sharedPreferencesIns?.getString(bootRecordKey);
       if (raw == null) {
         return null;
@@ -164,12 +179,12 @@ class Preferences {
   }
 
   Future<void> saveBootRecord(BootRecord record) async {
-    final sharedPreferencesIns = await sharedPreferencesCompleter.future;
+    final sharedPreferencesIns = await _store.value;
     await sharedPreferencesIns?.setString(bootRecordKey, json.encode(record));
   }
 
   Future<void> clearPreferences() async {
-    final sharedPreferencesIns = await sharedPreferencesCompleter.future;
+    final sharedPreferencesIns = await _store.value;
     await sharedPreferencesIns?.clear();
     _lastSavedConfig = null;
   }

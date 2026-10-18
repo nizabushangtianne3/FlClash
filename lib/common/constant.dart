@@ -12,7 +12,6 @@ import 'package:material_ui/material_ui.dart';
 const appName = 'FlClash';
 const appHelperService = 'FlClashHelperService';
 const coreManifestName = 'manifest.json';
-const coreName = 'clash.meta';
 const browserUa =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const packageName = 'com.follow.clash';
@@ -27,22 +26,6 @@ const helperProtocolVersionHeader = 'x-flclash-helper-protocol';
 final helperProtocolVersion = Platform.isWindows ? '8' : '6';
 const maxTextScale = 1.4;
 const minTextScale = 0.8;
-final baseInfoEdgeInsets = EdgeInsets.symmetric(
-  vertical: 16.mAp,
-  horizontal: 16.mAp,
-);
-final listHeaderPadding = EdgeInsets.only(
-  left: 16.mAp,
-  right: 16.mAp,
-  top: 24.mAp,
-  bottom: 8.mAp,
-);
-
-const listRowMinHeight = 56.0;
-const listRowVerticalPadding = 10.0;
-const pageToolbarHeight = 64.0;
-const sheetToolbarHeight = 48.0;
-const sheetAppBarHeight = 68.0;
 
 const watchExecution = false;
 
@@ -177,7 +160,7 @@ const proxiesListStoreKey = PageStorageKey<String>('proxies_list');
 const toolsStoreKey = PageStorageKey<String>('tools');
 const profilesStoreKey = PageStorageKey<String>('profiles');
 
-const defaultPrimaryColor = 0XFFD8C0C3;
+const defaultPrimaryColor = 0xFF007AFF;
 
 const maxLogsLength = 4000;
 const maxRequestsLength = 1600;
@@ -188,14 +171,16 @@ const pausedMaxDnsQueriesLength = maxDnsQueriesLength * 2;
 
 const trafficSampleLength = 24;
 
+// Apple's system colors, in the order of the macOS accent colors.
 const defaultPrimaryColors = [
-  0xFF795548,
-  0xFF03A9F4,
-  0xFFFFFF00,
-  0XFFBBC9CC,
-  0XFFABD397,
   defaultPrimaryColor,
-  0XFF665390,
+  0xFFAF52DE,
+  0xFFFF2D55,
+  0xFFFF3B30,
+  0xFFFF9500,
+  0xFFFFCC00,
+  0xFF34C759,
+  0xFF8E8E93,
 ];
 
 const scriptTemplate = '''

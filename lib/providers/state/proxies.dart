@@ -74,22 +74,6 @@ ProxyState proxyState(Ref ref) {
   );
 }
 
-@riverpod
-ProxiesActionsState proxiesActionsState(Ref ref) {
-  final pageLabel = ref.watch(currentPageLabelProvider);
-  final hasProviders = ref.watch(
-    providersProvider.select((state) => state.isNotEmpty),
-  );
-  final type = ref.watch(
-    proxiesStyleSettingProvider.select((state) => state.type),
-  );
-  return ProxiesActionsState(
-    pageLabel: pageLabel,
-    hasProviders: hasProviders,
-    type: type,
-  );
-}
-
 /// Watching the delay map instead would drop nodes one probe at a time, and
 /// reading it on any other rebuild would drop them whenever something
 /// unrelated changed mid-test.
@@ -111,16 +95,19 @@ DelayMap delaysAtLastTestBatch(Ref ref) {
 
 @riverpod
 GroupsState visibleGroupsState(Ref ref) {
-  final currentGroups = ref.watch(currentGroupsStateProvider);
+  return _hideTimeoutProxies(ref, ref.watch(currentGroupsStateProvider));
+}
+
+GroupsState _hideTimeoutProxies(Ref ref, GroupsState groups) {
   final hideTimeoutProxies = ref.watch(
     proxiesStyleSettingProvider.select((state) => state.hideTimeoutProxies),
   );
   if (!hideTimeoutProxies) {
-    return currentGroups;
+    return groups;
   }
-  return currentGroups.copyWith(
+  return groups.copyWith(
     value: computeHideTimeout(
-      groups: currentGroups.value,
+      groups: groups.value,
       allGroups: ref.watch(groupsProvider),
       delayMap: ref.watch(delaysAtLastTestBatchProvider),
       selectedMap: ref.watch(selectedMapProvider),
@@ -129,30 +116,32 @@ GroupsState visibleGroupsState(Ref ref) {
   );
 }
 
+/// Searches before hiding, so a group whose matches all timed out keeps them,
+/// and with them its delay test, instead of dropping out of the results.
 @riverpod
 GroupsState filterGroupsState(Ref ref, String query) {
-  final currentGroups = ref.watch(visibleGroupsStateProvider);
   final searchQuery = SearchQuery(query);
   if (searchQuery.isEmpty) {
-    return currentGroups;
+    return ref.watch(visibleGroupsStateProvider);
   }
-  final groups = <Group>[];
-  for (final group in currentGroups.value) {
-    final visible = <Proxy>[];
-    for (final proxy in group.all) {
-      final text = _searchTextOf(proxy);
-      if (searchQuery.matchesText(text)) {
-        visible.add(proxy);
-      }
-    }
-    if (visible.isEmpty) {
-      continue;
-    }
-    groups.add(
-      visible.length == group.all.length ? group : group.copyWith(all: visible),
-    );
-  }
-  return currentGroups.copyWith(value: groups);
+  final currentGroups = ref.watch(currentGroupsStateProvider);
+  final matches = <Proxy, bool>{};
+  final groups = currentGroups.value
+      .map((group) {
+        return group.copyWith(
+          all: group.all
+              .where(
+                (proxy) =>
+                    matches[proxy] ??= searchQuery.matchesText(
+                      _searchTextOf(proxy),
+                    ),
+              )
+              .toList(),
+        );
+      })
+      .where((group) => group.all.isNotEmpty)
+      .toList();
+  return _hideTimeoutProxies(ref, currentGroups.copyWith(value: groups));
 }
 
 @riverpod
@@ -205,35 +194,14 @@ ProxiesTabControllerState proxiesTabControllerState(Ref ref) {
 }
 
 @riverpod
-ProxyGroupSelectorState proxyGroupSelectorState(
-  Ref ref,
-  String groupName,
-  String query,
-) {
-  final sortType = ref.watch(
-    proxiesStyleSettingProvider.select((state) => state.sortType),
+bool currentGroupDelayTesting(Ref ref) {
+  final currentGroupName = ref.watch(
+    proxiesTabControllerStateProvider.select((state) => state.currentGroupName),
   );
-  final cardType = ref.watch(
-    proxiesStyleSettingProvider.select((state) => state.cardType),
-  );
-  final group = ref.watch(
-    visibleGroupsStateProvider.select(
-      (state) => state.value.getGroup(groupName),
+  return ref.watch(
+    delayTestingGroupsProvider.select(
+      (state) => state.contains(currentGroupName),
     ),
-  );
-  final sortNum = ref.watch(sortNumProvider);
-  final proxies =
-      group?.all
-          .whereMatches(SearchQuery(query), (proxy) => proxy.searchFields)
-          .toList() ??
-      [];
-  return ProxyGroupSelectorState(
-    testUrl: group?.testUrl,
-    proxiesSortType: sortType,
-    proxyCardType: cardType,
-    sortNum: sortNum,
-    groupType: group?.type ?? GroupType.Selector,
-    proxies: proxies,
   );
 }
 
@@ -402,19 +370,6 @@ String _searchTextOf(Proxy proxy) {
   }
   _proxySearchTextsByKey[key] = text;
   return _proxySearchTexts[proxy] = text;
-}
-
-@riverpod
-String proxyDesc(Ref ref, ({String name, String type}) proxy) {
-  if (!GroupTypeExtension.isGroupType(proxy.type)) {
-    return proxy.type;
-  }
-  final group = ref.watch(
-    groupsProvider.select((state) => groupsByNameFor(state)[proxy.name]),
-  );
-  if (group == null) return proxy.type;
-  final state = ref.watch(realSelectedProxyStateProvider(proxy.name));
-  return "${proxy.type}(${state.proxyName.isNotEmpty ? state.proxyName : '*'})";
 }
 
 @riverpod
