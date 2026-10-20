@@ -204,7 +204,7 @@ jobs:
 
       - name: Test Clash.Meta proxy groups
         working-directory: core/Clash.Meta
-        run: go test -race ./adapter/outboundgroup ./adapter/provider -count=1
+        run: go test -race ./adapter/outboundgroup ./adapter/provider ./common/net/packet ./common/net/deadline -count=1
 
       - name: Validate the Android core library
         working-directory: core
