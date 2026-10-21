@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 
 import 'desktop/model.dart';
 import 'method.dart';
@@ -128,8 +129,28 @@ abstract class CoreHandlerInterface with CoreInterface {
     required CoreMethod method,
     Object? arguments,
     Duration? timeout,
+  }) {
+    // watchExecution is a compile-time false: skip its closures unless on.
+    if (kDebugMode && watchExecution) {
+      return _invokeMethodWatched<T>(
+        method: method,
+        arguments: arguments,
+        timeout: timeout,
+      );
+    }
+    return invokeMethod<T>(
+      method: method,
+      arguments: arguments,
+      timeout: timeout,
+    );
+  }
+
+  Future<T?> _invokeMethodWatched<T>({
+    required CoreMethod method,
+    Object? arguments,
+    Duration? timeout,
   }) async {
-    return await handleWatch(
+    return await handleWatch<T>(
       onStart: () {
         commonPrint.log(
           'Invoke method ${method.name} ${DateTime.now()} $arguments',

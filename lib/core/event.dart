@@ -55,6 +55,12 @@ class CoreEventManager {
 
   static final CoreEventManager instance = CoreEventManager._();
 
+  static bool _wantsRequests(CoreEventListener listener) =>
+      listener.wantsRequestEvents;
+
+  static bool _wantsDnsQueries(CoreEventListener listener) =>
+      listener.wantsDnsEvents;
+
   final ObserverList<CoreEventListener> _listeners =
       ObserverList<CoreEventListener>();
   List<CoreEventListener>? _listenerSnapshot;
@@ -67,6 +73,9 @@ class CoreEventManager {
   /// late stream microtask after the widget tree is already torn down.
   void sendEvent(CoreEvent event) {
     final listeners = _listenerSnapshot ??= List.unmodifiable(_listeners);
+    if (listeners.isEmpty) {
+      return;
+    }
     final filter = _filterFor(event);
     if (filter != null && !listeners.any(filter)) {
       return;
@@ -88,10 +97,12 @@ class CoreEventManager {
     }
   }
 
-  bool Function(CoreEventListener listener)? _filterFor(CoreEvent event) {
+  static bool Function(CoreEventListener listener)? _filterFor(
+    CoreEvent event,
+  ) {
     return switch (event.type) {
-      CoreEventType.request => (listener) => listener.wantsRequestEvents,
-      CoreEventType.dns => (listener) => listener.wantsDnsEvents,
+      CoreEventType.request => _wantsRequests,
+      CoreEventType.dns => _wantsDnsQueries,
       _ => null,
     };
   }
@@ -109,13 +120,11 @@ class CoreEventManager {
   Object? _parseEventPayload(CoreEvent event) {
     switch (event.type) {
       case CoreEventType.log:
-        return Log.fromJson(Map<String, Object?>.from(event.data as Map));
+        return Log.fromJson(_eventData(event));
       case CoreEventType.delay:
-        return Delay.fromJson(Map<String, Object?>.from(event.data as Map));
+        return Delay.fromJson(_eventData(event));
       case CoreEventType.request:
-        return TrackerInfo.fromJson(
-          Map<String, Object?>.from(event.data as Map),
-        );
+        return TrackerInfo.fromJson(_eventData(event));
       case CoreEventType.requestTraffic:
         return {
           for (final Map item in event.data as List)
@@ -125,12 +134,12 @@ class CoreEventManager {
             ),
         };
       case CoreEventType.dns:
-        return DnsQuery.fromJson(Map<String, Object?>.from(event.data as Map));
+        return DnsQuery.fromJson(_eventData(event));
       case CoreEventType.loaded:
       case CoreEventType.crash:
         return '${event.data}';
       case CoreEventType.geoUpdate:
-        final data = Map<String, dynamic>.from(event.data as Map);
+        final data = _eventData(event);
         return _GeoUpdatePayload(
           geoType: data['type'] as String,
           updating: data['updating'] as bool,
@@ -138,12 +147,18 @@ class CoreEventManager {
           error: data['error'] as String?,
         );
       case CoreEventType.routeChanged:
-        return RouteSnapshot.fromJson(
-          Map<String, Object?>.from(event.data as Map),
-        );
+        return RouteSnapshot.fromJson(_eventData(event));
       case CoreEventType.dialerLoop:
         return event.data as String;
     }
+  }
+
+  /// Transport events already carry `Map<String, Object?>`; avoid re-copying.
+  static Map<String, Object?> _eventData(CoreEvent event) {
+    final data = event.data;
+    return data is Map<String, Object?>
+        ? data
+        : Map<String, Object?>.from(data as Map);
   }
 }
 
