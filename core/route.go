@@ -10,13 +10,12 @@ import (
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
+	cp "github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/tunnel"
 )
 
-// mihomo has no hook for a health check moving a URLTest or Fallback pick, so
-// the picks are re-read on this timer while the host watches.
-// Failover and group health checks invalidate the route immediately; this
-// slower poll only catches provider and rule-set changes from mihomo itself.
+// Group re-picks and rule-set swaps both notify, so this poll is the only net
+// left for a proxy provider swapping its list behind the host's back.
 const routePollInterval = 5 * time.Second
 
 type routeTracker struct {
@@ -74,6 +73,9 @@ func scheduleRouteRefresh() {
 
 func init() {
 	outboundgroup.SetRouteInvalidate(scheduleRouteRefresh)
+	tunnel.Tunnel.RuleUpdateCallback().Register(func(cp.RuleProvider) {
+		scheduleRouteRefresh()
+	})
 }
 
 var (
@@ -139,12 +141,16 @@ func readPicks() (map[string]string, map[string]uint32) {
 			}
 		}
 	}
+	return picks, readProviderVersions()
+}
+
+func readProviderVersions() map[string]uint32 {
 	providers := tunnel.ProvidersSnapshot()
 	versions := make(map[string]uint32, len(providers))
 	for name, p := range providers {
 		versions[name] = p.Version()
 	}
-	return picks, versions
+	return versions
 }
 
 // mihomo swaps in a new strategy each time a rule set, manually or on its
@@ -158,21 +164,20 @@ func readRuleSets() map[string]any {
 	return ruleSets
 }
 
-// A provider that swapped its list is a structural change: the names may
-// survive while the servers behind them do not. The caller holds selectMu.
-func refreshRouteLocked(structural bool) {
-	picks, versions := readPicks()
-	ruleSets := readRuleSets()
-
+// The caller holds selectMu. A nil ruleSets skips that scan: the poll leaves
+// rule sets to their update event instead of rescanning them every tick.
+func applyRouteSnapshot(picks map[string]string, versions map[string]uint32, ruleSets map[string]any, structural bool) {
 	currentRoute.mu.Lock()
 	if currentRoute.providerVersions != nil && !maps.Equal(versions, currentRoute.providerVersions) {
 		structural = true
 	}
-	if currentRoute.ruleSets != nil && !maps.Equal(ruleSets, currentRoute.ruleSets) {
+	if ruleSets != nil && currentRoute.ruleSets != nil && !maps.Equal(ruleSets, currentRoute.ruleSets) {
 		structural = true
 	}
 	currentRoute.providerVersions = versions
-	currentRoute.ruleSets = ruleSets
+	if ruleSets != nil {
+		currentRoute.ruleSets = ruleSets
+	}
 	if structural {
 		currentRoute.epoch++
 	}
@@ -193,16 +198,33 @@ func refreshRouteLocked(structural bool) {
 		publishRoute(state)
 	}
 }
+
+// A provider that swapped its list is a structural change: the names may
+// survive while the servers behind them do not. The caller holds selectMu.
+func refreshRouteLocked(structural bool) {
+	picks, versions := readPicks()
+	applyRouteSnapshot(picks, versions, readRuleSets(), structural)
+}
+
+// The steady-state poll body. Rule sets and group picks notify on their own,
+// so this only re-reads provider versions and the picks they may have moved.
+func refreshRouteVersions() {
+	picks, versions := readPicks()
+	applyRouteSnapshot(picks, versions, nil, false)
+}
+
 func refreshRoute() {
 	selectMu.Lock()
 	defer selectMu.Unlock()
-	refreshRouteLocked(false)
+	picks, versions := readPicks()
+	applyRouteSnapshot(picks, versions, readRuleSets(), false)
 }
 
 func bumpRouteEpoch() {
 	selectMu.Lock()
 	defer selectMu.Unlock()
-	refreshRouteLocked(true)
+	picks, versions := readPicks()
+	applyRouteSnapshot(picks, versions, readRuleSets(), true)
 }
 
 func handleWatchRoute(watch bool, seq uint64) RouteState {
@@ -262,7 +284,7 @@ func pollRoute(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if isRunning.Load() {
-				refreshRoute()
+				refreshRouteVersions()
 			}
 		}
 	}

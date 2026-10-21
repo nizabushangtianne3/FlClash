@@ -58,6 +58,61 @@ func TestHandleOutboundIpSkipsAnAnswerWithoutAnAddress(t *testing.T) {
 	}
 }
 
+func TestHandleOutboundIpTriesTheLastWinnerFirst(t *testing.T) {
+	withProbeProxies(t, "node-a")
+	freshHits := &atomic.Int32{}
+	fresh := probeServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		freshHits.Add(1)
+		_, _ = w.Write([]byte("ip=203.0.113.8"))
+	})
+	winner := probeServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ip=203.0.113.7"))
+	})
+
+	first := handleOutboundIp(&OutboundIpParams{
+		ProxyName: "node-a",
+		Urls:      []string{winner.URL},
+		Timeout:   4000,
+	})
+	if first.Url != winner.URL {
+		t.Fatalf("url = %q, want the winner remembered", first.Url)
+	}
+
+	second := handleOutboundIp(&OutboundIpParams{
+		ProxyName: "node-a",
+		Urls:      []string{fresh.URL, winner.URL},
+		Timeout:   4000,
+	})
+	if second.Url != winner.URL {
+		t.Errorf("url = %q, want the remembered winner to finish the race", second.Url)
+	}
+	if freshHits.Load() != 0 {
+		t.Error("the fresh source was probed, want the race decided before its turn")
+	}
+}
+
+func TestHandleOutboundIpCapsASourceAtItsOwnDeadline(t *testing.T) {
+	withProbeProxies(t, "node-a")
+	slow := probeServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(3 * time.Second)
+		_, _ = w.Write([]byte("ip=203.0.113.7"))
+	})
+
+	start := time.Now()
+	result := handleOutboundIp(&OutboundIpParams{
+		ProxyName: "node-a",
+		Urls:      []string{slow.URL},
+		Timeout:   6000,
+	})
+
+	if result.Error != probeErrorFailed {
+		t.Errorf("error = %q, want %q", result.Error, probeErrorFailed)
+	}
+	if elapsed := time.Since(start); elapsed > outboundIpSourceTimeout+time.Second {
+		t.Errorf("took %s, want the source cap to cut the wait", elapsed)
+	}
+}
+
 func TestMentionsIpNeedsAWholeAddress(t *testing.T) {
 	cases := map[string]bool{
 		"fl=12f\nip=203.0.113.7\nts=1700000000.1": true,

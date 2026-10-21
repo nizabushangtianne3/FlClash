@@ -195,6 +195,13 @@ func handleProbe(params *ProbeParams) *ProbeResult {
 
 // runProbe returns nil when the request never got a slot before its deadline.
 func runProbe(parent context.Context, req probeRequest) *ProbeResult {
+	return runProbeRequest(parent, req, &probeSlots)
+}
+
+// A nil dialSlots dials without the shared probe pool. The service sweep
+// bounds itself with its own slots, so taking both would starve the outbound
+// IP race and single probes for the sweep's whole budget.
+func runProbeRequest(parent context.Context, req probeRequest, dialSlots *slots) *ProbeResult {
 	result := &ProbeResult{Url: req.url, Chains: []string{}}
 	result.CoreEpoch, result.PicksVersion = routeStamp()
 	fail := func(err error) *ProbeResult {
@@ -219,10 +226,12 @@ func runProbe(parent context.Context, req probeRequest) *ProbeResult {
 	if timeout <= 0 {
 		timeout = defaultProbeTimeout
 	}
-	if !probeSlots.acquireWithin(parent, timeout) {
-		return nil
+	if dialSlots != nil {
+		if !dialSlots.acquireWithin(parent, timeout) {
+			return nil
+		}
+		defer dialSlots.release()
 	}
-	defer probeSlots.release()
 
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()

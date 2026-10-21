@@ -3,7 +3,9 @@ package core
 import (
 	"context"
 	"net/netip"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/metacubex/http"
@@ -14,11 +16,18 @@ const (
 	outboundIpConcurrency = 3
 	outboundIpStagger     = 800 * time.Millisecond
 
+	// A source that has not answered by now will not beat the race; the cap
+	// keeps one hanging source from pinning a slot for the whole budget.
+	outboundIpSourceTimeout = 2500 * time.Millisecond
+
 	outboundIpMaxBody = 4096
 
 	// Kept in step with browserUa in lib/common/constant.dart.
 	browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
+
+// The source that answered last time, tried first on the next lookup.
+var lastOutboundIpSource atomic.Value // string
 
 type OutboundIpParams struct {
 	ProxyName string   `json:"proxy-name"`
@@ -49,6 +58,8 @@ func handleOutboundIp(params *OutboundIpParams) *OutboundIpResult {
 	}
 
 	timeout := timeoutFromMillis(params.Timeout, defaultProbeTimeout)
+	sourceTimeout := min(timeout, outboundIpSourceTimeout)
+	urls := orderedOutboundIpSources(params.Urls)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -56,14 +67,14 @@ func handleOutboundIp(params *OutboundIpParams) *OutboundIpResult {
 	next := 0
 	inFlight := 0
 	start := func() {
-		if next >= len(params.Urls) || inFlight >= outboundIpConcurrency {
+		if next >= len(urls) || inFlight >= outboundIpConcurrency {
 			return
 		}
-		url := params.Urls[next]
+		url := urls[next]
 		next++
 		inFlight++
 		go func() {
-			answers <- probeOutboundIpSource(ctx, url, params.ProxyName, timeout)
+			answers <- probeOutboundIpSource(ctx, url, params.ProxyName, sourceTimeout)
 		}()
 	}
 
@@ -88,6 +99,24 @@ func handleOutboundIp(params *OutboundIpParams) *OutboundIpResult {
 	return failure(probeErrorFailed)
 }
 
+// The source that answered last time leads the race; a name that dropped out
+// of the list keeps its absence instead of being probed anyway.
+func orderedOutboundIpSources(urls []string) []string {
+	last, _ := lastOutboundIpSource.Load().(string)
+	if last == "" {
+		return urls
+	}
+	index := slices.Index(urls, last)
+	if index < 0 {
+		return urls
+	}
+	ordered := make([]string, 0, len(urls))
+	ordered = append(ordered, last)
+	ordered = append(ordered, urls[:index]...)
+	ordered = append(ordered, urls[index+1:]...)
+	return ordered
+}
+
 func probeOutboundIpSource(ctx context.Context, url string, proxyName string, timeout time.Duration) *OutboundIpResult {
 	result := runProbe(ctx, probeRequest{
 		method:    http.MethodGet,
@@ -100,6 +129,7 @@ func probeOutboundIpSource(ctx context.Context, url string, proxyName string, ti
 	if result == nil || result.Error != "" || result.StatusCode != http.StatusOK || !mentionsIp(result.Body) {
 		return nil
 	}
+	lastOutboundIpSource.Store(url)
 	return &OutboundIpResult{
 		Url:          url,
 		Body:         result.Body,

@@ -88,7 +88,7 @@ func (e serviceEnv) send(req probeRequest) *ProbeResult {
 		headers[name] = value
 	}
 	req.headers = headers
-	return runProbe(e.ctx, req)
+	return runProbeRequest(e.ctx, req, nil)
 }
 
 type serviceChecker struct {

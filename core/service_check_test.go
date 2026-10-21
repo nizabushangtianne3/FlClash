@@ -238,6 +238,40 @@ func TestHandleServiceCheckDropsAQueuedCheckAskedAgain(t *testing.T) {
 	}
 }
 
+func TestServiceSweepDialsWithoutTheSharedProbeSlots(t *testing.T) {
+	for i := 0; i < probeConcurrency; i++ {
+		probeSlots <- struct{}{}
+	}
+	t.Cleanup(func() {
+		for i := 0; i < probeConcurrency; i++ {
+			<-probeSlots
+		}
+	})
+	withProbeProxies(t, "node-a")
+	server := probeServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	withServiceCheckers(t, serviceChecker{name: "alpha", check: checkReachable(server.URL)})
+
+	done := make(chan []ServiceCheckItem, 1)
+	go func() {
+		done <- handleServiceCheck(&ServiceCheckParams{
+			ProxyName: "node-a",
+			Names:     []string{"alpha"},
+			Timeout:   3000,
+		})
+	}()
+
+	select {
+	case items := <-done:
+		if items[0].Status != serviceAvailable {
+			t.Errorf("status = %q, want the sweep to finish without the shared probe slots", items[0].Status)
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("the sweep queued behind the shared probe slots it no longer takes")
+	}
+}
+
 func TestHandleServiceCheckHandsTheCancelledCheckSlotToItsReplacement(t *testing.T) {
 	started := make(chan string, serviceCheckConcurrency)
 	checkers := make([]serviceChecker, 0, serviceCheckConcurrency)

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
@@ -216,6 +217,68 @@ func TestRuleSetContentAdvancesTheEpoch(t *testing.T) {
 	}
 	if published := recorder.published(); len(published) != 1 || published[0].CoreEpoch != before+1 {
 		t.Errorf("published = %+v, want the new epoch once", published)
+	}
+}
+
+func TestRuleSetUpdateSchedulesARouteRefresh(t *testing.T) {
+	recorder := recordRoutes(t)
+	isRunning.Store(true)
+	t.Cleanup(func() { isRunning.Store(false) })
+	rp.SetTunnel(tunnel.Tunnel)
+	ruleSet := rp.NewRuleSetProvider(
+		"ruleset", cp.Domain, cp.YamlRule, 0,
+		resource.NewFileVehicle(filepath.Join(t.TempDir(), "ruleset.yaml")),
+		nil, nil, rules.ParseRule,
+	).(*rp.RuleSetProvider)
+	if _, _, err := ruleSet.SideUpdate([]byte("payload:\n  - example.com\n")); err != nil {
+		t.Fatalf("SideUpdate: %v", err)
+	}
+	withTunnelProviders(t, nil, map[string]cp.RuleProvider{"ruleset": ruleSet})
+	before := handleWatchRoute(true, 0).CoreEpoch
+
+	if _, _, err := ruleSet.SideUpdate([]byte("payload:\n  - example.org\n")); err != nil {
+		t.Fatalf("SideUpdate: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		published := recorder.published()
+		if len(published) == 1 && published[0].CoreEpoch == before+1 {
+			break
+		}
+		if len(published) > 1 || time.Now().After(deadline) {
+			t.Fatalf("published = %+v, want one state at epoch %d", published, before+1)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestRouteVersionsPollLeavesRuleSetsToTheirEvent(t *testing.T) {
+	recordRoutes(t)
+	rp.SetTunnel(tunnel.Tunnel)
+	ruleSet := rp.NewRuleSetProvider(
+		"ruleset", cp.Domain, cp.YamlRule, 0,
+		resource.NewFileVehicle(filepath.Join(t.TempDir(), "ruleset.yaml")),
+		nil, nil, rules.ParseRule,
+	).(*rp.RuleSetProvider)
+	if _, _, err := ruleSet.SideUpdate([]byte("payload:\n  - example.com\n")); err != nil {
+		t.Fatalf("SideUpdate: %v", err)
+	}
+	withTunnelProviders(t, nil, map[string]cp.RuleProvider{"ruleset": ruleSet})
+	before := handleWatchRoute(true, 0).CoreEpoch
+
+	if _, _, err := ruleSet.SideUpdate([]byte("payload:\n  - example.org\n")); err != nil {
+		t.Fatalf("SideUpdate: %v", err)
+	}
+
+	refreshRouteVersions()
+	if got := routeState().CoreEpoch; got != before {
+		t.Errorf("epoch = %d after the poll, want rule sets left to their update event", got)
+	}
+
+	refreshRoute()
+	if got := routeState().CoreEpoch; got != before+1 {
+		t.Errorf("epoch = %d after the full refresh, want the swap to be structural", got)
 	}
 }
 
