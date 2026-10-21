@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:riverpod/riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'generated/config.g.dart';
@@ -85,6 +88,108 @@ class _PatchClashConfig extends _$PatchClashConfig
   PatchClashConfig build() {
     return const PatchClashConfig();
   }
+}
+
+/// Where the app's own requests go, and which hosts skip it. Kept alive and
+/// precompiled because every request reads it, outside the widget tree.
+@Riverpod(keepAlive: true)
+LocalProxyRoute localProxyRoute(Ref ref) {
+  final mixedPort = ref.watch(
+    patchClashConfigProvider.select((state) => state.mixedPort),
+  );
+  final networkProps = ref.watch(
+    networkSettingProvider.select(
+      (state) => (
+        authentication: state.authentication,
+        bypassDomain: state.bypassDomain,
+        bypassPrivateRoute: state.bypassPrivateRoute,
+      ),
+    ),
+  );
+  final credentials = networkProps.authentication.credentials;
+  final userInfo = credentials.isNotEmpty ? '${credentials.first}@' : '';
+  return LocalProxyRoute(
+    target: 'PROXY ${userInfo}localhost:$mixedPort',
+    bypass: [
+      for (final domain in networkProps.bypassDomain) _bypassPattern(domain),
+    ],
+    bypassPrivateRoute: networkProps.bypassPrivateRoute,
+  );
+}
+
+class LocalProxyRoute {
+  const LocalProxyRoute({
+    required this.target,
+    required this.bypass,
+    required this.bypassPrivateRoute,
+  });
+
+  final String target;
+  final List<RegExp> bypass;
+  final bool bypassPrivateRoute;
+
+  bool bypasses(Uri url) {
+    final host = url.host;
+    if (bypass.any((pattern) => pattern.hasMatch(host))) {
+      return true;
+    }
+    if (!bypassPrivateRoute) {
+      return false;
+    }
+    final address = InternetAddress.tryParse(host);
+    if (address == null) {
+      return false;
+    }
+    final raw = address.rawAddress;
+    return _privateRoutePrefixes.any((prefix) => _containsPrefix(prefix, raw));
+  }
+}
+
+// The bypass list the system proxy applies, so this override has to agree with
+// it: `*` and `?` are wildcards, and a bare name also covers its subdomains.
+RegExp _bypassPattern(String domain) {
+  final wildcard = domain.contains('*') || domain.contains('?');
+  final expression = domain.splitMapJoin(
+    RegExp(r'[*?]'),
+    onMatch: (match) => match.group(0) == '*' ? '.*' : '.',
+    onNonMatch: RegExp.escape,
+  );
+  return RegExp(
+    wildcard
+        ? '^$expression\$'
+        : r'^(.*\.)?'
+              '$expression'
+              r'$',
+    caseSensitive: false,
+  );
+}
+
+// Parsed once; the ranges the Core excludes from its TUN routes when asked.
+final _privateRoutePrefixes = [
+  for (final cidr in privateRouteAddress) _parseCidr(cidr),
+];
+
+({List<int> base, int bits}) _parseCidr(String cidr) {
+  final slash = cidr.lastIndexOf('/');
+  return (
+    base: InternetAddress(cidr.substring(0, slash)).rawAddress,
+    bits: int.parse(cidr.substring(slash + 1)),
+  );
+}
+
+bool _containsPrefix(({List<int> base, int bits}) prefix, List<int> raw) {
+  final (:base, :bits) = prefix;
+  if (base.length != raw.length) {
+    return false;
+  }
+  for (var index = 0; index < bits ~/ 8; index++) {
+    if (raw[index] != base[index]) {
+      return false;
+    }
+  }
+  final rest = bits % 8;
+  return rest == 0 ||
+      raw[bits ~/ 8] >> (8 - rest) == base[bits ~/ 8] >> (8 - rest);
 }
 
 @riverpod

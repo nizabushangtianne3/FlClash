@@ -529,6 +529,62 @@ abstract class _$PatchClashConfig extends $Notifier<PatchClashConfig> {
   }
 }
 
+/// Where the app's own requests go while the Core runs, and which hosts skip
+/// it. Kept alive and precompiled because the HTTP overrides read it outside
+/// the widget tree on every request, where an autoDispose source would be
+/// rebuilt and dropped for each one.
+
+@ProviderFor(localProxyRoute)
+final localProxyRouteProvider = LocalProxyRouteProvider._();
+
+/// Where the app's own requests go while the Core runs, and which hosts skip
+/// it. Kept alive and precompiled because the HTTP overrides read it outside
+/// the widget tree on every request, where an autoDispose source would be
+/// rebuilt and dropped for each one.
+
+final class LocalProxyRouteProvider
+    extends
+        $FunctionalProvider<LocalProxyRoute, LocalProxyRoute, LocalProxyRoute>
+    with $Provider<LocalProxyRoute> {
+  /// Where the app's own requests go while the Core runs, and which hosts skip
+  /// it. Kept alive and precompiled because the HTTP overrides read it outside
+  /// the widget tree on every request, where an autoDispose source would be
+  /// rebuilt and dropped for each one.
+  LocalProxyRouteProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'localProxyRouteProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$localProxyRouteHash();
+
+  @$internal
+  @override
+  $ProviderElement<LocalProxyRoute> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  LocalProxyRoute create(Ref ref) {
+    return localProxyRoute(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(LocalProxyRoute value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<LocalProxyRoute>(value),
+    );
+  }
+}
+
+String _$localProxyRouteHash() => r'461be54cae767144f4f3f1f2d7409b3833a9a9ab';
+
 @ProviderFor(ExcludeSSIDs)
 final excludeSSIDsProvider = ExcludeSSIDsProvider._();
 

@@ -134,6 +134,121 @@ void main() {
     );
   });
 
+  test('bypasses the hosts the bypass list names', () {
+    final container = buildContainer();
+
+    expect(
+      FlClashHttpOverrides.findProxyFor(
+        container,
+        Uri.parse('http://localhost:9090/ui'),
+      ),
+      'DIRECT',
+    );
+
+    for (final host in ['www.zhihu.com', 'nas.local']) {
+      expect(
+        FlClashHttpOverrides.findProxyFor(
+          container,
+          Uri.parse('https://$host'),
+        ),
+        'DIRECT',
+        reason: host,
+      );
+    }
+  });
+
+  test('a bare bypass name covers the host and its subdomains only', () {
+    final container = buildContainer();
+    container.read(networkSettingProvider.notifier).value = const NetworkProps()
+        .copyWith(bypassDomain: const ['nas.lan']);
+
+    for (final host in ['nas.lan', 'files.nas.lan']) {
+      expect(
+        FlClashHttpOverrides.findProxyFor(
+          container,
+          Uri.parse('https://$host'),
+        ),
+        'DIRECT',
+        reason: host,
+      );
+    }
+
+    expect(
+      FlClashHttpOverrides.findProxyFor(
+        container,
+        Uri.parse('https://notnas.lan'),
+      ),
+      'PROXY localhost:7890',
+    );
+  });
+
+  test('bypasses private hosts while the private route is bypassed', () {
+    final container = buildContainer();
+    container.read(networkSettingProvider.notifier).value = const NetworkProps()
+        .copyWith(bypassDomain: const []);
+
+    for (final host in ['10.0.0.5', '192.168.1.10']) {
+      expect(
+        FlClashHttpOverrides.findProxyFor(
+          container,
+          Uri.parse('https://$host'),
+        ),
+        'DIRECT',
+        reason: host,
+      );
+    }
+
+    for (final host in ['fc00::1', 'fe80::1']) {
+      expect(
+        FlClashHttpOverrides.findProxyFor(
+          container,
+          Uri.parse('https://[$host]'),
+        ),
+        'DIRECT',
+        reason: host,
+      );
+    }
+
+    expect(
+      FlClashHttpOverrides.findProxyFor(
+        container,
+        Uri.parse('https://1.1.1.1'),
+      ),
+      'PROXY localhost:7890',
+    );
+  });
+
+  test('keeps sending private hosts through the Core on request', () {
+    final container = buildContainer();
+    container.read(networkSettingProvider.notifier).value = const NetworkProps()
+        .copyWith(bypassDomain: const [], bypassPrivateRoute: false);
+
+    expect(
+      FlClashHttpOverrides.findProxyFor(
+        container,
+        Uri.parse('https://192.168.1.10'),
+      ),
+      'PROXY localhost:7890',
+    );
+  });
+
+  test('follows a port change after the first lookup', () {
+    final container = buildContainer();
+
+    expect(
+      FlClashHttpOverrides.findProxyFor(container, remote),
+      'PROXY localhost:7890',
+    );
+
+    container.read(patchClashConfigProvider.notifier).value =
+        const PatchClashConfig().copyWith(mixedPort: 9091);
+
+    expect(
+      FlClashHttpOverrides.findProxyFor(container, remote),
+      'PROXY localhost:9091',
+    );
+  });
+
   test('an untrusted certificate is rejected by default', () {
     final container = buildContainer();
 
