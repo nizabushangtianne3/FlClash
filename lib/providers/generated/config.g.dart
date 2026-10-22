@@ -529,27 +529,21 @@ abstract class _$PatchClashConfig extends $Notifier<PatchClashConfig> {
   }
 }
 
-/// Where the app's own requests go while the Core runs, and which hosts skip
-/// it. Kept alive and precompiled because the HTTP overrides read it outside
-/// the widget tree on every request, where an autoDispose source would be
-/// rebuilt and dropped for each one.
+/// Where the app's own requests go, and which hosts skip it. Kept alive and
+/// precompiled because every request reads it, outside the widget tree.
 
 @ProviderFor(localProxyRoute)
 final localProxyRouteProvider = LocalProxyRouteProvider._();
 
-/// Where the app's own requests go while the Core runs, and which hosts skip
-/// it. Kept alive and precompiled because the HTTP overrides read it outside
-/// the widget tree on every request, where an autoDispose source would be
-/// rebuilt and dropped for each one.
+/// Where the app's own requests go, and which hosts skip it. Kept alive and
+/// precompiled because every request reads it, outside the widget tree.
 
 final class LocalProxyRouteProvider
     extends
         $FunctionalProvider<LocalProxyRoute, LocalProxyRoute, LocalProxyRoute>
     with $Provider<LocalProxyRoute> {
-  /// Where the app's own requests go while the Core runs, and which hosts skip
-  /// it. Kept alive and precompiled because the HTTP overrides read it outside
-  /// the widget tree on every request, where an autoDispose source would be
-  /// rebuilt and dropped for each one.
+  /// Where the app's own requests go, and which hosts skip it. Kept alive and
+  /// precompiled because every request reads it, outside the widget tree.
   LocalProxyRouteProvider._()
     : super(
         from: null,

@@ -442,25 +442,14 @@ class _AccessViewState extends ConsumerState<AccessView>
   @override
   Widget build(BuildContext context) {
     final isLoading = ref.watch(loadingProvider(LoadingTag.access));
-    final query = SearchQuery(ref.watch(queryProvider(QueryTag.access)));
     final packages = ref.watch(packagesProvider);
     final accessControl = ref.watch(accessControlStateProvider);
-    final viewPackageNames = packages
-        .whereVisible(
-          isFilterSystemApp: accessControl.isFilterSystemApp,
-          isFilterNonInternetApp: accessControl.isFilterNonInternetApp,
-        )
-        .map((item) => item.packageName)
-        .toSet();
-    final viewPackages = packages
-        .getViewList(
-          pinedList: _pinedList ?? [],
-          sortType: accessControl.sort,
-          isFilterNonInternetApp: accessControl.isFilterNonInternetApp,
-          isFilterSystemApp: accessControl.isFilterSystemApp,
-        )
-        .whereMatches(query, (package) => [package.label, package.packageName])
-        .toList();
+    final accessView = ref.watch(
+      accessViewPackagesProvider(_pinedList ?? const []),
+    );
+    final viewPackages = accessView.packages;
+    final viewPackageNames = accessView.names;
+    final isSearching = ref.watch(queryProvider(QueryTag.access)).isNotEmpty;
     final mode = accessControl.mode;
     final currentList = accessControl.currentList;
     final viewPackageNameList = viewPackages.map((e) => e.packageName).toList();
@@ -534,7 +523,7 @@ class _AccessViewState extends ConsumerState<AccessView>
                         child: _buildContent(
                           packages: viewPackages,
                           selected: valueList.toSet(),
-                          isSearching: query.isNotEmpty,
+                          isSearching: isSearching,
                         ),
                       ),
               ),

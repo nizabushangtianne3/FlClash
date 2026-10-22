@@ -569,6 +569,98 @@ abstract class _$AccessControlState extends $Notifier<AccessControlProps> {
   }
 }
 
+@ProviderFor(accessViewPackages)
+final accessViewPackagesProvider = AccessViewPackagesFamily._();
+
+final class AccessViewPackagesProvider
+    extends
+        $FunctionalProvider<
+          ({Set<String> names, List<Package> packages}),
+          ({Set<String> names, List<Package> packages}),
+          ({Set<String> names, List<Package> packages})
+        >
+    with $Provider<({Set<String> names, List<Package> packages})> {
+  AccessViewPackagesProvider._({
+    required AccessViewPackagesFamily super.from,
+    required List<String> super.argument,
+  }) : super(
+         retry: null,
+         name: r'accessViewPackagesProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
+
+  @override
+  String debugGetCreateSourceHash() => _$accessViewPackagesHash();
+
+  @override
+  String toString() {
+    return r'accessViewPackagesProvider'
+        ''
+        '($argument)';
+  }
+
+  @$internal
+  @override
+  $ProviderElement<({Set<String> names, List<Package> packages})>
+  $createElement($ProviderPointer pointer) => $ProviderElement(pointer);
+
+  @override
+  ({Set<String> names, List<Package> packages}) create(Ref ref) {
+    final argument = this.argument as List<String>;
+    return accessViewPackages(ref, argument);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(
+    ({Set<String> names, List<Package> packages}) value,
+  ) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride:
+          $SyncValueProvider<({Set<String> names, List<Package> packages})>(
+            value,
+          ),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AccessViewPackagesProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
+}
+
+String _$accessViewPackagesHash() =>
+    r'590b89db75f0e66436f3bb29887593a113174cfc';
+
+final class AccessViewPackagesFamily extends $Family
+    with
+        $FunctionalFamilyOverride<
+          ({Set<String> names, List<Package> packages}),
+          List<String>
+        > {
+  AccessViewPackagesFamily._()
+    : super(
+        retry: null,
+        name: r'accessViewPackagesProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  AccessViewPackagesProvider call(List<String> pinnedList) =>
+      AccessViewPackagesProvider._(argument: pinnedList, from: this);
+
+  @override
+  String toString() => r'accessViewPackagesProvider';
+}
+
 @ProviderFor(suspend)
 final suspendProvider = SuspendProvider._();
 

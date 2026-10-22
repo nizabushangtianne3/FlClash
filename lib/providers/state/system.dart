@@ -294,6 +294,41 @@ class AccessControlState extends _$AccessControlState
 }
 
 @riverpod
+({List<Package> packages, Set<String> names}) accessViewPackages(
+  Ref ref,
+  List<String> pinnedList,
+) {
+  final packages = ref.watch(packagesProvider);
+  final filters = ref.watch(
+    accessControlStateProvider.select(
+      (state) => (
+        isFilterSystemApp: state.isFilterSystemApp,
+        isFilterNonInternetApp: state.isFilterNonInternetApp,
+        sort: state.sort,
+      ),
+    ),
+  );
+  final query = SearchQuery(ref.watch(queryProvider(QueryTag.access)));
+  final names = packages
+      .whereVisible(
+        isFilterSystemApp: filters.isFilterSystemApp,
+        isFilterNonInternetApp: filters.isFilterNonInternetApp,
+      )
+      .map((item) => item.packageName)
+      .toSet();
+  final viewPackages = packages
+      .getViewList(
+        pinedList: pinnedList,
+        sortType: filters.sort,
+        isFilterNonInternetApp: filters.isFilterNonInternetApp,
+        isFilterSystemApp: filters.isFilterSystemApp,
+      )
+      .whereMatches(query, (package) => [package.label, package.packageName])
+      .toList();
+  return (packages: viewPackages, names: names);
+}
+
+@riverpod
 bool suspend(Ref ref) {
   final currentSSID = ref.watch(currentSSIDProvider);
   final excludeSSIDs = ref.watch(excludeSSIDsProvider);
