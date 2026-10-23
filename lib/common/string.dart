@@ -78,26 +78,6 @@ extension StringExtension on String {
     ]);
   }
 
-  String safeSubstring(int start, [int? end]) {
-    if (isEmpty) return '';
-    final safeStart = start.clamp(0, length);
-    if (end == null) {
-      return substring(safeStart);
-    }
-    final safeEnd = end.clamp(safeStart, length);
-    return substring(safeStart, safeEnd);
-  }
-
-  List<int> get encodeUtf16LeWithBom {
-    final byteData = ByteData(length * 2);
-    final bom = [0xFF, 0xFE];
-    for (int i = 0; i < length; i++) {
-      final int charCode = codeUnitAt(i);
-      byteData.setUint16(i * 2, charCode, Endian.little);
-    }
-    return bom + byteData.buffer.asUint8List();
-  }
-
   Uint8List? get getBase64 {
     const marker = 'base64,';
     final markerIndex = indexOf(marker);
