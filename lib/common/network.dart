@@ -55,11 +55,11 @@ Future<String?> getLocalIpAddress() async {
     if (addresses.isEmpty) {
       continue;
     }
-    addresses.sort((a, b) {
-      if (a.isIPv4 && !b.isIPv4) return -1;
-      if (!a.isIPv4 && b.isIPv4) return 1;
-      return 0;
-    });
+    for (final address in addresses) {
+      if (address.isIPv4) {
+        return address.address;
+      }
+    }
     return addresses.first.address;
   }
   return '';

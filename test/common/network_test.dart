@@ -101,6 +101,14 @@ void main() {
       expect(await getLocalIpAddress(), '192.168.1.20');
     });
 
+    test('returns the first address without an IPv4 one', () async {
+      listing([
+        _FakeInterface('wlan0', [_v6('fe80::1'), _v6('2001:db8::1')]),
+      ]);
+
+      expect(await getLocalIpAddress(), 'fe80::1');
+    });
+
     test('skips an interface that carries no address at all', () async {
       listing([
         _FakeInterface('wlan0', const []),
