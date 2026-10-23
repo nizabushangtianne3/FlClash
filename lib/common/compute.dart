@@ -16,6 +16,16 @@ List<Group> computeSort({
   if (sortType == ProxiesSortType.delay && delayMap.isEmpty) {
     return groups;
   }
+  if (sortType == ProxiesSortType.name) {
+    final sortedGroups = [
+      for (final group in groups)
+        if (group.all.length <= 1)
+          group
+        else
+          _withSortedAll(group, _sortByName(group.all)),
+    ];
+    return _sameGroups(sortedGroups, groups) ? groups : sortedGroups;
+  }
 
   final groupsByName = groupsByNameFor(groups);
   final realStateCache = <String, SelectedProxyState>{};
@@ -83,37 +93,32 @@ List<Group> computeSort({
     return [for (final index in order) proxies[index]];
   }
 
-  List<Proxy> sortOfName(List<Proxy> proxies) {
-    for (var index = 1; index < proxies.length; index++) {
-      if (proxies[index - 1].name.compareTo(proxies[index].name) > 0) {
-        return List.of(proxies)..sort((a, b) => a.name.compareTo(b.name));
-      }
-    }
-    return proxies;
-  }
-
-  List<Proxy> sortedAllOf(Group group) {
-    return switch (sortType) {
-      ProxiesSortType.none => group.all,
-      ProxiesSortType.delay => sortOfDelay(
-        groups: groups,
-        proxies: group.all,
-        delayMap: delayMap,
-        selectedMap: selectedMap,
-        testUrl: group.testUrl.takeFirstValid([defaultTestUrl]),
-      ),
-      ProxiesSortType.name => sortOfName(group.all),
-    };
-  }
-
   final sortedGroups = [
     for (final group in groups)
       if (group.all.length <= 1)
         group
       else
-        _withSortedAll(group, sortedAllOf(group)),
+        _withSortedAll(
+          group,
+          sortOfDelay(
+            groups: groups,
+            proxies: group.all,
+            delayMap: delayMap,
+            selectedMap: selectedMap,
+            testUrl: group.testUrl.takeFirstValid([defaultTestUrl]),
+          ),
+        ),
   ];
   return _sameGroups(sortedGroups, groups) ? groups : sortedGroups;
+}
+
+List<Proxy> _sortByName(List<Proxy> proxies) {
+  for (var index = 1; index < proxies.length; index++) {
+    if (proxies[index - 1].name.compareTo(proxies[index].name) > 0) {
+      return List.of(proxies)..sort((a, b) => a.name.compareTo(b.name));
+    }
+  }
+  return proxies;
 }
 
 Group _withSortedAll(Group group, List<Proxy> sorted) {
