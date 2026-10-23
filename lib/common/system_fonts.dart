@@ -9,6 +9,8 @@ import 'package:win32/win32.dart' show GUID;
 
 import 'print.dart';
 
+final _androidFontFamily = RegExp(r'<family\b[^>]*\bname="([^"]+)"');
+
 @visibleForTesting
 Future<List<String>> Function() systemFontFamiliesReader = () =>
     Isolate.run(_readSystemFontFamilies);
@@ -46,16 +48,14 @@ List<String> sortFontFamilies(Iterable<String> families) {
     }
     unique.putIfAbsent(name.toLowerCase(), () => name);
   }
-  return unique.values.toList()
-    ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  final sorted = unique.entries.toList()
+    ..sort((a, b) => a.key.compareTo(b.key));
+  return [for (final entry in sorted) entry.value];
 }
 
 @visibleForTesting
 List<String> androidFontFamilies(String fontsXml) => [
-  for (final match in RegExp(
-    r'<family\b[^>]*\bname="([^"]+)"',
-  ).allMatches(fontsXml))
-    match.group(1)!,
+  for (final match in _androidFontFamily.allMatches(fontsXml)) match.group(1)!,
 ];
 
 final class _CFRange extends Struct {
