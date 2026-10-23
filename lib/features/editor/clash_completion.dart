@@ -16,6 +16,8 @@ final _valueTypedPattern = RegExp(
   r'''^('[^']*'|"[^"]*"|[^\s#'"{\[][^#]*?):\s+(.*)$''',
 );
 final _wordBeforeCaret = RegExp(r'[\w-]*$');
+final _listEntryStart = RegExp(r'[\[,]');
+final _snippetEscape = RegExp(r'[$}\\]');
 
 class ClashCompletionSource {
   final YamlSchema root;
@@ -153,7 +155,7 @@ class ClashCompletionSource {
       if (schema.kind != YamlKind.list || entry == null) {
         return null;
       }
-      text = text.substring(text.lastIndexOf(RegExp(r'[\[,]')) + 1).trimLeft();
+      text = text.substring(text.lastIndexOf(_listEntryStart) + 1).trimLeft();
       return _scalar(request, entry, text);
     }
     if (schema.kind != YamlKind.scalar) {
@@ -303,7 +305,7 @@ Iterable<CodeForgeSuggestion> _plain(Iterable<String> labels) =>
     labels.map((label) => CodeForgeSuggestion(label: label));
 
 String _escapeSnippet(String text) =>
-    text.replaceAllMapped(RegExp(r'[$}\\]'), (match) => '\\${match[0]}');
+    text.replaceAllMapped(_snippetEscape, (match) => '\\${match[0]}');
 
 /// The names rules and groups refer to, read from the document's own
 /// top-level sections.

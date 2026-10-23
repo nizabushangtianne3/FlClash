@@ -16,6 +16,8 @@ final _stringValue = RegExp(
 final _member = RegExp(r'([\w$]+|[\])])\s*(\.\s*([\w$]*))$');
 final _word = RegExp(r'[\w$]+$');
 final _objectKeyStart = RegExp(r'(?:^|[{,])\s*([\w$]+)$');
+final _startsDigit = RegExp(r'^\d');
+final _statementHead = RegExp(r'\b(else|try|finally|do)$');
 
 const _keywords = [
   'const',
@@ -176,7 +178,7 @@ class ScriptCompletionSource {
       return _memberCompletion(match[1]!, match[2]!, match[3]!);
     }
     final typed = _word.stringMatch(before);
-    if (typed == null || RegExp(r'^\d').hasMatch(typed)) {
+    if (typed == null || _startsDigit.hasMatch(typed)) {
       return null;
     }
     final keyStart = _objectKeyStart.firstMatch(before);
@@ -273,7 +275,7 @@ class ScriptCompletionSource {
     if (text.endsWith(')') || text.endsWith('=>')) {
       return false;
     }
-    return !RegExp(r'\b(else|try|finally|do)$').hasMatch(text);
+    return !_statementHead.hasMatch(text);
   }
 }
 
