@@ -28,8 +28,18 @@ const _proxyHostSchemes = {'ts', 'tailscale', 'et', 'easytier'};
     return null;
   }
   final start = separator + 3;
-  final end = head.indexOf(RegExp('[/?]'), start);
+  final end = _pathOrQueryEnd(head, start);
   return (start, end < 0 ? head.length : end);
+}
+
+int _pathOrQueryEnd(String value, int start) {
+  for (var index = start; index < value.length; index++) {
+    final codeUnit = value.codeUnitAt(index);
+    if (codeUnit == 0x2F || codeUnit == 0x3F) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 /// Mirrors mihomo's parseNameServer, which decodes the fragment before it
