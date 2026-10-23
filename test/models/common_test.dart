@@ -215,6 +215,15 @@ void main() {
       );
       expect(groups.getGroup('Missing'), isNull);
     });
+
+    test('duplicate names keep the first group', () {
+      final groups = [
+        const Group(name: 'Auto', type: GroupType.URLTest, now: 'Proxy A'),
+        const Group(name: 'Auto', type: GroupType.URLTest, now: 'Proxy B'),
+      ];
+
+      expect(groups.getGroup('Auto')?.realNow, 'Proxy A');
+    });
   });
 
   group('ScriptsExt naming', () {

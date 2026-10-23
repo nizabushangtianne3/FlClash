@@ -563,13 +563,8 @@ abstract class Group with _$Group {
   factory Group.fromJson(Map<String, Object?> json) => _$GroupFromJson(json);
 }
 
-final _groupsByName = Expando<Map<String, Group>>();
-
 extension GroupsExt on List<Group> {
-  /// Indexed once per list, so a list must not change after its first lookup.
-  Group? getGroup(String groupName) => (_groupsByName[this] ??= {
-    for (final group in this) group.name: group,
-  })[groupName];
+  Group? getGroup(String groupName) => groupsByNameFor(this)[groupName];
 }
 
 extension GroupExt on Group {
