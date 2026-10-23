@@ -327,7 +327,7 @@ String? selectedProxyName(Ref ref, String groupName) {
 }
 
 final _proxySearchTexts = Expando<String>('proxySearchTexts');
-final _proxySearchTextsByKey = <String, String>{};
+final _proxySearchTextsByKey = <(String, String), String>{};
 const _proxySearchTextCacheLimit = 20000;
 
 String _searchTextOf(Proxy proxy) {
@@ -335,7 +335,7 @@ String _searchTextOf(Proxy proxy) {
   if (cached != null) {
     return cached;
   }
-  final key = '${proxy.name}\u0000${proxy.type}';
+  final key = (proxy.name, proxy.type);
   final text =
       _proxySearchTextsByKey[key] ?? SearchQuery.textOf(proxy.searchFields);
   if (_proxySearchTextsByKey.length >= _proxySearchTextCacheLimit) {
