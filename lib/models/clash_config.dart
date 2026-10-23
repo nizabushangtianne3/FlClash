@@ -1889,7 +1889,7 @@ List<int>? _parseRanges(String payload) {
       return null;
     }
     for (final part in parts) {
-      final bound = int.tryParse(part.replaceAll(RegExp(r'[\[\] ]'), ''));
+      final bound = _parseRangeBound(part);
       if (bound == null || bound < 0) {
         return null;
       }
@@ -1897,6 +1897,19 @@ List<int>? _parseRanges(String payload) {
     }
   }
   return bounds.isEmpty ? null : bounds;
+}
+
+int? _parseRangeBound(String value) {
+  StringBuffer? stripped;
+  for (var index = 0; index < value.length; index++) {
+    final codeUnit = value.codeUnitAt(index);
+    if (codeUnit == 0x20 || codeUnit == 0x5B || codeUnit == 0x5D) {
+      stripped ??= StringBuffer(value.substring(0, index));
+      continue;
+    }
+    stripped?.writeCharCode(codeUnit);
+  }
+  return int.tryParse(stripped?.toString() ?? value);
 }
 
 List<Rule> _genRules(List<dynamic>? rules) {
