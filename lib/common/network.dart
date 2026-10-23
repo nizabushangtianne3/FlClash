@@ -35,16 +35,22 @@ extension InternetAddressExt on InternetAddress {
 }
 
 Future<String?> getLocalIpAddress() async {
-  final List<NetworkInterface> interfaces =
-      await listNetworkInterfaces(includeLoopback: false)
-        ..sort((a, b) {
-          if (a.isWifi && !b.isWifi) return -1;
-          if (!a.isWifi && b.isWifi) return 1;
-          if (a.includesIPv4 && !b.includesIPv4) return -1;
-          if (!a.includesIPv4 && b.includesIPv4) return 1;
-          return 0;
-        });
-  for (final interface in interfaces) {
+  final interfaces = await listNetworkInterfaces(includeLoopback: false);
+  final ranked =
+      [
+        for (final interface in interfaces)
+          (
+            interface: interface,
+            wifi: interface.isWifi,
+            ipv4: interface.includesIPv4,
+          ),
+      ]..sort((a, b) {
+        if (a.wifi != b.wifi) return a.wifi ? -1 : 1;
+        if (a.ipv4 != b.ipv4) return a.ipv4 ? -1 : 1;
+        return 0;
+      });
+  for (final entry in ranked) {
+    final interface = entry.interface;
     final addresses = interface.addresses;
     if (addresses.isEmpty) {
       continue;
