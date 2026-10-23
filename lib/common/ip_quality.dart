@@ -396,10 +396,25 @@ String? _text(Object? value) {
 int? _asn(Object? value) {
   final asn = switch (value) {
     final int number => number,
-    final String text => int.tryParse(
-      RegExp(r'\d+').firstMatch(text)?[0] ?? '',
-    ),
+    final String text => _firstDigits(text),
     _ => null,
   };
   return asn == 0 ? null : asn;
 }
+
+int? _firstDigits(String text) {
+  var start = 0;
+  while (start < text.length && !_isDigit(text.codeUnitAt(start))) {
+    start++;
+  }
+  if (start == text.length) {
+    return null;
+  }
+  var end = start + 1;
+  while (end < text.length && _isDigit(text.codeUnitAt(end))) {
+    end++;
+  }
+  return int.tryParse(text.substring(start, end));
+}
+
+bool _isDigit(int codeUnit) => codeUnit >= 0x30 && codeUnit <= 0x39;
