@@ -8,6 +8,10 @@ import 'package:tray/tray.dart';
 const MethodChannel _channel = MethodChannel('tray');
 const _asset = 'assets/images/tray/unix/status_1.png';
 
+// The plugin resolves an asset path with the host separator, so read the
+// Flutter layout back on one separator.
+String _assetPath(Object? path) => '$path'.replaceAll(r'\', '/');
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -49,12 +53,12 @@ void main() {
 
   test('linux hands the indicator the largest bundled variant', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.linux;
-    Tray.fileExists = (filePath) => filePath.contains('/3.0x/');
+    Tray.fileExists = (filePath) => _assetPath(filePath).contains('/3.0x/');
 
     await Tray.instance.show(const TraySpec(icon: TrayIcon.asset(_asset)));
 
     expect(
-      lastIcon()['path'],
+      _assetPath(lastIcon()['path']),
       endsWith('flutter_assets/assets/images/tray/unix/3.0x/status_1.png'),
     );
   });
@@ -67,7 +71,7 @@ void main() {
       await Tray.instance.show(const TraySpec(icon: TrayIcon.asset(_asset)));
 
       expect(
-        lastIcon()['path'],
+        _assetPath(lastIcon()['path']),
         endsWith('flutter_assets/assets/images/tray/unix/status_1.png'),
       );
     },

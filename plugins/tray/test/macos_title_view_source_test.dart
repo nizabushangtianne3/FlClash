@@ -14,17 +14,21 @@ File _resolveSource(String relativePath) {
   return direct;
 }
 
+// A Windows checkout keeps these sources with CRLF, so compare on one ending.
+String _readSource(String relativePath) =>
+    _resolveSource(relativePath).readAsStringSync().replaceAll('\r\n', '\n');
+
 void main() {
   late String titleViewSource;
   late String statusItemSource;
 
   setUpAll(() {
-    titleViewSource = _resolveSource(
+    titleViewSource = _readSource(
       'macos/tray/Sources/tray/TrayTitleView.swift',
-    ).readAsStringSync();
-    statusItemSource = _resolveSource(
+    );
+    statusItemSource = _readSource(
       'macos/tray/Sources/tray/TrayStatusItem.swift',
-    ).readAsStringSync();
+    );
   });
 
   test('macOS tray title is self-drawn instead of using NSTextField', () {
