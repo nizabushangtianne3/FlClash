@@ -30,9 +30,21 @@ extension StringExtension on String {
   }
 
   dynamic get splitByMultipleSeparators {
-    final parts = split(
-      RegExp(r'[, ;]+'),
-    ).where((part) => part.isNotEmpty).toList();
+    final parts = <String>[];
+    var start = 0;
+    for (var index = 0; index < length; index++) {
+      final codeUnit = codeUnitAt(index);
+      if (codeUnit != 0x2C && codeUnit != 0x20 && codeUnit != 0x3B) {
+        continue;
+      }
+      if (index > start) {
+        parts.add(substring(start, index));
+      }
+      start = index + 1;
+    }
+    if (start < length) {
+      parts.add(substring(start));
+    }
 
     return parts.length > 1 ? parts : this;
   }
