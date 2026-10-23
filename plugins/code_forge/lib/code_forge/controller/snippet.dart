@@ -1,5 +1,8 @@
 part of '../controller.dart';
 
+final _leadingIndent = RegExp(r'^[ \t]*');
+final _snippetDigits = RegExp(r'\d+');
+
 /// Text a suggestion inserts with Tab stops: `$1`, `${1:default}` and `$0`,
 /// without nesting or mirrors. A tab is one indent level, and each later line
 /// gains the indentation of the first.
@@ -28,7 +31,7 @@ extension CodeForgeControllerSnippet on CodeForgeController {
     final lineText = getLineText(getLineAtOffset(from));
     final expanded = _SnippetExpansion(
       snippet.body,
-      RegExp(r'^[ \t]*').stringMatch(lineText)!,
+      _leadingIndent.stringMatch(lineText)!,
       tabSpace,
     );
     replaceRange(from, end, expanded.text);
@@ -143,8 +146,10 @@ class _SnippetExpansion {
 
   int? _stopAt(int dollar) {
     final braced = dollar + 1 < _body.length && _body[dollar + 1] == '{';
-    final digits = RegExp(r'\d+')
-        .matchAsPrefix(_body, dollar + (braced ? 2 : 1));
+    final digits = _snippetDigits.matchAsPrefix(
+      _body,
+      dollar + (braced ? 2 : 1),
+    );
     if (digits == null) return null;
     final number = int.parse(digits[0]!);
     final start = _length;

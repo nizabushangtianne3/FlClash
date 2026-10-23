@@ -1,5 +1,10 @@
 part of '../controller.dart';
 
+final _wordBeforeCaret = RegExp(
+  '([$wordCharClass]+|[^$wordCharClass\\s]+)\\s*\$',
+);
+final _wordFromCaret = RegExp('^\\s*([$wordCharClass]+|[^$wordCharClass\\s]+)');
+
 extension CodeForgeControllerEditing on CodeForgeController {
   /// Moves the current line up by one line.
   ///
@@ -295,9 +300,16 @@ extension CodeForgeControllerEditing on CodeForgeController {
     this.selection = newSelection;
   }
 
-  int _outdentWidth(String line) => line.startsWith(tabSpace)
-      ? tabSize
-      : RegExp(r'^ +').stringMatch(line)?.length ?? 0;
+  int _outdentWidth(String line) {
+    if (line.startsWith(tabSpace)) {
+      return tabSize;
+    }
+    var width = 0;
+    while (width < line.length && line.codeUnitAt(width) == 0x20) {
+      width++;
+    }
+    return width;
+  }
 
   TextSelection _withEnds(TextSelection selection, int start, int end) =>
       selection.baseOffset <= selection.extentOffset
@@ -321,8 +333,7 @@ extension CodeForgeControllerEditing on CodeForgeController {
       return;
     }
     final before = getLineText(line).scalarSubstring(0, caret - lineStart);
-    final match = RegExp('([$wordCharClass]+|[^$wordCharClass\\s]+)\\s*\$')
-        .firstMatch(before);
+    final match = _wordBeforeCaret.firstMatch(before);
     replaceRange(
       match != null
           ? lineStart + before.toScalarOffset(match.start)
@@ -341,7 +352,7 @@ extension CodeForgeControllerEditing on CodeForgeController {
     }
     final caret = selection.extentOffset;
     if (caret >= length) return;
-    final word = RegExp('^\\s*([$wordCharClass]+|[^$wordCharClass\\s]+)');
+    final word = _wordFromCaret;
     var line = getLineAtOffset(caret);
     var lineStart = getLineStartOffset(line);
     var text = getLineText(line).scalarSubstring(caret - lineStart);

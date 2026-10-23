@@ -1,5 +1,8 @@
 part of '../controller.dart';
 
+final _leadingWhitespace = RegExp(r'^\s*');
+final _blockEnd = RegExp(r'[:{[(]\s*$');
+
 extension _ControllerEditPipeline on CodeForgeController {
   void _applyUndoRedoOperation(EditOperation operation) {
     _flushBuffer();
@@ -328,8 +331,8 @@ extension _ControllerEditPipeline on CodeForgeController {
       final lineText = getLineText(line);
       final column = lineText.toUtf16Offset(offset - getLineStartOffset(line));
       final prevLine = lineText.substring(0, column);
-      final prevIndent = RegExp(r'^\s*').firstMatch(prevLine)!.group(0)!;
-      final shouldIndent = RegExp(r'[:{[(]\s*$').hasMatch(prevLine);
+      final prevIndent = _leadingWhitespace.firstMatch(prevLine)!.group(0)!;
+      final shouldIndent = _blockEnd.hasMatch(prevLine);
       final indent = prevIndent + (shouldIndent ? tabSpace : '');
       const openToClose = {'{': '}', '(': ')', '[': ']'};
       final trimmedPrev = prevLine.trimRight();

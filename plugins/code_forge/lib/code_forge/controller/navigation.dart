@@ -1,5 +1,11 @@
 part of '../controller.dart';
 
+final _wordRun = RegExp('[$wordCharClass]+|[^$wordCharClass\\s]+');
+final _wordRunOrWhitespace = RegExp(
+  '[$wordCharClass]+|[^$wordCharClass\\s]+|\\s+',
+);
+final _nonSpace = RegExp(r'\S');
+
 extension CodeForgeControllerNavigation on CodeForgeController {
   /// Moves the cursor one character to the left.
   ///
@@ -46,9 +52,7 @@ extension CodeForgeControllerNavigation on CodeForgeController {
     }
 
     final before = getLineText(line).scalarSubstring(0, caret - lineStart);
-    final lastWord = RegExp('[$wordCharClass]+|[^$wordCharClass\\s]+')
-        .allMatches(before)
-        .lastOrNull;
+    final lastWord = _wordRun.allMatches(before).lastOrNull;
     _moveCaret(
       lineStart + before.toScalarOffset(lastWord?.start ?? 0),
       extend: extend,
@@ -69,7 +73,7 @@ extension CodeForgeControllerNavigation on CodeForgeController {
     }
 
     final rest = line + 1 < lineCount ? '$lineText\n' : lineText;
-    final next = RegExp('[$wordCharClass]+|[^$wordCharClass\\s]+|\\s+')
+    final next = _wordRunOrWhitespace
         .allMatches(rest, column)
         .where((match) => match.start > column)
         .firstOrNull;
@@ -80,10 +84,9 @@ extension CodeForgeControllerNavigation on CodeForgeController {
       );
       return;
     }
-    final nonSpace = RegExp(r'\S');
     while (++line < lineCount) {
       final text = getLineText(line);
-      if (nonSpace.firstMatch(text) case final match?) {
+      if (_nonSpace.firstMatch(text) case final match?) {
         _moveCaret(
           getLineStartOffset(line) + text.toScalarOffset(match.start),
           extend: extend,
