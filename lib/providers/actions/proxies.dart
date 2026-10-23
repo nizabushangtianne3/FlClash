@@ -616,10 +616,7 @@ class ProxiesAction extends _$ProxiesAction {
     List<_DelayTestBatch> batches,
   ) {
     final groups = ref.read(groupsProvider);
-    final groupsByName = <String, Group>{};
-    for (final group in groups) {
-      groupsByName.putIfAbsent(group.name, () => group);
-    }
+    final groupsByName = groupsByNameFor(groups);
     final realStates = <String, SelectedProxyState>{};
     final selectedMap = ref.read(
       currentProfileProvider.select((state) => state?.selectedMap ?? {}),

@@ -104,10 +104,7 @@ Map<String, Map<String, int>> trayDelays(Ref ref) {
   final defaultTestUrl = ref.watch(
     appSettingProvider.select((state) => state.testUrl),
   );
-  final groupsByName = <String, Group>{};
-  for (final group in allGroups) {
-    groupsByName.putIfAbsent(group.name, () => group);
-  }
+  final groupsByName = groupsByNameFor(allGroups);
   final realStates = <String, SelectedProxyState>{};
   final delays = <String, Map<String, int>>{};
   SelectedProxyState stateOf(String proxyName) {
