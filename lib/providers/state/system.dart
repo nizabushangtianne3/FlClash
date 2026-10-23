@@ -108,14 +108,11 @@ Map<String, Map<String, int>> trayDelays(Ref ref) {
   final realStates = <String, SelectedProxyState>{};
   final delays = <String, Map<String, int>>{};
   SelectedProxyState stateOf(String proxyName) {
-    return realStates.putIfAbsent(
+    return realStates[proxyName] ??= computeRealSelectedProxyState(
       proxyName,
-      () => computeRealSelectedProxyState(
-        proxyName,
-        groups: allGroups,
-        selectedMap: selectedMap,
-        groupsByName: groupsByName,
-      ),
+      groups: allGroups,
+      selectedMap: selectedMap,
+      groupsByName: groupsByName,
     );
   }
 

@@ -629,14 +629,11 @@ class ProxiesAction extends _$ProxiesAction {
         if (isUnprobeableProxyType(proxy.type)) {
           continue;
         }
-        final state = realStates.putIfAbsent(
+        final state = realStates[proxy.name] ??= computeRealSelectedProxyState(
           proxy.name,
-          () => computeRealSelectedProxyState(
-            proxy.name,
-            groups: groups,
-            groupsByName: groupsByName,
-            selectedMap: selectedMap,
-          ),
+          groups: groups,
+          groupsByName: groupsByName,
+          selectedMap: selectedMap,
         );
         if (state.proxyName.isEmpty) {
           continue;

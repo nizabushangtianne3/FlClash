@@ -24,14 +24,11 @@ List<Group> computeSort({
   final realStateCache = <String, SelectedProxyState>{};
   final delayStateCache = <String, DelayState>{};
   SelectedProxyState realStateFor(String proxyName) {
-    return realStateCache.putIfAbsent(
+    return realStateCache[proxyName] ??= computeRealSelectedProxyState(
       proxyName,
-      () => computeRealSelectedProxyState(
-        proxyName,
-        groups: groups,
-        groupsByName: groupsByName,
-        selectedMap: selectedMap,
-      ),
+      groups: groups,
+      groupsByName: groupsByName,
+      selectedMap: selectedMap,
     );
   }
 
@@ -51,17 +48,14 @@ List<Group> computeSort({
       final stateTestUrl = realState.testUrl.takeFirstValid([testUrl]);
       final cacheKey = delayTestKey(stateTestUrl, realState.proxyName);
       delayStates.add(
-        delayStateCache.putIfAbsent(
-          cacheKey,
-          () => computeProxyDelayState(
-            proxyName: proxy.name,
-            testUrl: testUrl,
-            groups: groups,
-            selectedMap: selectedMap,
-            delayMap: delayMap,
-            groupsByName: groupsByName,
-            realState: realState,
-          ),
+        delayStateCache[cacheKey] ??= computeProxyDelayState(
+          proxyName: proxy.name,
+          testUrl: testUrl,
+          groups: groups,
+          selectedMap: selectedMap,
+          delayMap: delayMap,
+          groupsByName: groupsByName,
+          realState: realState,
         ),
       );
     }
@@ -218,14 +212,11 @@ List<Group> computeHideTimeout({
       if (proxy.name == selectedName || groupsByName.containsKey(proxy.name)) {
         return true;
       }
-      final state = realStates.putIfAbsent(
+      final state = realStates[proxy.name] ??= computeRealSelectedProxyState(
         proxy.name,
-        () => computeRealSelectedProxyState(
-          proxy.name,
-          groups: allGroups,
-          groupsByName: groupsByName,
-          selectedMap: selectedMap,
-        ),
+        groups: allGroups,
+        groupsByName: groupsByName,
+        selectedMap: selectedMap,
       );
       if (_unprobeableProxyTypes.contains(proxyTypes[state.proxyName])) {
         return true;
