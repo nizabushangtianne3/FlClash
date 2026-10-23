@@ -111,6 +111,26 @@ void main() {
     await teardown(tester);
   });
 
+  testWidgets('the requests feed keeps its newest hundred rows', (
+    tester,
+  ) async {
+    final requests = container.read(requestsProvider.notifier);
+    requests.value = FixedList<TrackerInfo>(500);
+    for (var index = 0; index < 150; index++) {
+      requests.addRequest(_request('request-$index.test', index));
+    }
+    await pumpRequestsTable(tester);
+
+    expect(
+      topOf(tester, 'request-149.test'),
+      lessThan(topOf(tester, 'request-148.test')),
+    );
+    final list = tester.widget<ListView>(find.byType(ListView));
+    expect(list.childrenDelegate.estimatedChildCount, 100);
+
+    await teardown(tester);
+  });
+
   testWidgets('a column dragged wider in the card keeps its width', (
     tester,
   ) async {

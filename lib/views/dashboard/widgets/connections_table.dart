@@ -270,9 +270,19 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
   void _takeSnapshot() {
     switch (_feed) {
       case DashboardFeed.requests:
-        _requests = ref.read(requestsProvider).list.reversed.toList();
+        _requests = ref
+            .read(requestsProvider)
+            .list
+            .reversed
+            .take(_maxFeedRows)
+            .toList();
       case DashboardFeed.dns:
-        _queries = ref.read(dnsQueriesProvider).list.reversed.toList();
+        _queries = ref
+            .read(dnsQueriesProvider)
+            .list
+            .reversed
+            .take(_maxFeedRows)
+            .toList();
       case DashboardFeed.connections:
         break;
     }
