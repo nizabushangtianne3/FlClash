@@ -45,28 +45,30 @@ List<Group> computeSort({
     if (delayMap.isEmpty) {
       return proxies;
     }
-    final delayStates = <String, DelayState>{};
+    final delayStates = <DelayState>[];
     for (final proxy in proxies) {
       final realState = realStateFor(proxy.name);
       final stateTestUrl = realState.testUrl.takeFirstValid([testUrl]);
       final cacheKey = delayTestKey(stateTestUrl, realState.proxyName);
-      delayStates[proxy.name] = delayStateCache.putIfAbsent(
-        cacheKey,
-        () => computeProxyDelayState(
-          proxyName: proxy.name,
-          testUrl: testUrl,
-          groups: groups,
-          selectedMap: selectedMap,
-          delayMap: delayMap,
-          groupsByName: groupsByName,
-          realState: realState,
+      delayStates.add(
+        delayStateCache.putIfAbsent(
+          cacheKey,
+          () => computeProxyDelayState(
+            proxyName: proxy.name,
+            testUrl: testUrl,
+            groups: groups,
+            selectedMap: selectedMap,
+            delayMap: delayMap,
+            groupsByName: groupsByName,
+            realState: realState,
+          ),
         ),
       );
     }
     var ordered = true;
     for (var index = 1; index < proxies.length; index++) {
-      final previous = delayStates[proxies[index - 1].name]!;
-      final current = delayStates[proxies[index].name]!;
+      final previous = delayStates[index - 1];
+      final current = delayStates[index];
       if (previous.compareTo(current) > 0) {
         ordered = false;
         break;
@@ -78,9 +80,7 @@ List<Group> computeSort({
     // Ties keep their configured position instead of reshuffling each batch.
     final order = List<int>.generate(proxies.length, (index) => index)
       ..sort((a, b) {
-        final compared = delayStates[proxies[a].name]!.compareTo(
-          delayStates[proxies[b].name]!,
-        );
+        final compared = delayStates[a].compareTo(delayStates[b]);
         return compared != 0 ? compared : a.compareTo(b);
       });
     return [for (final index in order) proxies[index]];
