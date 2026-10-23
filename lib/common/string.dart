@@ -171,7 +171,7 @@ Uri? _parseWithBareAtInUserInfo(String url) {
   final schemeEnd = url.indexOf('://');
   if (schemeEnd == -1) return null;
   final authorityStart = schemeEnd + 3;
-  final pathStart = url.indexOf(RegExp('[/?#]'), authorityStart);
+  final pathStart = _pathOrFragmentStart(url, authorityStart);
   final authorityEnd = pathStart == -1 ? url.length : pathStart;
   final at = url.lastIndexOf('@', authorityEnd - 1);
   if (at <= authorityStart) return null;
@@ -179,6 +179,16 @@ Uri? _parseWithBareAtInUserInfo(String url) {
   return Uri.tryParse(
     '${url.substring(0, authorityStart)}$userInfo${url.substring(at)}',
   );
+}
+
+int _pathOrFragmentStart(String url, int start) {
+  for (var index = start; index < url.length; index++) {
+    final codeUnit = url.codeUnitAt(index);
+    if (codeUnit == 0x2F || codeUnit == 0x3F || codeUnit == 0x23) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 final _labelCounter = RegExp(r'\((\d{1,9})\)$');
