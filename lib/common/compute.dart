@@ -282,7 +282,7 @@ SelectedProxyState computeRealSelectedProxyState(
 Map<String, Group> _indexGroups(List<Group> groups) {
   final indexed = <String, Group>{};
   for (final group in groups) {
-    indexed.putIfAbsent(group.name, () => group);
+    indexed[group.name] ??= group;
   }
   return indexed;
 }
