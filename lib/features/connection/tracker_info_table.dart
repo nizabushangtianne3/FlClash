@@ -13,6 +13,7 @@ List<RecordColumn<TrackerInfo>> trackerInfoColumns(
   BuildContext context, {
   required double width,
   required bool isLive,
+  required DateTime now,
   Widget? Function(TrackerInfo trackerInfo)? actionBuilder,
 }) {
   final appLocalizations = context.appLocalizations;
@@ -111,7 +112,7 @@ List<RecordColumn<TrackerInfo>> trackerInfoColumns(
           end: true,
         ),
         cell: (_, info) => RecordCellText(
-          trackerDurationText(DateTime.now().difference(info.start)),
+          trackerDurationText(now.difference(info.start)),
           muted: true,
         ),
         sortKey: (info) => -info.start.microsecondsSinceEpoch,

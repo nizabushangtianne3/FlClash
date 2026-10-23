@@ -159,6 +159,7 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
                 context,
                 width: width,
                 isLive: true,
+                now: DateTime.now(),
                 actionBuilder: buildAction,
               ),
               builder: (context, table, connections) => TrackerInfoAnimatedList(

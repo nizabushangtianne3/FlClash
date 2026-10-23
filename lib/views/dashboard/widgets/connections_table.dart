@@ -722,6 +722,7 @@ List<RecordColumn<TrackerInfo>> _connectionColumns(
   double width,
 ) {
   final appLocalizations = context.appLocalizations;
+  final now = DateTime.now();
   final mid = width >= _midTableWidth;
   final wide = width >= _wideTableWidth;
   return [
@@ -791,7 +792,7 @@ List<RecordColumn<TrackerInfo>> _connectionColumns(
           end: true,
         ),
         cell: (_, info) => _Number(
-          trackerDurationText(DateTime.now().difference(info.start)),
+          trackerDurationText(now.difference(info.start)),
           muted: true,
         ),
         sortKey: (info) => -info.start.microsecondsSinceEpoch,

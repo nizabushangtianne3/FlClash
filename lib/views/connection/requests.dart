@@ -81,8 +81,12 @@ class _RequestsViewState extends ConsumerState<RequestsView>
               tableId: 'requests',
               items: requests,
               reverse: true,
-              columnsOf: (width) =>
-                  trackerInfoColumns(context, width: width, isLive: false),
+              columnsOf: (width) => trackerInfoColumns(
+                context,
+                width: width,
+                isLive: false,
+                now: DateTime.now(),
+              ),
               builder: (context, table, requests) => Align(
                 alignment: Alignment.topCenter,
                 child: FloatingScrollbar(
