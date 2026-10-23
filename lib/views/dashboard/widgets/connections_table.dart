@@ -123,9 +123,12 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
         final next = await _core.getConnections();
         if (!isCurrent()) return;
         next.sort((a, b) => b.start.compareTo(a.start));
-        final tcp = next
-            .where((item) => item.metadata.network.toLowerCase() == 'tcp')
-            .length;
+        var tcp = 0;
+        for (final item in next) {
+          if (item.metadata.network == 'tcp') {
+            tcp++;
+          }
+        }
         connectionCount.value = next.length;
         updateWhenRouteSettled(
           () => setState(() {
