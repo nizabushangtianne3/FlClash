@@ -287,6 +287,8 @@ class AccessControlState extends _$AccessControlState
   AccessControlProps build() => const AccessControlProps();
 }
 
+final _packageSearchTexts = Expando<String>('packageSearchTexts');
+
 @riverpod
 ({List<Package> packages, Set<String> names}) accessViewPackages(
   Ref ref,
@@ -317,7 +319,11 @@ class AccessControlState extends _$AccessControlState
         isFilterNonInternetApp: filters.isFilterNonInternetApp,
         isFilterSystemApp: filters.isFilterSystemApp,
       )
-      .whereMatches(query, (package) => [package.label, package.packageName])
+      .whereMatches(
+        query,
+        (package) => [package.label, package.packageName],
+        texts: _packageSearchTexts,
+      )
       .toList();
   return (packages: viewPackages, names: names);
 }
