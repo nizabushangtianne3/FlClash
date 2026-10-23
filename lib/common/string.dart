@@ -50,20 +50,31 @@ extension StringExtension on String {
   }
 
   String get countryFlagEmoji {
-    final code = toUpperCase();
     const upperA = 0x41;
     const upperZ = 0x5A;
-    if (code.length != 2 ||
-        code.codeUnitAt(0) < upperA ||
-        code.codeUnitAt(0) > upperZ ||
-        code.codeUnitAt(1) < upperA ||
-        code.codeUnitAt(1) > upperZ) {
+    const lowerA = 0x61;
+    const lowerZ = 0x7A;
+    if (length != 2) {
+      return this;
+    }
+    final first = codeUnitAt(0);
+    final second = codeUnitAt(1);
+    final firstUpper = first >= lowerA && first <= lowerZ
+        ? first - 0x20
+        : first;
+    final secondUpper = second >= lowerA && second <= lowerZ
+        ? second - 0x20
+        : second;
+    if (firstUpper < upperA ||
+        firstUpper > upperZ ||
+        secondUpper < upperA ||
+        secondUpper > upperZ) {
       return this;
     }
     const regionalIndicatorA = 0x1F1E6;
     return String.fromCharCodes([
-      code.codeUnitAt(0) - 0x41 + regionalIndicatorA,
-      code.codeUnitAt(1) - 0x41 + regionalIndicatorA,
+      firstUpper - upperA + regionalIndicatorA,
+      secondUpper - upperA + regionalIndicatorA,
     ]);
   }
 
