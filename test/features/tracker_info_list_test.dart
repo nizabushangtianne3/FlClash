@@ -36,18 +36,21 @@ void main() {
     expect(notifications, 0);
   });
 
-  test('notifies for dynamic and static tracker changes', () {
-    final controller = TrackerInfoListController();
-    addTearDown(controller.dispose);
-    controller.setTrackerInfos([_tracker('a')]);
-    var notifications = 0;
-    controller.addListener(() => notifications++);
+  test(
+    'notifies for dynamic changes and ignores republished static fields',
+    () {
+      final controller = TrackerInfoListController();
+      addTearDown(controller.dispose);
+      controller.setTrackerInfos([_tracker('a')]);
+      var notifications = 0;
+      controller.addListener(() => notifications++);
 
-    controller.setTrackerInfos([_tracker('a', upload: 10)]);
-    controller.setTrackerInfos([
-      _tracker('a', upload: 10, metadata: const Metadata(network: 'changed')),
-    ]);
+      controller.setTrackerInfos([_tracker('a', upload: 10)]);
+      controller.setTrackerInfos([
+        _tracker('a', upload: 10, metadata: const Metadata(network: 'changed')),
+      ]);
 
-    expect(notifications, 2);
-  });
+      expect(notifications, 1);
+    },
+  );
 }

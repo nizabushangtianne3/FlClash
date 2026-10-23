@@ -8,13 +8,15 @@ import 'tracker_info_item.dart';
 import 'tracker_info_table.dart';
 
 bool _sameTrackerInfo(TrackerInfo current, TrackerInfo next) {
+  // A tracker ID identifies its immutable descriptive fields; polling moves
+  // only traffic and the derived speeds.
   if (current.upload != next.upload ||
       current.download != next.download ||
       current.uploadSpeed != next.uploadSpeed ||
       current.downloadSpeed != next.downloadSpeed) {
     return false;
   }
-  return current == next;
+  return current.id == next.id && current.start == next.start;
 }
 
 class TrackerInfoListController extends ValueNotifier<TrackerInfosState> {
