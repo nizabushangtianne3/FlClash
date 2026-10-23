@@ -114,16 +114,6 @@ extension StringExtension on String {
     return (Uri.tryParse(this)?.path ?? this).toLowerCase().endsWith('.svg');
   }
 
-  bool get isRegex {
-    try {
-      RegExp(this);
-      return true;
-    } catch (e) {
-      commonPrint.log(e.toString());
-      return false;
-    }
-  }
-
   String toMd5() {
     final bytes = utf8.encode(this);
     return md5.convert(bytes).toString();

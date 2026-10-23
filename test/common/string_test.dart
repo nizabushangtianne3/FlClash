@@ -165,18 +165,6 @@ void main() {
     });
   });
 
-  group('StringExtension.isRegex', () {
-    test('valid regex', () {
-      expect(r'\d+'.isRegex, isTrue);
-      expect(r'[a-z]+'.isRegex, isTrue);
-    });
-
-    test('invalid regex', () {
-      expect(r'['.isRegex, isFalse);
-      expect(r'(unclosed'.isRegex, isFalse);
-    });
-  });
-
   group('StringExtension.toMd5', () {
     test('produces consistent hash', () {
       final hash1 = 'hello'.toMd5();
