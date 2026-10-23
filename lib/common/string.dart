@@ -92,9 +92,11 @@ extension StringExtension on String {
   }
 
   Uint8List? get getBase64 {
-    final regExp = RegExp(r'base64,(.*)');
-    final match = regExp.firstMatch(this);
-    final realValue = match?.group(1) ?? '';
+    const marker = 'base64,';
+    final markerIndex = indexOf(marker);
+    final realValue = markerIndex < 0
+        ? ''
+        : substring(markerIndex + marker.length);
     if (realValue.isEmpty) {
       return null;
     }
