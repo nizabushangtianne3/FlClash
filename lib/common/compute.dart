@@ -92,25 +92,26 @@ List<Group> computeSort({
     return proxies;
   }
 
+  List<Proxy> sortedAllOf(Group group) {
+    return switch (sortType) {
+      ProxiesSortType.none => group.all,
+      ProxiesSortType.delay => sortOfDelay(
+        groups: groups,
+        proxies: group.all,
+        delayMap: delayMap,
+        selectedMap: selectedMap,
+        testUrl: group.testUrl.takeFirstValid([defaultTestUrl]),
+      ),
+      ProxiesSortType.name => sortOfName(group.all),
+    };
+  }
+
   final sortedGroups = [
     for (final group in groups)
       if (group.all.length <= 1)
         group
       else
-        () {
-          final List<Proxy> sortedAll = switch (sortType) {
-            ProxiesSortType.none => group.all,
-            ProxiesSortType.delay => sortOfDelay(
-              groups: groups,
-              proxies: group.all,
-              delayMap: delayMap,
-              selectedMap: selectedMap,
-              testUrl: group.testUrl.takeFirstValid([defaultTestUrl]),
-            ),
-            ProxiesSortType.name => sortOfName(group.all),
-          };
-          return _withSortedAll(group, sortedAll);
-        }(),
+        _withSortedAll(group, sortedAllOf(group)),
   ];
   return _sameGroups(sortedGroups, groups) ? groups : sortedGroups;
 }
