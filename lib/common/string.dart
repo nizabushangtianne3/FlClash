@@ -43,7 +43,13 @@ extension StringExtension on String {
 
   String get countryFlagEmoji {
     final code = toUpperCase();
-    if (!RegExp(r'^[A-Z]{2}$').hasMatch(code)) {
+    const upperA = 0x41;
+    const upperZ = 0x5A;
+    if (code.length != 2 ||
+        code.codeUnitAt(0) < upperA ||
+        code.codeUnitAt(0) > upperZ ||
+        code.codeUnitAt(1) < upperA ||
+        code.codeUnitAt(1) > upperZ) {
       return this;
     }
     const regionalIndicatorA = 0x1F1E6;

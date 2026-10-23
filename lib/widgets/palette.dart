@@ -668,6 +668,7 @@ class HexColorField extends StatefulWidget {
 
 class _HexColorFieldState extends State<HexColorField> {
   static const _length = 6;
+  static final _hexInput = RegExp('[0-9a-fA-F]');
 
   late final _controller = TextEditingController(text: _digitsOf(widget.color));
 
@@ -710,7 +711,7 @@ class _HexColorFieldState extends State<HexColorField> {
           prefixText: '#',
         ),
         inputFormatters: [
-          FilteringTextInputFormatter.allow(RegExp('[0-9a-fA-F]')),
+          FilteringTextInputFormatter.allow(_hexInput),
           LengthLimitingTextInputFormatter(_length),
           TextInputFormatter.withFunction(
             (_, value) => value.copyWith(text: value.text.toUpperCase()),

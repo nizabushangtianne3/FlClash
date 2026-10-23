@@ -47,7 +47,12 @@ RecordSort? nextRecordSort<T>(RecordSort? sort, RecordColumn<T> column) {
 class RecordSorter<T> {
   List<T>? _source;
   RecordSort? _sortedBy;
+  Comparable<Object> Function(T item)? _newestKey;
+  int? _limit;
+  bool _reverse;
   List<T> _sorted = const [];
+
+  RecordSorter() : _reverse = false;
 
   /// [reverse] marks a list shown bottom up, its last item on top.
   List<T> sort(
@@ -55,32 +60,110 @@ class RecordSorter<T> {
     List<RecordColumn<T>> columns,
     RecordSort? sort, {
     bool reverse = false,
+    int? limit,
+    Comparable<Object> Function(T item)? newestKey,
   }) {
     final sortKey = sort == null
-        ? null
+        ? newestKey
         : columns
               .firstWhereOrNull((column) => column.id == sort.columnId)
               ?.sortKey;
-    if (sort == null || sortKey == null) {
-      return items;
+    if (sortKey == null) {
+      if (limit == null || items.length <= limit) {
+        return items;
+      }
+      return items.sublist(0, limit);
     }
-    if (identical(_source, items) && _sortedBy == sort) {
+    if (_isCached(items, sort, reverse, limit, newestKey)) {
       return _sorted;
     }
     final shown = reverse ? items.reversed.toList() : items;
-    final keys = [for (final item in shown) sortKey(item)];
-    final direction = sort.descending ? -1 : 1;
-    // Sorting indexes keeps ties in their shown order; collection's
-    // mergeSort is stable too but measured over ten times slower.
-    final order = List.generate(shown.length, (index) => index)
-      ..sort((a, b) {
-        final compared = keys[a].compareTo(keys[b]);
-        return compared != 0 ? direction * compared : a - b;
-      });
-    final sorted = [for (final index in order) shown[index]];
+    final sorted = _sortShown(
+      shown,
+      sortKey,
+      descending: sort?.descending ?? true,
+      limit: limit,
+      tieBreakKey: sort == null ? null : newestKey,
+    );
     _source = items;
     _sortedBy = sort;
+    _newestKey = newestKey;
+    _limit = limit;
+    _reverse = reverse;
     return _sorted = reverse ? sorted.reversed.toList() : sorted;
+  }
+
+  bool _isCached(
+    List<T> items,
+    RecordSort? sort,
+    bool reverse,
+    int? limit,
+    Comparable<Object> Function(T item)? newestKey,
+  ) {
+    return identical(_source, items) &&
+        _sortedBy == sort &&
+        _reverse == reverse &&
+        _limit == limit &&
+        identical(_newestKey, newestKey);
+  }
+
+  List<T> _sortShown(
+    List<T> items,
+    Comparable<Object> Function(T item) sortKey, {
+    required bool descending,
+    int? limit,
+    Comparable<Object> Function(T item)? tieBreakKey,
+  }) {
+    final keys = [for (final item in items) sortKey(item)];
+    final tieKeys = tieBreakKey == null
+        ? null
+        : [for (final item in items) tieBreakKey(item)];
+    int prefer(int a, int b) {
+      final compared = keys[a].compareTo(keys[b]);
+      if (compared != 0) {
+        return descending ? compared : -compared;
+      }
+      if (tieKeys != null) {
+        final tie = tieKeys[a].compareTo(tieKeys[b]);
+        if (tie != 0) {
+          return tie;
+        }
+      }
+      return b.compareTo(a);
+    }
+
+    if (limit != null && items.length > limit) {
+      return _topByKeys(items, prefer, limit: limit);
+    }
+    // Sorting indexes keeps ties in their shown order; collection's
+    // mergeSort is stable too but measured over ten times slower.
+    final order = List.generate(items.length, (index) => index)
+      ..sort((a, b) => -prefer(a, b));
+    return [for (final index in order) items[index]];
+  }
+
+  List<T> _topByKeys(
+    List<T> items,
+    int Function(int a, int b) prefer, {
+    required int limit,
+  }) {
+    final queue = HeapPriorityQueue<int>(prefer);
+    for (var index = 0; index < items.length; index++) {
+      if (queue.length < limit) {
+        queue.add(index);
+        continue;
+      }
+      final worst = queue.first;
+      if (prefer(index, worst) > 0) {
+        queue.removeFirst();
+        queue.add(index);
+      }
+    }
+
+    final ascending = List<T>.generate(queue.length, (_) {
+      return items[queue.removeFirst()];
+    });
+    return ascending.reversed.toList();
   }
 }
 

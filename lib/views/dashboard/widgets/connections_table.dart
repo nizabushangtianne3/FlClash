@@ -122,7 +122,6 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
       if (pollsConnections) {
         final next = await _core.getConnections();
         if (!isCurrent()) return;
-        next.sort((a, b) => b.start.compareTo(a.start));
         var tcp = 0;
         for (final item in next) {
           if (item.metadata.network == 'tcp') {
@@ -150,6 +149,8 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
     }
   }
 }
+
+Comparable<Object> _trackerStartKey(TrackerInfo item) => item.start;
 
 /// Follows a counter the Core moves per event, at the cadence the feed's own
 /// list repaints at.
@@ -389,6 +390,7 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
                 items: connections,
                 rowHeight: rowHeight,
                 columnsOf: (width) => _connectionColumns(context, width),
+                newestKey: _trackerStartKey,
               ),
               DashboardFeed.requests => _Table<TrackerInfo>(
                 key: const ValueKey(DashboardFeed.requests),
@@ -478,12 +480,14 @@ class _Table<T> extends ConsumerStatefulWidget {
     required this.items,
     required this.rowHeight,
     required this.columnsOf,
+    this.newestKey,
   });
 
   final String tableId;
   final List<T> items;
   final double rowHeight;
   final List<RecordColumn<T>> Function(double width) columnsOf;
+  final Comparable<Object> Function(T item)? newestKey;
 
   @override
   ConsumerState<_Table<T>> createState() => _TableState<T>();
@@ -510,10 +514,13 @@ class _TableState<T> extends ConsumerState<_Table<T>>
           constraints.maxWidth,
           columnWidths,
         );
-        final sorted = _sorter.sort(widget.items, columns, _sort);
-        final items = sorted.length > _maxFeedRows
-            ? sorted.sublist(0, _maxFeedRows)
-            : sorted;
+        final items = _sorter.sort(
+          widget.items,
+          columns,
+          _sort,
+          limit: _maxFeedRows,
+          newestKey: widget.newestKey,
+        );
         final headerStyle = AppTextStyle.caption1
             .of(context, emphasized: true)
             .copyWith(color: colorScheme.onSurfaceVariant);
