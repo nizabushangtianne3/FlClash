@@ -390,7 +390,7 @@ class _GroupSliverState extends ConsumerState<_GroupSliver>
   }
 
   Widget _buildRows(double extent) {
-    final rows = widget.group.all.chunks(widget.columns).toList();
+    final rows = widget.group.all.chunks(widget.columns);
     return SliverFixedExtentList(
       itemExtent: extent,
       delegate: SliverChildBuilderDelegate(
@@ -404,7 +404,7 @@ class _GroupSliverState extends ConsumerState<_GroupSliver>
   /// The card reaches up behind the header's rounded bottom corners, so the
   /// two read as one while the rows unfold or fold.
   Widget _buildUnfoldingRows(double extent, ShapeDecoration decoration) {
-    final rows = widget.group.all.chunks(widget.columns).toList();
+    final rows = widget.group.all.chunks(widget.columns);
     final visible = min(
       rows.length.toDouble(),
       MediaQuery.sizeOf(context).height / extent,

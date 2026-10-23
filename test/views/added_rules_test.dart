@@ -17,11 +17,11 @@ import '../helpers/test_database_providers.dart';
 class _RecordingGlobalRules extends TestGlobalRules {
   _RecordingGlobalRules(super.initial);
 
-  final deleted = <List<int>>[];
+  final deleted = <Set<int>>[];
 
   @override
-  void delAll(Iterable<int> ruleIds) {
-    deleted.add(List<int>.from(ruleIds));
+  void delAll(Set<int> ruleIds) {
+    deleted.add(ruleIds);
   }
 }
 

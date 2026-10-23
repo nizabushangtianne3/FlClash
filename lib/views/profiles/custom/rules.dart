@@ -524,7 +524,7 @@ class _AddOrEditRuleViewState extends ConsumerState<_AddOrEditRuleView> {
     );
     if (res == true && mounted) {
       final id = ref.read(ruleProvider).id;
-      ref.read(profileRulesProvider(profileId).notifier).delAll([id]);
+      ref.read(profileRulesProvider(profileId).notifier).delAll({id});
       context.safeNestedPop();
     }
   }

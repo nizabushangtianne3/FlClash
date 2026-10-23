@@ -33,7 +33,7 @@ class _RecordingProfileRules extends ProfileRules {
   void putAll(List<Rule> rules) => puts.addAll(rules);
 
   @override
-  void delAll(Iterable<int> ruleIds) => deletes.addAll(ruleIds);
+  void delAll(Set<int> ruleIds) => deletes.addAll(ruleIds);
 
   @override
   void order(int oldIndex, int newIndex) {}

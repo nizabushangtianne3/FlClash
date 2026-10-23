@@ -555,11 +555,10 @@ mixin RuleListMixin on OptimisticMixin<List<Rule>> {
     );
   }
 
-  void delAll(Iterable<int> ruleIds) {
-    final ids = ruleIds.toSet();
+  void delAll(Set<int> ruleIds) {
     optimistic(
-      value.where((item) => !ids.contains(item.id)).toList(),
-      () => database.rulesDao.delRules(ids),
+      value.where((item) => !ruleIds.contains(item.id)).toList(),
+      () => database.rulesDao.delRules(ruleIds),
     );
   }
 
@@ -707,11 +706,10 @@ class ProxyGroups extends _$ProxyGroups
     return !proxyGroupsEquality.equals(previous.value, next.value);
   }
 
-  void delAll(Iterable<int> proxyGroupIds) {
-    final ids = proxyGroupIds.toSet();
+  void delAll(Set<int> proxyGroupIds) {
     optimistic(
-      value.where((item) => !ids.contains(item.id)).toList(),
-      () => database.proxyGroupsDao.delAll(ids),
+      value.where((item) => !proxyGroupIds.contains(item.id)).toList(),
+      () => database.proxyGroupsDao.delAll(proxyGroupIds),
     );
   }
 
@@ -859,11 +857,10 @@ class CustomProxies extends _$CustomProxies
   @override
   List<CustomProxy> get value => state.value ?? [];
 
-  void delAll(Iterable<int> ids) {
-    final idSet = ids.toSet();
+  void delAll(Set<int> ids) {
     optimistic(
-      value.where((item) => !idSet.contains(item.id)).toList(),
-      () => database.customProxiesDao.delAll(idSet),
+      value.where((item) => !ids.contains(item.id)).toList(),
+      () => database.customProxiesDao.delAll(ids),
     );
   }
 

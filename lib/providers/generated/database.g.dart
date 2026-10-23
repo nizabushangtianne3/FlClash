@@ -526,7 +526,7 @@ final class ProxyGroupsProvider
   }
 }
 
-String _$proxyGroupsHash() => r'4bf2d9e4c3c1e56fa03b91fbef29c898f6f2b052';
+String _$proxyGroupsHash() => r'50721162a54ea3ec1d39df55e3e1f9f63711eb50';
 
 final class ProxyGroupsFamily extends $Family
     with
@@ -599,7 +599,7 @@ final class CustomProxiesProvider
   CustomProxies create() => CustomProxies();
 }
 
-String _$customProxiesHash() => r'77e62a3276ffd7ca1d05f656199049570fb0c73a';
+String _$customProxiesHash() => r'9fca5af66449e143883c26f2a77c08b683e843f1';
 
 abstract class _$CustomProxies extends $StreamNotifier<List<CustomProxy>> {
   Stream<List<CustomProxy>> build();

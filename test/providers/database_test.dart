@@ -578,7 +578,7 @@ void main() {
       notifier.put(const Rule(id: 2, content: 'second'));
       await pumpEventQueue();
 
-      notifier.delAll([1, 2]);
+      notifier.delAll({1, 2});
       await pumpEventQueue();
 
       expect(read(), isEmpty);
@@ -590,7 +590,7 @@ void main() {
       await pumpEventQueue();
       await breakTable('rules');
 
-      final failure = captureWriteFailure(() => notifier.delAll([1]));
+      final failure = captureWriteFailure(() => notifier.delAll({1}));
       expect(read(), isEmpty, reason: 'optimistic');
 
       await failure;
@@ -655,7 +655,7 @@ void main() {
         before.reversed,
       );
 
-      notifier.delAll([1]);
+      notifier.delAll({1});
       await pumpEventQueue();
       expect(read().map((item) => item.id), [2]);
     });
@@ -698,7 +698,7 @@ void main() {
       await pumpEventQueue();
       await breakTable('rules');
 
-      final failure = captureWriteFailure(() => notifier.delAll([1]));
+      final failure = captureWriteFailure(() => notifier.delAll({1}));
       expect(read(), isEmpty, reason: 'optimistic');
 
       await failure;
@@ -1261,7 +1261,7 @@ void main() {
       expect(notifier.put(group(3, 'Kept')), isTrue);
       await pumpEventQueue();
 
-      notifier.delAll([1, 2]);
+      notifier.delAll({1, 2});
       await pumpEventQueue();
 
       expect(read().map((item) => item.id), [3]);
@@ -1288,7 +1288,7 @@ void main() {
       await pumpEventQueue();
       await breakTable('proxy_groups');
 
-      final failure = captureWriteFailure(() => notifier.delAll([1]));
+      final failure = captureWriteFailure(() => notifier.delAll({1}));
       expect(read(), isEmpty, reason: 'optimistic');
 
       await failure;

@@ -112,7 +112,7 @@ class RulesDao extends DatabaseAccessor<Database> with _$RulesDaoMixin {
     return stmt.write(RulesCompanion(order: Value(order)));
   }
 
-  Future<void> delRules(Iterable<int> ruleIds) {
+  Future<void> delRules(Set<int> ruleIds) {
     return batch((b) {
       rules.deleteInChunks(b, ruleIds, (t, chunk) => t.id.isIn(chunk));
     });

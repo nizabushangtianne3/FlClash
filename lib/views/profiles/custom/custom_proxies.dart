@@ -1358,7 +1358,7 @@ class _EditCustomProxyViewState extends ConsumerState<_EditCustomProxyView> {
       confirmText: appLocalizations.delete,
     );
     if (res == true && mounted) {
-      ref.read(customProxiesProvider.notifier).delAll([id]);
+      ref.read(customProxiesProvider.notifier).delAll({id});
       context.safeNestedPop();
     }
   }

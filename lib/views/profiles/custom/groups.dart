@@ -1062,7 +1062,7 @@ class _EditProxyGroupViewState extends ConsumerState<EditProxyGroupView> {
       confirmText: appLocalizations.delete,
     );
     if (res == true && mounted) {
-      ref.read(proxyGroupsProvider(profileId).notifier).delAll([id]);
+      ref.read(proxyGroupsProvider(profileId).notifier).delAll({id});
       context.safeNestedPop();
     }
   }

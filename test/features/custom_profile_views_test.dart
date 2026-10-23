@@ -63,8 +63,8 @@ class _TestProxyGroups extends ProxyGroups {
   void order(int oldIndex, int newIndex) => orders.add((oldIndex, newIndex));
 
   @override
-  void delAll(Iterable<int> proxyGroupIds) {
-    deleted.add(proxyGroupIds.toSet());
+  void delAll(Set<int> proxyGroupIds) {
+    deleted.add(proxyGroupIds);
   }
 
   @override

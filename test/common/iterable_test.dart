@@ -19,9 +19,9 @@ void main() {
     });
   });
 
-  group('IterableExt.chunks', () {
+  group('ListExt.chunks', () {
     test('splits into equal chunks', () {
-      final result = [1, 2, 3, 4].chunks(2).toList();
+      final result = [1, 2, 3, 4].chunks(2);
       expect(result, [
         [1, 2],
         [3, 4],
@@ -29,7 +29,7 @@ void main() {
     });
 
     test('handles last incomplete chunk', () {
-      final result = [1, 2, 3, 4, 5].chunks(2).toList();
+      final result = [1, 2, 3, 4, 5].chunks(2);
       expect(result, [
         [1, 2],
         [3, 4],
@@ -38,14 +38,14 @@ void main() {
     });
 
     test('returns single chunk for size >= length', () {
-      final result = [1, 2, 3].chunks(5).toList();
+      final result = [1, 2, 3].chunks(5);
       expect(result, [
         [1, 2, 3],
       ]);
     });
 
     test('returns empty for empty iterable', () {
-      final result = <int>[].chunks(2).toList();
+      final result = <int>[].chunks(2);
       expect(result, isEmpty);
     });
   });
@@ -84,24 +84,6 @@ void main() {
       final list = [1, 2, 3];
       list.truncate(0);
       expect(list, [1, 2, 3]);
-    });
-  });
-
-  group('ListExt.batch', () {
-    test('splits into batches', () {
-      final result = [1, 2, 3, 4, 5].batch(2);
-      expect(result, [
-        [1, 2],
-        [3, 4],
-        [5],
-      ]);
-    });
-
-    test('single batch when size >= length', () {
-      final result = [1, 2].batch(5);
-      expect(result, [
-        [1, 2],
-      ]);
     });
   });
 

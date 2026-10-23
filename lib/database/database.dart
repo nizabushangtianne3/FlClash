@@ -528,7 +528,7 @@ extension TableInfoExt<Tbl extends Table, Row> on TableInfo<Tbl, Row> {
     Iterable<V> values,
     Expression<bool> Function(Tbl tbl, List<V> chunk) filter,
   ) {
-    for (final chunk in values.chunks(_maxBoundValues)) {
+    for (final chunk in values.toList().chunks(_maxBoundValues)) {
       batch.deleteWhere(this, (tbl) => filter(tbl, chunk));
     }
   }

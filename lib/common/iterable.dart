@@ -11,18 +11,6 @@ extension IterableExt<E> on Iterable<E> {
     }
   }
 
-  Iterable<List<E>> chunks(int size) sync* {
-    if (length == 0) return;
-    final iterator = this.iterator;
-    while (iterator.moveNext()) {
-      final chunk = [iterator.current];
-      for (var i = 1; i < size && iterator.moveNext(); i++) {
-        chunk.add(iterator.current);
-      }
-      yield chunk;
-    }
-  }
-
   Iterable<E> fill(int length, {required E Function(int count) filler}) sync* {
     int count = 0;
     for (final item in this) {
@@ -52,17 +40,14 @@ extension ListExt<T> on List<T> {
     return where(lookup.contains).toList();
   }
 
-  List<List<T>> batch(int maxConcurrent) {
-    final batches = (length / maxConcurrent).ceil();
-    final List<List<T>> res = [];
-    for (int i = 0; i < batches; i++) {
-      if (i != batches - 1) {
-        res.add(sublist(i * maxConcurrent, maxConcurrent * (i + 1)));
-      } else {
-        res.add(sublist(i * maxConcurrent, length));
-      }
-    }
-    return res;
+  List<List<T>> chunks(int size) {
+    if (isEmpty) return const [];
+    final chunkCount = (length + size - 1) ~/ size;
+    return List.generate(chunkCount, (index) {
+      final start = index * size;
+      final end = start + size;
+      return sublist(start, end < length ? end : length);
+    });
   }
 
   List<T> copyAndPut(T data, bool Function(T element) test) {

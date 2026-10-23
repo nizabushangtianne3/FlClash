@@ -77,7 +77,7 @@ class _StandardContentState extends ConsumerState<StandardContent> {
     final selectedRules = ref.read(itemsProvider(_key));
     ref
         .read(profileRulesProvider(_profileId).notifier)
-        .delAll(selectedRules.cast<int>());
+        .delAll(selectedRules.cast<int>().toSet());
     ref.read(itemsProvider(_key).notifier).value = {};
   }
 

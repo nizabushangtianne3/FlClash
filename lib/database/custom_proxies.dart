@@ -46,7 +46,7 @@ class CustomProxiesDao extends DatabaseAccessor<Database>
     );
   }
 
-  Future<void> delAll(Iterable<int> ids) {
+  Future<void> delAll(Set<int> ids) {
     return batch((b) {
       customProxies.deleteInChunks(b, ids, (t, chunk) => t.id.isIn(chunk));
     });

@@ -486,7 +486,7 @@ void main() {
         'NewGroup',
       );
 
-      await database.rulesDao.delRules([added.id, ruleSet.id]);
+      await database.rulesDao.delRules({added.id, ruleSet.id});
       expect(
         await database.rulesDao.queryProfileRules(profile.id).get(),
         isEmpty,
@@ -542,7 +542,7 @@ void main() {
       database.rulesDao.setProfileRulesWithBatch(profile.id, b, rules);
     });
 
-    await database.rulesDao.delRules(rules.map((rule) => rule.id));
+    await database.rulesDao.delRules(rules.map((rule) => rule.id).toSet());
 
     expect(
       await database.rulesDao.profileRulesCount(profile.id).getSingle(),
@@ -587,7 +587,7 @@ void main() {
     await database.rulesDao.putRule(rule);
     await database.rulesDao.putDisabled(profile.id, rule.id);
 
-    await database.rulesDao.delRules([rule.id]);
+    await database.rulesDao.delRules({rule.id});
 
     expect(await database.disabledRules.count.getSingle(), 0);
   });
@@ -652,7 +652,7 @@ void main() {
         oldName: 'Relay',
         newName: 'Front',
       );
-      await database.customProxiesDao.delAll([work.id]);
+      await database.customProxiesDao.delAll({work.id});
       await database.deleteProfile(2);
 
       expect(await all(), const [
