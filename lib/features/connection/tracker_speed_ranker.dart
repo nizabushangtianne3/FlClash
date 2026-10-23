@@ -28,7 +28,7 @@ class TrackerSpeedRanker {
   static const _minSampleGap = Duration(milliseconds: 500);
   static const _smoothing = 0.5;
 
-  final _samples = <String, _SpeedSample>{};
+  var _samples = <String, _SpeedSample>{};
   var _positions = const <String, int>{};
 
   List<TrackerInfo> rank(List<TrackerInfo> trackerInfos, DateTime now) {
@@ -37,17 +37,75 @@ class TrackerSpeedRanker {
       _positions = const {};
       return trackerInfos;
     }
-    final samples = {
-      for (final trackerInfo in trackerInfos)
-        trackerInfo.id: _sample(trackerInfo, now),
+    final count = trackerInfos.length;
+    final samples = List<_SpeedSample>.generate(
+      count,
+      (index) => _sample(trackerInfos[index], now),
+    );
+    _samples = {
+      for (var index = 0; index < count; index++)
+        trackerInfos[index].id: samples[index],
     };
-    _samples.removeWhere((id, _) => !samples.containsKey(id));
-    for (final entry in samples.entries) {
-      _samples[entry.key] = entry.value;
+
+    // All idle: sort by traffic once, then keep the resulting order stable.
+    var anyActive = false;
+    for (final sample in samples) {
+      if (sample.rankSpeed >= 1) {
+        anyActive = true;
+        break;
+      }
+    }
+    final traffic = [
+      for (final trackerInfo in trackerInfos)
+        trackerInfo.upload + trackerInfo.download,
+    ];
+    final order = List<int>.generate(count, (index) => index);
+    if (!anyActive) {
+      order.sort((a, b) {
+        final trafficCompare = traffic[b].compareTo(traffic[a]);
+        if (trafficCompare != 0) {
+          return trafficCompare;
+        }
+        final start = trackerInfos[b].start.compareTo(trackerInfos[a].start);
+        if (start != 0) {
+          return start;
+        }
+        return trackerInfos[a].id.compareTo(trackerInfos[b].id);
+      });
+    } else {
+      final buckets = [
+        for (final sample in samples)
+          sample.rankSpeed < 1 ? 0 : (log(sample.rankSpeed) / ln2).floor() + 1,
+      ];
+      final positions = _positions;
+      order.sort((a, b) {
+        final bucket = buckets[b].compareTo(buckets[a]);
+        if (bucket != 0) {
+          return bucket;
+        }
+        if (buckets[a] > 0) {
+          final position = (positions[trackerInfos[a].id] ?? count).compareTo(
+            positions[trackerInfos[b].id] ?? count,
+          );
+          if (position != 0) {
+            return position;
+          }
+        }
+        final trafficCompare = traffic[b].compareTo(traffic[a]);
+        if (trafficCompare != 0) {
+          return trafficCompare;
+        }
+        final start = trackerInfos[b].start.compareTo(trackerInfos[a].start);
+        return start != 0
+            ? start
+            : trackerInfos[a].id.compareTo(trackerInfos[b].id);
+      });
     }
 
-    TrackerInfo withSpeed(TrackerInfo trackerInfo) {
-      final sample = samples[trackerInfo.id]!;
+    final ranked = List<TrackerInfo>.generate(count, (index) {
+      final source = order[index];
+      final trackerInfo = trackerInfos[source];
+      final sample = samples[source];
       if (trackerInfo.uploadSpeed == sample.uploadSpeed &&
           trackerInfo.downloadSpeed == sample.downloadSpeed) {
         return trackerInfo;
@@ -56,71 +114,9 @@ class TrackerSpeedRanker {
         uploadSpeed: sample.uploadSpeed,
         downloadSpeed: sample.downloadSpeed,
       );
-    }
-
-    // All idle: sort by traffic once, then keep the resulting order stable.
-    var anyActive = false;
-    for (final sample in samples.values) {
-      if (sample.rankSpeed >= 1) {
-        anyActive = true;
-        break;
-      }
-    }
-    if (!anyActive) {
-      final ranked =
-          [for (final trackerInfo in trackerInfos) withSpeed(trackerInfo)]
-            ..sort((a, b) {
-              final traffic = (b.upload + b.download).compareTo(
-                a.upload + a.download,
-              );
-              if (traffic != 0) {
-                return traffic;
-              }
-              final start = b.start.compareTo(a.start);
-              return start != 0 ? start : a.id.compareTo(b.id);
-            });
-      _positions = {
-        for (final (index, trackerInfo) in ranked.indexed)
-          trackerInfo.id: index,
-      };
-      return ranked;
-    }
-
-    final buckets = {
-      for (final trackerInfo in trackerInfos)
-        trackerInfo.id: samples[trackerInfo.id]!.rankSpeed < 1
-            ? 0
-            : (log(samples[trackerInfo.id]!.rankSpeed) / ln2).floor() + 1,
-    };
-    final trafficBy = {
-      for (final trackerInfo in trackerInfos)
-        trackerInfo.id: trackerInfo.upload + trackerInfo.download,
-    };
-
-    final ranked =
-        [for (final trackerInfo in trackerInfos) withSpeed(trackerInfo)]
-          ..sort((a, b) {
-            final bucketA = buckets[a.id]!;
-            final bucket = buckets[b.id]!.compareTo(bucketA);
-            if (bucket != 0) {
-              return bucket;
-            }
-            if (bucketA > 0) {
-              final position = (_positions[a.id] ?? trackerInfos.length)
-                  .compareTo(_positions[b.id] ?? trackerInfos.length);
-              if (position != 0) {
-                return position;
-              }
-            }
-            final traffic = trafficBy[b.id]!.compareTo(trafficBy[a.id]!);
-            if (traffic != 0) {
-              return traffic;
-            }
-            final start = b.start.compareTo(a.start);
-            return start != 0 ? start : a.id.compareTo(b.id);
-          });
+    });
     _positions = {
-      for (final (index, trackerInfo) in ranked.indexed) trackerInfo.id: index,
+      for (var index = 0; index < count; index++) ranked[index].id: index,
     };
     return ranked;
   }
