@@ -11,14 +11,19 @@ extension NumExt on num {
   String get compact => _compactFormat.format(this);
 
   String fixed({int decimals = 2}) {
-    String formatted = toStringAsFixed(decimals);
-    if (formatted.contains('.')) {
-      formatted = formatted.replaceAll(RegExp(r'0*$'), '');
-      if (formatted.endsWith('.')) {
-        formatted = formatted.substring(0, formatted.length - 1);
-      }
+    final formatted = toStringAsFixed(decimals);
+    final dot = formatted.indexOf('.');
+    if (dot < 0) {
+      return formatted;
     }
-    return formatted;
+    var end = formatted.length;
+    while (end > dot + 1 && formatted.codeUnitAt(end - 1) == 0x30) {
+      end--;
+    }
+    if (end == dot + 1) {
+      end = dot;
+    }
+    return end == formatted.length ? formatted : formatted.substring(0, end);
   }
 
   TrafficShow get traffic {
