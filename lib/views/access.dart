@@ -147,12 +147,15 @@ class _AccessViewState extends ConsumerState<AccessView>
           return await app?.getChinaPackageNames() ?? [];
         }, tag: LoadingTag.access))?.toSet() ??
         {};
-    final acceptList = packageNames
-        .where((item) => !selectedPackageNames.contains(item))
-        .toList();
-    final rejectList = packageNames
-        .where((item) => selectedPackageNames.contains(item))
-        .toList();
+    final acceptList = <String>[];
+    final rejectList = <String>[];
+    for (final packageName in packageNames) {
+      if (selectedPackageNames.contains(packageName)) {
+        rejectList.add(packageName);
+      } else {
+        acceptList.add(packageName);
+      }
+    }
     ref
         .read(accessControlStateProvider.notifier)
         .update(
