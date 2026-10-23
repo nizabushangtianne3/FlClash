@@ -99,14 +99,6 @@ void main() {
     });
   });
 
-  group('StringExtension.compareToLower', () {
-    test('case insensitive comparison', () {
-      expect('abc'.compareToLower('ABC'), 0);
-      expect('a'.compareToLower('b'), lessThan(0));
-      expect('b'.compareToLower('a'), greaterThan(0));
-    });
-  });
-
   group('StringExtension.countryFlagEmoji', () {
     test('maps a two-letter region code to its flag', () {
       expect('us'.countryFlagEmoji, '🇺🇸');

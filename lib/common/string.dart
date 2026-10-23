@@ -49,10 +49,6 @@ extension StringExtension on String {
     return parts.length > 1 ? parts : this;
   }
 
-  int compareToLower(String other) {
-    return toLowerCase().compareTo(other.toLowerCase());
-  }
-
   String get countryFlagEmoji {
     final code = toUpperCase();
     const upperA = 0x41;
