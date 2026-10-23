@@ -266,6 +266,7 @@ class _IconSetPreviewView extends ConsumerStatefulWidget {
 
 class _IconSetPreviewViewState extends ConsumerState<_IconSetPreviewView> {
   var _query = SearchQuery('');
+  final _searchTexts = Expando<String>();
 
   @override
   Widget build(BuildContext context) {
@@ -277,7 +278,7 @@ class _IconSetPreviewViewState extends ConsumerState<_IconSetPreviewView> {
       ),
     );
     final icons = (iconSet?.icons ?? const <IconSetIcon>[])
-        .whereMatches(_query, (icon) => [icon.label])
+        .whereMatches(_query, (icon) => [icon.label], texts: _searchTexts)
         .toList();
     return CommonScaffold(
       title: iconSet?.name ?? context.appLocalizations.iconSets,
