@@ -805,6 +805,38 @@ class _FloatingNavigationBarState extends State<FloatingNavigationBar>
     widget.destinations.length,
   );
 
+  /// The labels never move, so their text is laid out when a dependency or the
+  /// destinations change, not on every frame the dock's motion rebuilds it.
+  late TextStyle _labelStyle;
+  late List<double> _labelWidths;
+  late double _widestLabel;
+  late double _labelHeight;
+
+  void _measureLabels() {
+    _labelStyle = AppTextStyle.custom(
+      context,
+      size: _labelSize,
+      leading: _labelLeading,
+      weight: FontWeight.w500,
+    );
+    var widest = 0.0;
+    var lineHeight = 0.0;
+    final widths = <double>[];
+    for (final destination in widget.destinations) {
+      final (:width, :height) = _measureLabel(
+        context,
+        destination.label,
+        _labelStyle,
+      );
+      widths.add(width);
+      widest = math.max(widest, width);
+      lineHeight = math.max(lineHeight, height);
+    }
+    _labelWidths = List.unmodifiable(widths);
+    _widestLabel = widest;
+    _labelHeight = lineHeight;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -824,11 +856,18 @@ class _FloatingNavigationBarState extends State<FloatingNavigationBar>
   void didUpdateWidget(covariant FloatingNavigationBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     _syncParallax();
+    _measureLabels();
     _leanContent();
     final rest = _lensRest;
     if (_pressedIndex == null && _lens.target != rest) {
       _lens.springTo(rest, _travelSpring);
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _measureLabels();
   }
 
   @override
@@ -1128,24 +1167,6 @@ class _FloatingNavigationBarState extends State<FloatingNavigationBar>
   @override
   Widget build(BuildContext context) {
     final colorScheme = context.colorScheme;
-    final labelStyle = AppTextStyle.custom(
-      context,
-      size: _labelSize,
-      leading: _labelLeading,
-      weight: FontWeight.w500,
-    );
-    final labels = [
-      for (final destination in widget.destinations)
-        _measureLabel(context, destination.label, labelStyle),
-    ];
-    final widest = labels.fold(
-      0.0,
-      (width, label) => math.max(width, label.width),
-    );
-    final lineHeight = labels.fold(
-      0.0,
-      (height, label) => math.max(height, label.height),
-    );
     final glass = LiquidGlassScope.of(context);
     final ultra =
         LiquidGlassScope.qualityOf(context) == LiquidGlassQuality.ultra;
@@ -1182,9 +1203,12 @@ class _FloatingNavigationBarState extends State<FloatingNavigationBar>
                       widget.destinations.length,
                     );
                     final room = layout.pitch - _labelInset * 2;
-                    final labelScale = widest <= room
+                    final labelScale = _widestLabel <= room
                         ? 1.0
-                        : math.max(room / widest, _minLabelSize / _labelSize);
+                        : math.max(
+                            room / _widestLabel,
+                            _minLabelSize / _labelSize,
+                          );
                     Rect lensRect() => _lensRect(
                       position: _lens.value,
                       stretch: _jelly.value,
@@ -1210,12 +1234,12 @@ class _FloatingNavigationBarState extends State<FloatingNavigationBar>
                                 jelly: _jelly,
                                 parallax: _parallax[index],
                                 lift: _lift,
-                                labelStyle: labelStyle.copyWith(
+                                labelStyle: _labelStyle.copyWith(
                                   fontSize: _labelSize * labelScale,
                                 ),
-                                labelHeight: lineHeight,
+                                labelHeight: _labelHeight,
                                 labelOverflows:
-                                    labels[index].width * labelScale > room,
+                                    _labelWidths[index] * labelScale > room,
                                 onActivate: () => widget.onSelected(index),
                               ),
                             ),
