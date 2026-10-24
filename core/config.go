@@ -121,7 +121,6 @@ func loadSetupConfig(params *SetupParams) (*config.Config, error) {
 }
 
 func applyConfig(params *SetupParams) error {
-	runtime.GC()
 	configMu.Lock()
 	defer configMu.Unlock()
 
