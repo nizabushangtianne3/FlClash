@@ -46,6 +46,16 @@ class _EditorCompletionPopupState extends State<EditorCompletionPopup> {
     if (widget.details.selectedIndex != oldWidget.details.selectedIndex) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _revealSelected());
     }
+    if (widget.details.suggestions != oldWidget.details.suggestions ||
+        widget.textStyle != oldWidget.textStyle) {
+      _widths = null;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _widths = null;
   }
 
   @override
@@ -74,6 +84,14 @@ class _EditorCompletionPopupState extends State<EditorCompletionPopup> {
   }
 
   static const _itemInset = _suggestionItemPadding + _suggestionInset;
+
+  /// Measured once: a keystroke that only moves the highlight changes neither
+  /// the labels nor a dependency, and the rows are laid out from them.
+  ({List<double> labels, double content})? _widths;
+
+  ({List<double> labels, double content}) _measuredWidths(
+    BuildContext context,
+  ) => _widths ??= _measureWidths(context);
 
   ({List<double> labels, double content}) _measureWidths(BuildContext context) {
     final painter = TextPainter(
@@ -170,7 +188,7 @@ class _EditorCompletionPopupState extends State<EditorCompletionPopup> {
 
   @override
   Widget build(BuildContext context) {
-    final widths = _measureWidths(context);
+    final widths = _measuredWidths(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxWidth = constraints.maxWidth;
