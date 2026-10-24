@@ -151,6 +151,16 @@ proxy-groups:
       );
     });
 
+    test('nests a mixed-case key the schema holds only under a variant', () {
+      expect(
+        relaxed(
+          'Name: Auto\nTYPE: url-test\nTolerance: 100\n',
+          EditorSchema.proxyGroup,
+        ),
+        {'name': 'Auto', 'type': 'url-test', 'tolerance': 100},
+      );
+    });
+
     test('leaves a document that is no map schema alone', () {
       expect(relaxYaml('- MATCH,DIRECT', EditorSchema.rules), isNull);
     });

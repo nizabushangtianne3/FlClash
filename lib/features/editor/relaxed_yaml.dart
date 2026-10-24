@@ -55,14 +55,6 @@ class _Frame {
   int? childIndent;
 
   _Frame(this.schema, this.indent, this.ownerIndent);
-
-  MapEntry<String, YamlSchema>? field(String name) {
-    final lower = name.toLowerCase();
-    return schema
-        .fieldsFor(null)
-        .entries
-        .firstWhereOrNull((entry) => entry.key.toLowerCase() == lower);
-  }
 }
 
 class _Block {
@@ -141,11 +133,11 @@ class _Relaxer {
       final spaced = named[2]!.isNotEmpty || rest.isEmpty;
       final known = [
         for (final (index, frame) in _frames.indexed)
-          if (frame.field(named[1]!) != null) index,
+          if (frame.schema.field(named[1]!) != null) index,
       ];
       if (known.isNotEmpty && (spaced || !rest.contains(':'))) {
         final frame = _enter(_pick(known, indent), indent);
-        final field = frame.field(named[1]!)!;
+        final field = frame.schema.field(named[1]!)!;
         _emitKey(frame, field.key, field.value, rest, indent);
         return true;
       }

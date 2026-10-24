@@ -82,6 +82,26 @@ class YamlSchema {
   }
 }
 
+final _fieldsByLowerName =
+    Expando<Map<String, MapEntry<String, YamlSchema>?>>();
+
+extension YamlSchemaExt on YamlSchema {
+  /// The field [name] names, whatever case it was written in. A relaxed parse
+  /// asks one name of every frame that could hold it, so the answer is kept
+  /// per schema: the schemas are const and shared.
+  MapEntry<String, YamlSchema>? field(String name) {
+    final lower = name.toLowerCase();
+    return (_fieldsByLowerName[this] ??= {}).putIfAbsent(lower, () {
+      for (final entry in fieldsFor(null).entries) {
+        if (entry.key.toLowerCase() == lower) {
+          return entry;
+        }
+      }
+      return null;
+    });
+  }
+}
+
 enum EditorSchema {
   config(clashConfigSchema),
   dns(_dns, 'dns'),
