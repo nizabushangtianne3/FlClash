@@ -86,12 +86,35 @@ List<T> retainTrimmedHead<T>(
     return latest;
   }
   final first = latest.first;
-  final index = keyOf == null
-      ? current.indexWhere((item) => identical(item, first))
-      : current.indexWhere((item) => keyOf(item) == keyOf(first));
+  var index = -1;
+  if (keyOf == null) {
+    for (var i = 0; i < current.length; i++) {
+      if (identical(current[i], first)) {
+        index = i;
+        break;
+      }
+    }
+  } else {
+    final firstKey = keyOf(first);
+    for (var i = 0; i < current.length; i++) {
+      if (keyOf(current[i]) == firstKey) {
+        index = i;
+        break;
+      }
+    }
+  }
   if (index == 0) {
     return latest;
   }
-  final head = index > 0 ? current.sublist(0, index) : current;
-  return List.unmodifiable([...head, ...latest].take(limit));
+  final headLength = index > 0 ? index : current.length;
+  final headEnd = headLength > limit ? limit : headLength;
+  if (headEnd <= 0) {
+    return List<T>.unmodifiable(const []);
+  }
+  if (headEnd == limit) {
+    return List<T>.unmodifiable(current.sublist(0, headEnd));
+  }
+  final result = current.sublist(0, headEnd);
+  result.addAll(latest.take(limit - headEnd));
+  return List<T>.unmodifiable(result);
 }
