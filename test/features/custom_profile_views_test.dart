@@ -1270,6 +1270,22 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('a checked node selects, and unchecking the last one leaves it', (
+    tester,
+  ) async {
+    await pumpNodes(tester, nodes);
+
+    // The actions only exist while the selection holds, so each state shows.
+    expect(find.byGlyph(AppGlyphs.selectAll), findsNothing);
+    await tester.tap(find.byType(CommonCheckBox).first);
+    await tester.pumpAndSettle();
+    expect(find.byGlyph(AppGlyphs.selectAll), findsOneWidget);
+
+    await tester.tap(find.byType(CommonCheckBox).first);
+    await tester.pumpAndSettle();
+    expect(find.byGlyph(AppGlyphs.selectAll), findsNothing);
+  });
+
   testWidgets('an empty nodes page offers to add one', (tester) async {
     await pumpNodes(tester, const []);
     final l = currentAppLocalizations;

@@ -383,9 +383,18 @@ class _CustomProxiesViewState extends ConsumerState<CustomProxiesView> {
         .toList();
     // Indices among the matches cannot be mapped back onto the full list.
     final reorderable = _query.isEmpty;
-    final selected = _selected.intersection({
-      for (final proxy in all) proxy.id,
-    });
+    final selected = _selected.intersection(
+      ref
+          .watch(
+            customProxiesProvider.select(
+              (state) => SelectValue(<int>{
+                for (final proxy in state.value ?? const <CustomProxy>[])
+                  proxy.id,
+              }),
+            ),
+          )
+          .value,
+    );
     final visibleIds = {for (final proxy in visible) proxy.id};
     final visibleSelected = selected.intersection(visibleIds);
     return CommonPopScope(
