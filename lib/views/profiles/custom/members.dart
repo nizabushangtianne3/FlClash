@@ -315,26 +315,6 @@ class _ProviderFilters extends _MemberHost<ProxyProviderOptions> {
   ) => options.copyWith(memberLayout: layout);
 }
 
-Map<String, String> _providerTypes(
-  WidgetRef ref,
-  AppLocalizations appLocalizations,
-) {
-  final profiles = ref.watch(profilesProvider);
-  return {
-    for (final profile in profiles)
-      if (profile.type != ProfileType.custom)
-        profile.realLabel: profile.type == ProfileType.url
-            ? appLocalizations.url
-            : appLocalizations.file,
-  };
-}
-
-Map<String, String> _nodeTypes(WidgetRef ref) => {
-  for (final proxy
-      in ref.watch(customProxiesProvider).value ?? const <CustomProxy>[])
-    proxy.name: proxy.type,
-};
-
 class ProxyGroupMembersSliver extends StatelessWidget {
   const ProxyGroupMembersSliver({super.key});
 
@@ -459,7 +439,18 @@ class _MembersSliverState<M> extends ConsumerState<_MembersSliver<M>>
               )
               .value
         : const <String, String>{};
-    final nodeTypes = hasProxies ? _nodeTypes(ref) : const <String, String>{};
+    final nodeTypes = hasProxies
+        ? ref
+              .watch(
+                customProxiesProvider.select(
+                  (state) => SelectValue({
+                    for (final proxy in state.value ?? const <CustomProxy>[])
+                      proxy.name: proxy.type,
+                  }),
+                ),
+              )
+              .value
+        : const <String, String>{};
     final presets = {
       for (final filter in ref.watch(
         appSettingProvider.select((state) => state.filters),
@@ -712,7 +703,16 @@ class _MemberPickerState<M> extends ConsumerState<_MemberPicker<M>> {
         (state) => SelectValue(state?.proxyGroups ?? const <ProxyGroup>[]),
       ),
     );
-    final nodes = _nodeTypes(ref);
+    final nodes = ref
+        .watch(
+          customProxiesProvider.select(
+            (state) => SelectValue({
+              for (final proxy in state.value ?? const <CustomProxy>[])
+                proxy.name: proxy.type,
+            }),
+          ),
+        )
+        .value;
     final hasProviders = ref
         .watch(appProviderNamesProvider(ProviderKind.proxy))
         .isNotEmpty;
@@ -764,7 +764,19 @@ class _MemberPickerState<M> extends ConsumerState<_MemberPicker<M>> {
     final providerNames = ref.watch(
       appProviderNamesProvider(ProviderKind.proxy),
     );
-    final providers = _providerTypes(ref, appLocalizations);
+    final providers = ref
+        .watch(
+          profilesProvider.select(
+            (state) => SelectValue({
+              for (final profile in state)
+                if (profile.type != ProfileType.custom)
+                  profile.realLabel: profile.type == ProfileType.url
+                      ? appLocalizations.url
+                      : appLocalizations.file,
+            }),
+          ),
+        )
+        .value;
     return _Category(
       label: appLocalizations.proxyProviders,
       entries: [

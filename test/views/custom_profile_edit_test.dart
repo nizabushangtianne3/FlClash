@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/interface.dart';
@@ -68,6 +70,16 @@ class _TestCustomProxies extends CustomProxies {
 class _TestProxyGroups extends ProxyGroups {
   @override
   Stream<List<ProxyGroup>> build(int profileId) => Stream.value(const []);
+}
+
+/// Emits on demand, so a test can move the proxies under an open picker.
+class _LiveCustomProxies extends CustomProxies {
+  _LiveCustomProxies(this.stream);
+
+  final Stream<List<CustomProxy>> stream;
+
+  @override
+  Stream<List<CustomProxy>> build() => stream;
 }
 
 class _TestProxyDialers extends ProxyDialers {
@@ -159,6 +171,7 @@ void main() {
   ProviderContainer buildContainer(
     ProxyGroup group, {
     List<CustomProxy> customProxies = const [],
+    Stream<List<CustomProxy>>? liveCustomProxies,
     List<Override> overrides = const [],
   }) {
     final profile = Profile.custom(label: 'mine').copyWith(id: _profileId);
@@ -182,7 +195,9 @@ void main() {
         ),
         clashProvidersProvider.overrideWith(_TestClashProviders.new),
         customProxiesProvider.overrideWith(
-          () => _TestCustomProxies(customProxies),
+          () => liveCustomProxies == null
+              ? _TestCustomProxies(customProxies)
+              : _LiveCustomProxies(liveCustomProxies),
         ),
         proxyGroupsProvider.overrideWith2((_) => _TestProxyGroups()),
         proxyDialersProvider.overrideWith2((_) => _TestProxyDialers()),
@@ -502,6 +517,43 @@ void main() {
       expect(group.proxies, ['DIRECT', 'REJECT', 'Home']);
       expect(group.use, ['p']);
       expect(group.filter, 'mine`${_hongKong.regex}');
+    });
+
+    testWidgets('the picker follows a proxy type that changes under it', (
+      tester,
+    ) async {
+      final l = currentAppLocalizations;
+      final proxies = StreamController<List<CustomProxy>>();
+      addTearDown(proxies.close);
+      proxies.add(const [_home]);
+      container = buildContainer(
+        _group(proxies: ['DIRECT']),
+        liveCustomProxies: proxies.stream,
+      );
+      final picker = find.byWidgetPredicate(
+        (widget) =>
+            widget.runtimeType.toString() == '_MemberPicker<ProxyGroup>',
+      );
+      Finder offered(String name) =>
+          find.descendant(of: picker, matching: find.text(name));
+
+      await pumpGroupSheet(tester);
+      await tester.ensureVisible(find.text(l.addNodes));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(l.addNodes));
+      await tester.pumpAndSettle();
+      await tester.tap(offered('${l.localProxies} (1)'));
+      await tester.pumpAndSettle();
+      // A type the picker derived once must not be kept once the proxy moves.
+      expect(offered('Home'), findsOneWidget);
+      expect(offered('socks5'), findsOneWidget);
+
+      proxies.add([
+        _home.copyWith(definition: {..._home.definition, 'type': 'http'}),
+      ]);
+      await tester.pumpAndSettle();
+      expect(offered('http'), findsOneWidget);
+      expect(offered('socks5'), findsNothing);
     });
 
     testWidgets('the picker adds taking in every proxy or provider as a member '
