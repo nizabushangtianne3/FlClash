@@ -164,15 +164,10 @@ List<Proxy> visibleTrayProxies(Group group, String? selectedName) {
 
 Map<String, String>? _proxyTypesCache;
 List<Group>? _proxyTypesSource;
-Map<String, Group>? _groupsByNameCache;
-List<Group>? _groupsByNameSource;
+final _groupsByNameCache = Expando<Map<String, Group>>();
 
 Map<String, Group> groupsByNameFor(List<Group> allGroups) {
-  if (identical(allGroups, _groupsByNameSource) && _groupsByNameCache != null) {
-    return _groupsByNameCache!;
-  }
-  _groupsByNameSource = allGroups;
-  return _groupsByNameCache = _indexGroups(allGroups);
+  return _groupsByNameCache[allGroups] ??= _indexGroups(allGroups);
 }
 
 Map<String, String> _proxyTypesFor(List<Group> allGroups) {

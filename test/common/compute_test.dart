@@ -16,6 +16,21 @@ void main() {
     );
   });
 
+  test('reuses each list index while two lists alternate', () {
+    const group = Group(name: 'selector', type: GroupType.Selector);
+    final first = [group];
+    final second = [group];
+    final firstIndex = groupsByNameFor(first);
+    final secondIndex = groupsByNameFor(second);
+
+    groupsByNameFor(first);
+    groupsByNameFor(second);
+
+    expect(identical(groupsByNameFor(first), firstIndex), isTrue);
+    expect(identical(groupsByNameFor(second), secondIndex), isTrue);
+    expect(identical(firstIndex, secondIndex), isFalse);
+  });
+
   group('computeRealSelectedProxyState', () {
     test('returns state unchanged when proxyName is empty', () {
       final state = computeRealSelectedProxyState(
