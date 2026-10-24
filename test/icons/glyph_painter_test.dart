@@ -203,6 +203,15 @@ void main() {
     expect(_alphaAt(filled, 12, 13.1), greaterThan(0));
   });
 
+  test('a shape builds its path once', () {
+    const circle = GlyphCircle(12, 12, 8);
+    expect(identical(circle.path, circle.path), isTrue);
+
+    // A shape the app builds anew each frame must not reuse another's.
+    const moved = GlyphCircle(12, 12, 8.5);
+    expect(identical(moved.path, circle.path), isFalse);
+  });
+
   for (final MapEntry(key: name, value: glyph) in _glyphs.entries) {
     test('$name fills into a different shape than its outline', () async {
       final outline = await _render(glyph, 0);

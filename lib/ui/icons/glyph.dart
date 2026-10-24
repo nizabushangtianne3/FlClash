@@ -21,8 +21,14 @@ sealed class GlyphShape {
   final GlyphRole role;
   final bool solid;
 
-  Path get path;
+  /// Built once per shape. Glyphs are const and shared app-wide, and the
+  /// painter reads a shape's path several times while it draws.
+  Path get path => _shapePaths[this] ??= _buildPath();
+
+  Path _buildPath();
 }
+
+final _shapePaths = Expando<Path>();
 
 class GlyphBox extends GlyphShape {
   const GlyphBox(
@@ -41,7 +47,7 @@ class GlyphBox extends GlyphShape {
   final double radius;
 
   @override
-  Path get path => Path()
+  Path _buildPath() => Path()
     ..addRSuperellipse(
       RSuperellipse.fromLTRBR(
         left,
@@ -61,7 +67,7 @@ class GlyphCircle extends GlyphShape {
   final double radius;
 
   @override
-  Path get path =>
+  Path _buildPath() =>
       Path()..addOval(Rect.fromCircle(center: Offset(x, y), radius: radius));
 }
 
@@ -74,7 +80,7 @@ class GlyphOval extends GlyphShape {
   final double bottom;
 
   @override
-  Path get path => Path()..addOval(Rect.fromLTRB(left, top, right, bottom));
+  Path _buildPath() => Path()..addOval(Rect.fromLTRB(left, top, right, bottom));
 }
 
 class GlyphArc extends GlyphShape {
@@ -94,7 +100,7 @@ class GlyphArc extends GlyphShape {
   final double sweep;
 
   @override
-  Path get path => Path()
+  Path _buildPath() => Path()
     ..addArc(
       Rect.fromCircle(center: Offset(x, y), radius: radius),
       start,
@@ -113,7 +119,7 @@ class GlyphLink extends GlyphShape {
   final double radius;
 
   @override
-  Path get path {
+  Path _buildPath() {
     final delta = to - from;
     final inset = delta / delta.distance * (radius + Glyph.strokeWidth);
     final start = from + inset;
@@ -131,10 +137,8 @@ class GlyphPath extends GlyphShape {
 
   final String data;
 
-  static final _parsed = Expando<Path>();
-
   @override
-  Path get path => _parsed[this] ??= _parse(data);
+  Path _buildPath() => _parse(data);
 
   static Path _parse(String data) {
     final writer = _PathWriter();
@@ -200,7 +204,7 @@ class GlyphPolyline extends GlyphShape {
   }
 
   @override
-  Path get path {
+  Path _buildPath() {
     final path = Path();
     final count = vertices.length;
     final first = closed ? _corner(0).$2 : vertices.first.offset;
