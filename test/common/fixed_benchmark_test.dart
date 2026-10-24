@@ -23,6 +23,6 @@ void main() {
 
     expect(result, hasLength(limit));
     expect(result.first, 0);
-    expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 6)));
+    expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 1)));
   });
 }

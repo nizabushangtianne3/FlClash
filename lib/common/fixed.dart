@@ -87,8 +87,9 @@ List<T> retainTrimmedHead<T>(
   }
   final first = latest.first;
   var index = -1;
+  final searchEnd = current.length > limit ? limit : current.length;
   if (keyOf == null) {
-    for (var i = 0; i < current.length; i++) {
+    for (var i = 0; i < searchEnd; i++) {
       if (identical(current[i], first)) {
         index = i;
         break;
@@ -96,7 +97,7 @@ List<T> retainTrimmedHead<T>(
     }
   } else {
     final firstKey = keyOf(first);
-    for (var i = 0; i < current.length; i++) {
+    for (var i = 0; i < searchEnd; i++) {
       if (keyOf(current[i]) == firstKey) {
         index = i;
         break;
