@@ -51,6 +51,67 @@ func writeBaseProfile(t *testing.T, profile string) string {
 	return path
 }
 
+// The base trims the sections it returns, so the parse the next read reuses
+// has to keep them: getProfileOutbounds reads exactly what the base dropped.
+func TestProfileBaseLeavesTheSharedParseWhole(t *testing.T) {
+	t.Cleanup(forgetProfileRaw)
+	path := writeBaseProfile(t, baseProfile)
+
+	base, err := handleGetProfileBase(path)
+	if err != nil {
+		t.Fatalf("getProfileBase: %v", err)
+	}
+	if base.Proxies != 2 || base.ProxyGroups != 1 {
+		t.Fatalf("base = %d proxies, %d groups, want 2 and 1", base.Proxies, base.ProxyGroups)
+	}
+
+	outbounds, err := handleGetProfileOutbounds(path)
+	if err != nil {
+		t.Fatalf("getProfileOutbounds: %v", err)
+	}
+	if len(outbounds.Proxies) != 2 {
+		t.Errorf("outbounds = %v, want the two proxies the base reported", outbounds.Proxies)
+	}
+	if len(outbounds.ProxyGroups) != 1 {
+		t.Errorf("outbound groups = %v, want the one group the base reported", outbounds.ProxyGroups)
+	}
+}
+
+func TestReadRawConfigReusesTheParse(t *testing.T) {
+	t.Cleanup(forgetProfileRaw)
+	path := writeBaseProfile(t, baseProfile)
+
+	first, _, err := readRawConfig(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	second, _, err := readRawConfig(path)
+	if err != nil {
+		t.Fatalf("read again: %v", err)
+	}
+	if first != second {
+		t.Error("an unchanged profile was parsed again")
+	}
+
+	changed := strings.Replace(baseProfile, "mixed-port: 7000", "mixed-port: 7001", 1)
+	third, _, err := readRawConfig(writeBaseProfile(t, changed))
+	if err != nil {
+		t.Fatalf("read changed: %v", err)
+	}
+	if third == first {
+		t.Error("a changed profile was answered from the cache")
+	}
+
+	forgetProfileRaw()
+	fourth, _, err := readRawConfig(path)
+	if err != nil {
+		t.Fatalf("read after forgetting: %v", err)
+	}
+	if fourth == first {
+		t.Error("a forgotten profile was still answered from the cache")
+	}
+}
+
 // The overlay is the host's patch of what getProfileBase returned.
 func overlayOf(t *testing.T, base *ProfileBase, rules []string, patch map[string]any) string {
 	t.Helper()

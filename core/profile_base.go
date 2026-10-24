@@ -3,7 +3,6 @@ package core
 import (
 	"bufio"
 	"bytes"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -23,17 +22,12 @@ var profileBaseSections = []string{"proxies", "proxy-groups", "sub-rules"}
 
 func handleGetProfileBase(path string) (*ProfileBase, error) {
 	defer scheduleLoadMemoryRelease()
-	buf, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	digest := sha256.Sum256(buf)
-	raw, err := unmarshalRawConfig(buf)
+	raw, buf, err := readRawConfig(path)
 	if err != nil {
 		return nil, err
 	}
 	base := &ProfileBase{
-		Digest:      hex.EncodeToString(digest[:]),
+		Digest:      hex.EncodeToString(sha256Sum(buf)),
 		MatchRules:  []string{},
 		Proxies:     len(raw.Proxy),
 		ProxyGroups: len(raw.ProxyGroup),
@@ -44,18 +38,16 @@ func handleGetProfileBase(path string) (*ProfileBase, error) {
 			base.MatchRules = append(base.MatchRules, rule)
 		}
 	}
-	raw.Proxy, raw.ProxyGroup, raw.Rule, raw.SubRules = nil, nil, nil, nil
-	base.Config = raw
+	// A shallow copy leaves the cached parse whole for the next read.
+	trimmed := *raw
+	trimmed.Proxy, trimmed.ProxyGroup, trimmed.Rule, trimmed.SubRules = nil, nil, nil, nil
+	base.Config = &trimmed
 	return base, nil
 }
 
 func handleGetProfileOutbounds(path string) (*ProfileOutbounds, error) {
 	defer scheduleLoadMemoryRelease()
-	buf, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	raw, err := unmarshalRawConfig(buf)
+	raw, _, err := readRawConfig(path)
 	if err != nil {
 		return nil, err
 	}
@@ -260,6 +252,7 @@ func writeConfigDocument(path string, document *yaml.Node) error {
 		_ = os.Remove(temporary)
 		return err
 	}
+	forgetProfileRaw()
 	scheduleReclaimOwnership()
 	return nil
 }
