@@ -118,14 +118,15 @@ func mergeProfileBase(base *SetupBase) (*yaml.Node, error) {
 		return nil, fmt.Errorf("decrypt config error: %w", err)
 	}
 	retag := bytes.Contains(buf, []byte("short-id"))
-	var profileDocument, overlayDocument yaml.Node
-	if err := yaml.Unmarshal(buf, &profileDocument); err != nil {
+	profileDocument, err := readProfileDocument(buf)
+	if err != nil {
 		return nil, err
 	}
+	var overlayDocument yaml.Node
 	if err := yaml.Unmarshal([]byte(base.Overlay), &overlayDocument); err != nil {
 		return nil, err
 	}
-	profile, err := documentMapping(&profileDocument)
+	profile, err := documentMapping(profileDocument)
 	if err != nil {
 		return nil, err
 	}

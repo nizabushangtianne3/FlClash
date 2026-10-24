@@ -379,3 +379,126 @@ func TestEncodeConfigMappingKeepsEveryKeyAfterAnOpenEndedScalar(t *testing.T) {
 		t.Errorf("decoded %d rules, want all %d in order", len(decoded.Rules), len(rules))
 	}
 }
+
+// The merge reads a document the previous merge already let the writer inline
+// and retag, so a merge has to be a pure function of its inputs no matter how
+// often it has been through the writer.
+func TestMergeProfileBaseProducesTheSameDocumentTwice(t *testing.T) {
+	path := writeBaseProfile(t, baseProfile)
+	base, err := handleGetProfileBase(path)
+	if err != nil {
+		t.Fatalf("handleGetProfileBase = %v", err)
+	}
+	overlay := overlayOf(t, base, []string{"DOMAIN,added.test,DIRECT"}, nil)
+
+	encode := func() []byte {
+		t.Helper()
+		document, err := mergeProfileBase(&SetupBase{Path: path, Overlay: overlay})
+		if err != nil {
+			t.Fatalf("mergeProfileBase = %v", err)
+		}
+		inlineAliases(document)
+		var encoded bytes.Buffer
+		if err := encodeConfigMapping(&encoded, document.Content[0]); err != nil {
+			t.Fatalf("encode = %v", err)
+		}
+		return encoded.Bytes()
+	}
+
+	first := encode()
+	if !bytes.Contains(first, []byte("0123")) {
+		t.Errorf("first merge dropped the short-id: %s", first)
+	}
+	if !bytes.Contains(first, []byte("type: socks5")) {
+		t.Errorf("first merge left the anchor un-inlined: %s", first)
+	}
+	for attempt := 2; attempt <= 3; attempt++ {
+		again := encode()
+		if !bytes.Equal(first, again) {
+			t.Errorf("merge %d = %s, want %s", attempt, again, first)
+		}
+	}
+}
+
+func profileDocument(proxyCount int) []byte {
+  var document strings.Builder
+  document.WriteString("proxies:\n")
+  for index := range proxyCount {
+    fmt.Fprintf(&document,
+      "  - name: node-%04d\n    type: ss\n    server: 10.%d.%d.1\n    port: 443\n    cipher: aes-128-gcm\n    password: password\n",
+      index, index>>8, index&0xff)
+  }
+  document.WriteString("proxy-groups:\n  - name: Proxy\n    type: select\n    proxies: [DIRECT]\nrules:\n  - MATCH,DIRECT\n")
+  return []byte(document.String())
+}
+
+// The host merges a profile once to build it and again to apply it, and each
+// merge parses the whole profile document, so this is what one of them costs.
+// The merge reads the profile document back in every time, so the cost of
+// parsing it is the part worth knowing apart from the merge around it.
+func BenchmarkUnmarshalProfileDocument(b *testing.B) {
+  for _, proxyCount := range []int{200, 800} {
+    b.Run(fmt.Sprintf("proxies=%d", proxyCount), func(b *testing.B) {
+      buf := profileDocument(proxyCount)
+
+      b.ReportAllocs()
+      b.ResetTimer()
+      for i := 0; i < b.N; i++ {
+        var document yaml.Node
+        if err := yaml.Unmarshal(buf, &document); err != nil {
+          b.Fatal(err)
+        }
+      }
+    })
+  }
+}
+
+// The host merges the same profile twice per edit, once to build it and once to
+// apply it, so the merge that runs on the second call is the one that repeats.
+func BenchmarkMergeProfileBaseCached(b *testing.B) {
+  for _, proxyCount := range []int{200, 800} {
+    b.Run(fmt.Sprintf("proxies=%d", proxyCount), func(b *testing.B) {
+      path := filepath.Join(b.TempDir(), "profile.yaml")
+      if err := os.WriteFile(path, profileDocument(proxyCount), 0o644); err != nil {
+        b.Fatal(err)
+      }
+      base := &SetupBase{Path: path, Overlay: "rules:\n  - MATCH,DIRECT\n"}
+      if _, err := mergeProfileBase(base); err != nil {
+        b.Fatal(err)
+      }
+
+      b.ReportAllocs()
+      b.ResetTimer()
+      for i := 0; i < b.N; i++ {
+        if _, err := mergeProfileBase(base); err != nil {
+          b.Fatal(err)
+        }
+      }
+    })
+  }
+}
+
+func BenchmarkMergeProfileBase(b *testing.B) {
+  for _, proxyCount := range []int{200, 800} {
+    b.Run(fmt.Sprintf("proxies=%d", proxyCount), func(b *testing.B) {
+      path := filepath.Join(b.TempDir(), "profile.yaml")
+      base := &SetupBase{Path: path, Overlay: "rules:\n  - MATCH,DIRECT\n"}
+
+      b.ReportAllocs()
+      b.ResetTimer()
+      for i := 0; i < b.N; i++ {
+        b.StopTimer()
+        document := profileDocument(proxyCount)
+        document = append(document, []byte(fmt.Sprintf("# round %d\n", i))...)
+        if err := os.WriteFile(path, document, 0o644); err != nil {
+        b.Fatal(err)
+      }
+        b.StartTimer()
+
+        if _, err := mergeProfileBase(base); err != nil {
+          b.Fatal(err)
+        }
+      }
+    })
+  }
+}
