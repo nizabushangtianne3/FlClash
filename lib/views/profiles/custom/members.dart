@@ -787,6 +787,15 @@ class _MemberPickerState<M> extends ConsumerState<_MemberPicker<M>> {
     );
   }
 
+  /// Each answer rests on one text, and a rebuild remakes every entry. A
+  /// record compares by value, so the texts survive the keystrokes that
+  /// rebuilt the entries they belong to.
+  final _entryTexts = <_Entry, String>{};
+
+  bool _matchesQuery(_Entry entry) => _query.matchesText(
+    _entryTexts[entry] ??= SearchQuery.textOf([entry.title, entry.subtitle]),
+  );
+
   @override
   Widget build(BuildContext context) {
     final appLocalizations = context.appLocalizations;
@@ -794,9 +803,9 @@ class _MemberPickerState<M> extends ConsumerState<_MemberPicker<M>> {
       for (final category in _categories(appLocalizations))
         _Category(
           label: category.label,
-          entries: category.entries
-              .whereMatches(_query, (entry) => [entry.title, entry.subtitle])
-              .toList(),
+          entries: _query.isEmpty
+              ? category.entries
+              : category.entries.where(_matchesQuery).toList(),
         ),
     ].where((category) => category.entries.isNotEmpty).toList();
     final total = categories.fold(

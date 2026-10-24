@@ -9,6 +9,7 @@ import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
+import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/views/profiles/custom/groups.dart';
 import 'package:fl_clash/views/profiles/custom/members.dart';
 import 'package:fl_clash/widgets/widgets.dart';
@@ -19,6 +20,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart' show Override;
 
 import '../helpers/test_app.dart';
+import '../helpers/glyph_finders.dart';
 import '../helpers/test_profiles.dart';
 
 const _profileId = 1;
@@ -554,6 +556,88 @@ void main() {
       await tester.pumpAndSettle();
       expect(offered('http'), findsOneWidget);
       expect(offered('socks5'), findsNothing);
+    });
+
+    testWidgets('the picker search narrows to what the query names', (
+      tester,
+    ) async {
+      final l = currentAppLocalizations;
+      final proxies = StreamController<List<CustomProxy>>();
+      addTearDown(proxies.close);
+      proxies.add(const [
+        _home,
+        CustomProxy(
+          id: 2,
+          definition: {
+            'name': 'Tokyo',
+            'type': 'trojan',
+            'server': '2.2.2.2',
+            'port': 443,
+          },
+        ),
+        CustomProxy(
+          id: 3,
+          definition: {
+            'name': 'Osaka',
+            'type': 'ss',
+            'server': '3.3.3.3',
+            'port': 443,
+          },
+        ),
+      ]);
+      container = buildContainer(_group(), liveCustomProxies: proxies.stream);
+      final picker = find.byWidgetPredicate(
+        (widget) =>
+            widget.runtimeType.toString() == '_MemberPicker<ProxyGroup>',
+      );
+      Finder offered(String name) =>
+          find.descendant(of: picker, matching: find.text(name));
+      Finder searchField() =>
+          find.descendant(of: picker, matching: find.byType(TextField));
+
+      await pumpGroupSheet(tester);
+      await tester.ensureVisible(find.text(l.addNodes));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(l.addNodes));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byGlyph(AppGlyphs.search));
+      await tester.pumpAndSettle();
+      await tester.enterText(searchField(), 'trojan');
+      await tester.pumpAndSettle();
+      expect(offered('Tokyo'), findsOneWidget);
+      expect(offered('Osaka'), findsNothing);
+      expect(offered('DIRECT'), findsNothing);
+
+      // The text a query reads must follow the proxy that changed under it.
+      proxies.add(const [
+        _home,
+        CustomProxy(
+          id: 2,
+          definition: {
+            'name': 'Tokyo',
+            'type': 'vmess',
+            'server': '2.2.2.2',
+            'port': 443,
+          },
+        ),
+        CustomProxy(
+          id: 3,
+          definition: {
+            'name': 'Osaka',
+            'type': 'ss',
+            'server': '3.3.3.3',
+            'port': 443,
+          },
+        ),
+      ]);
+      await tester.pumpAndSettle();
+      expect(offered('Tokyo'), findsNothing);
+
+      await tester.enterText(searchField(), 'vmess');
+      await tester.pumpAndSettle();
+      expect(offered('Tokyo'), findsOneWidget);
+      expect(offered('Osaka'), findsNothing);
     });
 
     testWidgets('the picker adds taking in every proxy or provider as a member '
