@@ -147,10 +147,12 @@ class LocalProxyRoute {
 
 // The bypass list the system proxy applies, so this override has to agree with
 // it: `*` and `?` are wildcards, and a bare name also covers its subdomains.
+final _bypassWildcard = RegExp(r'[*?]');
+
 RegExp _bypassPattern(String domain) {
   final wildcard = domain.contains('*') || domain.contains('?');
   final expression = domain.splitMapJoin(
-    RegExp(r'[*?]'),
+    _bypassWildcard,
     onMatch: (match) => match.group(0) == '*' ? '.*' : '.',
     onNonMatch: RegExp.escape,
   );

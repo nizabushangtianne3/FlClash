@@ -502,6 +502,30 @@ void main() {
     expect(container.read(filterGroupsStateProvider('hk jp')).value, isEmpty);
   });
 
+  test('the proxy route bypass reads each entry the way the system does', () {
+    container
+        .read(networkSettingProvider.notifier)
+        .update(
+          (state) => state.copyWith(
+            bypassDomain: const ['example.com', '*.test.org', '10.0.0.1'],
+          ),
+        );
+
+    final bypass = container.read(localProxyRouteProvider).bypass;
+
+    expect(bypass, hasLength(3));
+    expect(bypass[0].hasMatch('example.com'), isTrue);
+    expect(bypass[0].hasMatch('sub.example.com'), isTrue);
+    expect(bypass[0].hasMatch('notexample.com'), isFalse);
+
+    expect(bypass[1].hasMatch('a.test.org'), isTrue);
+    expect(bypass[1].hasMatch('test.org'), isFalse);
+    expect(bypass[1].hasMatch('a.testXorg'), isFalse);
+
+    expect(bypass[2].hasMatch('10.0.0.1'), isTrue);
+    expect(bypass[2].hasMatch('10.0.0.2'), isFalse);
+  });
+
   test('runtime, VPN, tray, and DNS states follow live state', () async {
     container
         .read(runTimeProvider.notifier)
