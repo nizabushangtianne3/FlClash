@@ -43,7 +43,7 @@ func namedProxy(name string) constant.Proxy {
 // selectorGroup builds a real Selector over a compatible provider, so the
 // selection paths under test run against mihomo's own group rather than a stub
 // that could agree with a wrong assumption.
-func selectorGroup(t *testing.T, name string, members ...string) constant.Proxy {
+func selectorGroup(t testing.TB, name string, members ...string) constant.Proxy {
 	t.Helper()
 
 	proxies := make([]constant.Proxy, 0, len(members))
@@ -62,7 +62,9 @@ func selectorGroup(t *testing.T, name string, members ...string) constant.Proxy 
 	group, err := outboundgroup.NewSelector(
 		outboundgroup.GroupCommonOption{Name: name},
 		outboundgroup.SelectorOption{},
-		nil,
+		// A group document reports its empty fallback, so the group has to be
+		// built the way the parser builds one.
+		namedProxy("COMPATIBLE"),
 		[]cp.ProxyProvider{pd},
 	)
 	if err != nil {

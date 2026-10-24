@@ -100,25 +100,28 @@ func handleGetProxies() ProxiesData {
 	return ProxiesData{All: names, Proxies: views}
 }
 
-// Proxy.MarshalJSON encodes each node twice, with history the host never reads.
+// A group document carries its own name, so it reaches the host exactly as it
+// was encoded; decoding it to stamp the name back on cost more than every group
+// marshal together. The built-in GLOBAL is the one document that needs an edit.
 func proxyView(proxy constant.Proxy) any {
 	node := nodeView{Name: proxy.Name(), Type: proxy.Type().String()}
 	if !isProxyGroupType(proxy.Type()) {
 		return node
 	}
 	data, err := proxy.Adapter().MarshalJSON()
-	view := map[string]any{}
-	if err == nil {
-		err = json.Unmarshal(data, &view)
-	}
 	if err != nil {
 		log.Warnln("[APP] encode group %s: %v", node.Name, err)
 		return node
 	}
-	view["name"] = node.Name
-	if isBuiltInGlobal(proxy) {
-		view["hidden"] = true
+	if !isBuiltInGlobal(proxy) {
+		return json.RawMessage(data)
 	}
+	view := map[string]any{}
+	if err := json.Unmarshal(data, &view); err != nil {
+		log.Warnln("[APP] encode group %s: %v", node.Name, err)
+		return node
+	}
+	view["hidden"] = true
 	return view
 }
 
