@@ -1680,7 +1680,7 @@ abstract class Rule with _$Rule {
   factory Rule.parse(String value, {int? id}) {
     id ??= snowflake.id;
     final fields = value.split(',').map((item) => item.trim()).toList();
-    final type = fields.first.toUpperCase();
+    final type = _ruleTypeOf(value);
     if (type.isEmpty) {
       return Rule(
         id: id,
@@ -1859,9 +1859,16 @@ Object? _loadScalar(String text) {
   }
 }
 
+/// The leading field of a rule line. Shared so a rejection in the importer and
+/// the parse in `Rule.parse` can never read a different type.
+String _ruleTypeOf(String value) {
+  final comma = value.indexOf(',');
+  final head = comma == -1 ? value : value.substring(0, comma);
+  return head.trim().toUpperCase();
+}
+
 Rule _ruleAt(String value, int line, Map<String, List<int>> unusedIds) {
-  final type = value.split(',').first.trim().toUpperCase();
-  if (!RuleAction.values.any((action) => action.value == type)) {
+  if (RuleAction.fromValue(_ruleTypeOf(value)) == null) {
     throw RuleLineException(line);
   }
   final rule = Rule.parse(value);

@@ -339,7 +339,7 @@ String _searchTextOf(Proxy proxy) {
   final text =
       _proxySearchTextsByKey[key] ?? SearchQuery.textOf(proxy.searchFields);
   if (_proxySearchTextsByKey.length >= _proxySearchTextCacheLimit) {
-    _proxySearchTextsByKey.clear();
+    _proxySearchTextsByKey.remove(_proxySearchTextsByKey.keys.first);
   }
   _proxySearchTextsByKey[key] = text;
   return _proxySearchTexts[proxy] = text;

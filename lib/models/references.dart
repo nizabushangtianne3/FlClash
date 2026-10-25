@@ -112,10 +112,25 @@ String _renamedPolicyServers(String value, Map<String, String> names) {
 
 const _ruleSetPrefix = 'rule-set:';
 
+/// Reads the prefix without lower-casing a copy of every rule entry first.
+bool _hasRuleSetPrefix(String value) {
+  if (value.length < _ruleSetPrefix.length) {
+    return false;
+  }
+  for (var i = 0; i < _ruleSetPrefix.length; i++) {
+    final unit = value.codeUnitAt(i);
+    final lower = unit >= 0x41 && unit <= 0x5A ? unit + 0x20 : unit;
+    if (lower != _ruleSetPrefix.codeUnitAt(i)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// mihomo reads `rule-set:a,b` up to a second colon, the prefix in any case,
 /// except a policy key naming one set, which it takes whole.
 (int, int)? _ruleSetRange(String entry, {bool policyKey = false}) {
-  if (!entry.toLowerCase().startsWith(_ruleSetPrefix)) {
+  if (!_hasRuleSetPrefix(entry)) {
     return null;
   }
   const start = _ruleSetPrefix.length;
