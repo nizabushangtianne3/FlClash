@@ -70,7 +70,6 @@ class YamlSchema {
   Map<String, YamlSchema> fieldsFor(String? type) {
     return _fieldsForCacheOf(this, type);
   }
-
 }
 
 final _fieldsByLowerName =
@@ -79,22 +78,20 @@ final _fieldsForCache = Expando<Map<String?, Map<String, YamlSchema>>>();
 
 /// The schemas are const and shared, so a type's fields are built once per
 /// schema rather than once per completion request.
-Map<String, YamlSchema> _fieldsForCacheOf(
-  YamlSchema schema,
-  String? type,
-) => (_fieldsForCache[schema] ??= {}).putIfAbsent(type, () {
-  if (schema.variants.isEmpty) {
-    return schema.fields;
-  }
-  final variant = schema.variants[type];
-  return {
-    ...schema.fields,
-    if (variant != null)
-      ...variant
-    else
-      for (final fields in schema.variants.values) ...fields,
-  };
-});
+Map<String, YamlSchema> _fieldsForCacheOf(YamlSchema schema, String? type) =>
+    (_fieldsForCache[schema] ??= {}).putIfAbsent(type, () {
+      if (schema.variants.isEmpty) {
+        return schema.fields;
+      }
+      final variant = schema.variants[type];
+      return {
+        ...schema.fields,
+        if (variant != null)
+          ...variant
+        else
+          for (final fields in schema.variants.values) ...fields,
+      };
+    });
 
 extension YamlSchemaExt on YamlSchema {
   /// The field [name] names, whatever case it was written in. A relaxed parse
