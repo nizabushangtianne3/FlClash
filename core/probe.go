@@ -181,7 +181,7 @@ const (
 )
 
 var (
-	probeConnsMu sync.Mutex
+	probeConnsMu   sync.Mutex
 	probeConnsPool = map[probeConnsKey]*probeConns{}
 )
 
@@ -208,7 +208,7 @@ func probeConnsFor(key probeConnsKey) (*probeConns, error) {
 	conns := &probeConns{
 		dialer: dialer,
 		transport: &http.Transport{
-			DialContext: dialer.dial,
+			DialContext:         dialer.dial,
 			TLSHandshakeTimeout: defaultProbeTimeout,
 			TLSClientConfig:     tlsConfig,
 			MaxIdleConns:        probeConnIdleTotal,

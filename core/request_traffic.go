@@ -28,7 +28,7 @@ type watchedRequest struct {
 	// missing from the manager on its first report may still be opening.
 	fresh         bool
 	closedReports int
-	alive bool
+	alive         bool
 }
 
 type requestTrafficWatch struct {
