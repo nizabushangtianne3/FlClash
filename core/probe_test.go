@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/tunnel"
 )
 
@@ -19,6 +22,37 @@ func probeServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return server
+}
+
+// countingListener answers the question the pooled transport is judged by:
+// how many connections the peer had to accept.
+type countingListener struct {
+	net.Listener
+	accepted *atomic.Int32
+}
+
+func (l countingListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err == nil {
+		l.accepted.Add(1)
+	}
+	return conn, err
+}
+
+func probeConnectionServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	accepted := &atomic.Int32{}
+	server := &httptest.Server{
+		Listener: countingListener{Listener: listener, accepted: accepted},
+		Config:   &http.Server{Handler: handler},
+	}
+	server.Start()
+	t.Cleanup(server.Close)
+	return server, accepted
 }
 
 func withProbeProxies(t *testing.T, names ...string) {
@@ -112,6 +146,22 @@ func TestReadProbeBodyStopsOnceTheMarkerArrives(t *testing.T) {
 	}
 	if len(body) >= len(page) || seen != 2 {
 		t.Errorf("read %d of %d bytes in %d chunks, want it to stop at the marker", len(body), len(page), seen)
+	}
+}
+
+func TestReadProbeBodyKeepsOnlyTheWindowWhenTheMarkerIsDeep(t *testing.T) {
+	marker := `"currentTerritory":"JP"`
+	page := strings.Repeat("x", 4*probeScanChunk) + marker + strings.Repeat("y", 4*probeScanChunk)
+
+	body := readProbeBody(strings.NewReader(page), int64(len(page)), func(tail string) bool {
+		return strings.Contains(tail, marker)
+	})
+
+	if !strings.Contains(body, marker) {
+		t.Fatal("a marker that sat four chunks in was lost")
+	}
+	if len(body) > probeScanChunk+probeScanOverlap {
+		t.Errorf("body length = %d, want no more than one chunk plus its overlap", len(body))
 	}
 }
 
@@ -324,5 +374,74 @@ func TestHandleProbeTimesOutWhileTheTunnelStaysSuspended(t *testing.T) {
 
 	if result == nil || result.Error != probeErrorTimeout {
 		t.Fatalf("result = %+v, want a timeout", result)
+	}
+}
+
+func TestProbeRequestsShareTheConnectionOfAServiceCheck(t *testing.T) {
+	server, accepted := probeConnectionServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("region"))
+	})
+	withProbeProxies(t, "node-pool")
+	forgetProbeConnections()
+	t.Cleanup(forgetProbeConnections)
+
+	// A check walks the same host in sequence: register a device, exchange the
+	// assertion, ask the session. Each step is its own probe request.
+	requests := []*ProbeParams{
+		{Url: server.URL + "/devices", ProxyName: "node-pool", Timeout: 2000, MaxBody: 64},
+		{Url: server.URL + "/token", ProxyName: "node-pool", Timeout: 2000, MaxBody: 64},
+		{Url: server.URL + "/graphql", ProxyName: "node-pool", Timeout: 2000, MaxBody: 64},
+	}
+	for index, params := range requests {
+		result := handleProbe(params)
+		if result == nil || result.Error != "" {
+			t.Fatalf("probe %d = %+v, want a success", index, result)
+		}
+		if result.Body != "region" {
+			t.Errorf("probe %d body = %q", index, result.Body)
+		}
+		if !slices.Equal(result.Chains, []string{"node-pool"}) {
+			t.Errorf("probe %d chains = %v, want the proxy it went through", index, result.Chains)
+		}
+	}
+
+	if got := accepted.Load(); got != 1 {
+		t.Errorf("connections accepted = %d, want the requests after the first to reuse it", got)
+	}
+}
+
+func TestProbeConnectionsAreKeyedByTheTrustTheyCarry(t *testing.T) {
+	forgetProbeConnections()
+	t.Cleanup(forgetProbeConnections)
+
+	plain, err := probeConnsFor(probeConnsKey{})
+	if err != nil {
+		t.Fatalf("probeConnsFor: %v", err)
+	}
+	zeroTrust, err := probeConnsFor(probeConnsKey{tls: ca.Option{ZeroTrust: true}})
+	if err != nil {
+		t.Fatalf("probeConnsFor zero trust: %v", err)
+	}
+	if plain == zeroTrust {
+		t.Error("a differing trust was answered with the same transport, so it inherited the other handshakes")
+	}
+}
+
+func TestProbeConnectionsPoolStaysBounded(t *testing.T) {
+	forgetProbeConnections()
+	t.Cleanup(forgetProbeConnections)
+
+	for index := 0; index < probeConnsPoolSize+2; index++ {
+		proxy := namedProxy(fmt.Sprintf("pool-%d", index))
+		if _, err := probeConnsFor(probeConnsKey{proxy: proxy}); err != nil {
+			t.Fatalf("probeConnsFor %d: %v", index, err)
+		}
+	}
+
+	probeConnsMu.Lock()
+	size := len(probeConnsPool)
+	probeConnsMu.Unlock()
+	if size > probeConnsPoolSize {
+		t.Errorf("pool size = %d, want at most %d", size, probeConnsPoolSize)
 	}
 }

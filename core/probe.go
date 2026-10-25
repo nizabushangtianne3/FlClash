@@ -158,6 +158,75 @@ func notifyProbeRoute(tracker statistic.Tracker) {
 	})
 }
 
+// Multi-request checks and repeating probes share one transport per proxy; the
+// route stamp in the key stops a reload from inheriting the old connections.
+type probeConns struct {
+	dialer    *probeDialer
+	transport *http.Transport
+}
+
+type probeConnsKey struct {
+	epoch uint64
+	picks uint64
+	proxy constant.Proxy
+	tls   ca.Option
+}
+
+const (
+	probeConnsPoolSize = 8
+
+	probeConnIdleTimeout = 30 * time.Second
+	probeConnIdleTotal   = 16
+	probeConnIdlePerHost = 2
+)
+
+var (
+	probeConnsMu sync.Mutex
+	probeConnsPool = map[probeConnsKey]*probeConns{}
+)
+
+func forgetProbeConnections() {
+	probeConnsMu.Lock()
+	defer probeConnsMu.Unlock()
+	closeProbeConns()
+}
+
+func probeConnsFor(key probeConnsKey) (*probeConns, error) {
+	probeConnsMu.Lock()
+	defer probeConnsMu.Unlock()
+	if conns, ok := probeConnsPool[key]; ok {
+		return conns, nil
+	}
+	if len(probeConnsPool) >= probeConnsPoolSize {
+		closeProbeConns()
+	}
+	tlsConfig, err := ca.GetTLSConfig(key.tls)
+	if err != nil {
+		return nil, err
+	}
+	dialer := &probeDialer{proxy: key.proxy}
+	conns := &probeConns{
+		dialer: dialer,
+		transport: &http.Transport{
+			DialContext: dialer.dial,
+			TLSHandshakeTimeout: defaultProbeTimeout,
+			TLSClientConfig:     tlsConfig,
+			MaxIdleConns:        probeConnIdleTotal,
+			MaxIdleConnsPerHost: probeConnIdlePerHost,
+			IdleConnTimeout:     probeConnIdleTimeout,
+		},
+	}
+	probeConnsPool[key] = conns
+	return conns, nil
+}
+
+func closeProbeConns() {
+	for _, stale := range probeConnsPool {
+		stale.transport.CloseIdleConnections()
+	}
+	clear(probeConnsPool)
+}
+
 func probeErrorKind(err error) string {
 	var netErr net.Error
 	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
@@ -177,6 +246,8 @@ type probeRequest struct {
 
 	// A followed redirect loses the Location that Netflix names its region in.
 	noRedirect bool
+
+	tlsOption ca.Option
 
 	// until sees the latest chunk and probeScanOverlap bytes before it.
 	until func(tail string) bool
@@ -203,25 +274,21 @@ func runProbe(parent context.Context, req probeRequest) *ProbeResult {
 // IP race and single probes for the sweep's whole budget.
 func runProbeRequest(parent context.Context, req probeRequest, dialSlots *slots) *ProbeResult {
 	result := &ProbeResult{Url: req.url, Chains: []string{}}
-	result.CoreEpoch, result.PicksVersion = routeStamp()
+	epoch, picks := routeStamp()
+	result.CoreEpoch, result.PicksVersion = epoch, picks
 	fail := func(err error) *ProbeResult {
 		result.Error = probeErrorKind(err)
 		result.Message = err.Error()
 		return result
 	}
 
-	dialer := &probeDialer{}
+	var proxy constant.Proxy
 	if req.proxyName != "" {
-		dialer.proxy = lookupProxy(req.proxyName)
-		if dialer.proxy == nil {
+		proxy = lookupProxy(req.proxyName)
+		if proxy == nil {
 			return fail(fmt.Errorf("proxy %q is not part of the applied config", req.proxyName))
 		}
 	}
-	tlsConfig, err := ca.GetTLSConfig(ca.Option{})
-	if err != nil {
-		return fail(err)
-	}
-
 	timeout := req.timeout
 	if timeout <= 0 {
 		timeout = defaultProbeTimeout
@@ -251,15 +318,11 @@ func runProbeRequest(parent context.Context, req probeRequest, dialSlots *slots)
 	for name, value := range req.headers {
 		request.Header.Set(name, value)
 	}
-	transport := &http.Transport{
-		DialContext:         dialer.dial,
-		TLSClientConfig:     tlsConfig,
-		TLSHandshakeTimeout: timeout,
-		MaxIdleConns:        1,
-		IdleConnTimeout:     timeout,
+	conns, err := probeConnsFor(probeConnsKey{epoch: epoch, picks: picks, proxy: proxy, tls: req.tlsOption})
+	if err != nil {
+		return fail(err)
 	}
-	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport}
+	client := &http.Client{Transport: conns.transport}
 	if req.noRedirect {
 		client.CheckRedirect = func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -278,7 +341,7 @@ func runProbeRequest(parent context.Context, req probeRequest, dialSlots *slots)
 	result.StatusCode = response.StatusCode
 	result.header = response.Header
 	result.Url = response.Request.URL.String()
-	if route := dialer.route(); route != nil {
+	if route := conns.dialer.route(); route != nil {
 		result.Chains = route.chains
 		result.Rule = route.rule
 		result.RulePayload = route.rulePayload
@@ -289,20 +352,24 @@ func runProbeRequest(parent context.Context, req probeRequest, dialSlots *slots)
 	return result
 }
 
+// The window covers at least what the whole body would have shown the marker
+// in, so detection is unchanged; only the body it keeps is smaller.
 func readProbeBody(body io.Reader, maxBody int64, until func(string) bool) string {
 	limited := io.LimitReader(body, maxBody)
 	if until == nil {
 		payload, _ := io.ReadAll(limited)
 		return string(payload)
 	}
-	var buffer bytes.Buffer
+	window := make([]byte, 0, probeScanChunk+probeScanOverlap)
 	chunk := make([]byte, probeScanChunk)
 	for {
 		n, err := limited.Read(chunk)
 		if n > 0 {
-			start := max(0, buffer.Len()-probeScanOverlap)
-			buffer.Write(chunk[:n])
-			if until(string(buffer.Bytes()[start:])) {
+			if keep := cap(window) - n; keep < len(window) {
+				window = append(window[:0], window[len(window)-keep:]...)
+			}
+			window = append(window, chunk[:n]...)
+			if until(string(window)) {
 				break
 			}
 		}
@@ -310,5 +377,5 @@ func readProbeBody(body io.Reader, maxBody int64, until func(string) bool) strin
 			break
 		}
 	}
-	return buffer.String()
+	return string(window)
 }
