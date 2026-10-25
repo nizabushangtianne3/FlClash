@@ -46,141 +46,126 @@ class ConnectionsSnapshot {
 
 @Riverpod(keepAlive: true)
 class Connections extends _$Connections {
-  static const _countInterval = Duration(seconds: 3);
-  static const _snapshotInterval = Duration(milliseconds: 2500);
+  /// A read that comes after a gap answers the whole table: what the Core did
+  /// while nobody asked is unknown.
+  static const _staleAfter = Duration(seconds: 5);
 
-  int _snapshotWatchers = 0;
-  int _countWatchers = 0;
   bool _polling = false;
-  Timer? _timer;
-  Duration? _interval;
-  Future<List<TrackerInfo>> Function()? _snapshotReader;
-  Future<int> Function()? _countReader;
+  bool _resync = true;
+  DateTime? _lastRead;
+  Map<String, TrackerInfo> _rows = {};
+  Future<ConnectionDelta> Function({bool resync})? _reader;
 
   @override
   ConnectionsSnapshot build() {
-    ref.onDispose(_stopTimer);
-    ref.listen(appVisibleProvider, (_, visible) {
-      if (visible) {
-        _syncTimer();
-      } else {
-        _stopTimer();
-      }
-    });
     return const ConnectionsSnapshot();
   }
 
-  void attachCount(Future<int> Function()? reader) {
-    if (reader != null) {
-      _countReader = reader;
-    }
-    _countWatchers++;
-    _syncTimer();
+  void useReader(Future<ConnectionDelta> Function({bool resync})? reader) {
+    _reader = reader;
   }
 
-  void detachCount() {
-    if (_countWatchers == 0) {
+  /// Answers the Core and folds the answer into the table the app reads. A page
+  /// polling faster than [staleAfter] is answered with what moved, so a page
+  /// open over a busy Core stops paying for every row on every read.
+  Future<void> refresh() {
+    _resync =
+        _resync ||
+        _lastRead == null ||
+        DateTime.now().difference(_lastRead!) > _staleAfter;
+    return _read(resync: _resync);
+  }
+
+  /// The Core reports each connection's counters as they move, so the table
+  /// does not wait for the next read to show them.
+  void updateTraffic(Map<String, RequestTraffic> traffic) {
+    if (traffic.isEmpty || !ref.mounted) {
       return;
     }
-    _countWatchers--;
-    if (_countWatchers == 0) {
-      _countReader = null;
+    var changed = false;
+    for (final entry in traffic.entries) {
+      final row = _rows[entry.key];
+      if (row == null) {
+        continue;
+      }
+      final upload = entry.value.upload;
+      final download = entry.value.download;
+      if (row.upload == upload && row.download == download) {
+        continue;
+      }
+      _rows[entry.key] = row.copyWith(upload: upload, download: download);
+      changed = true;
     }
-    _syncTimer();
-  }
-
-  void attachSnapshot(Future<List<TrackerInfo>> Function()? reader) {
-    if (reader != null) {
-      _snapshotReader = reader;
-    }
-    _snapshotWatchers++;
-    _syncTimer();
-  }
-
-  void detachSnapshot() {
-    if (_snapshotWatchers == 0) {
+    if (!changed) {
       return;
     }
-    _snapshotWatchers--;
-    if (_snapshotWatchers == 0) {
-      _snapshotReader = null;
-    }
-    _syncTimer();
+    state = ConnectionsSnapshot(
+      count: _rows.length,
+      connections: _rows.values.toList(),
+    );
   }
 
-  Duration? get _nextInterval {
-    if (_snapshotWatchers > 0) {
-      return _snapshotInterval;
-    }
-    if (_countWatchers > 0) {
-      return _countInterval;
-    }
-    return null;
-  }
-
-  void _syncTimer() {
-    final interval = _nextInterval;
-    if (interval == null || !ref.read(appVisibleProvider)) {
-      _stopTimer();
-      return;
-    }
-    if (_timer != null && _interval == interval) {
-      return;
-    }
-    _stopTimer();
-    _interval = interval;
-    scheduleMicrotask(_poll);
-    _timer = Timer.periodic(interval, (_) => unawaited(Future(_poll)));
-  }
-
-  void _stopTimer() {
-    _timer?.cancel();
-    _timer = null;
-    _interval = null;
-  }
-
-  Future<void> _poll() async {
+  Future<void> _read({required bool resync}) async {
     if (_polling) {
       return;
     }
     _polling = true;
     try {
-      if (_snapshotWatchers > 0) {
-        final connections =
-            await (_snapshotReader ??
-                ref.read(coreHandlerProvider).getConnections)();
-        if (_canPublish) {
-          state = ConnectionsSnapshot(
-            count: connections.length,
-            connections: connections,
+      final delta =
+          await (_reader ?? ref.read(coreHandlerProvider).getConnections)(
+            resync: resync,
           );
-        }
-        return;
-      }
-      if (_countWatchers == 0) {
-        return;
-      }
-      if (_countReader == null &&
-          ref.read(coreStatusProvider) != CoreStatus.connected) {
-        state = const ConnectionsSnapshot();
-        return;
-      }
-      final count =
-          await (_countReader ??
-              ref.read(coreHandlerProvider).getConnectionCount)();
-      if (_canPublish) {
-        state = state.copyWith(count: count);
-      }
+      _lastRead = DateTime.now();
+      _merge(delta, resync: resync);
     } catch (error) {
       commonPrint.log(
         'updateConnections error: $error',
         logLevel: coreFailureLogLevel(error),
       );
+      // A table the Core no longer answers for is not worth keeping.
+      _clear();
     } finally {
       _polling = false;
     }
   }
 
-  bool get _canPublish =>
-      ref.mounted && _nextInterval != null && ref.read(appVisibleProvider);
+  void _merge(ConnectionDelta delta, {required bool resync}) {
+    // A resync answers the whole table, so it replaces what the app holds
+    // instead of folding into it.
+    final rows = resync
+        ? <String, TrackerInfo>{}
+        : Map<String, TrackerInfo>.of(_rows);
+    var changed = resync;
+    for (final id in delta.removed) {
+      if (rows.remove(id) != null) {
+        changed = true;
+      }
+    }
+    for (final row in delta.added) {
+      rows[row.id] = row;
+      changed = true;
+    }
+    // A table that no longer holds what the Core counts has missed an answer,
+    // so the next read asks for the whole table again.
+    _resync = rows.length != delta.count;
+    if (!changed) {
+      return;
+    }
+    _rows = rows;
+    state = ConnectionsSnapshot(
+      // The Core's own count leads: the table is what this app holds, and the
+      // two disagree only until an answer it missed is asked for again.
+      count: delta.count,
+      connections: rows.values.toList(),
+    );
+  }
+
+  void _clear() {
+    if (_rows.isEmpty) {
+      return;
+    }
+    _rows = {};
+    _resync = true;
+    state = const ConnectionsSnapshot();
+  }
 }

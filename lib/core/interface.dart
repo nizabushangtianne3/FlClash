@@ -111,7 +111,7 @@ mixin CoreInterface {
 
   Future<bool> crash();
 
-  FutureOr<List<TrackerInfo>> getConnections();
+  FutureOr<ConnectionDelta> getConnections({bool resync});
 
   FutureOr<int> getConnectionCount();
 
@@ -503,9 +503,12 @@ abstract class CoreHandlerInterface with CoreInterface {
   }
 
   @override
-  Future<List<TrackerInfo>> getConnections() async {
-    final data = await _invokeMethod<Object>(method: CoreMethod.getConnections);
-    return data is List<TrackerInfo> ? data : trackerInfosOf(data);
+  Future<ConnectionDelta> getConnections({bool resync = false}) async {
+    final data = await _invokeMethod<Object>(
+      method: CoreMethod.getConnections,
+      arguments: {'resync': resync},
+    );
+    return data is ConnectionDelta ? data : connectionDeltaOf(data);
   }
 
   @override

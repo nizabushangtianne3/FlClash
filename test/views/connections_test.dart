@@ -101,7 +101,9 @@ void main() {
   testWidgets('shows the empty state when core reports no connections', (
     tester,
   ) async {
-    when(core.getConnections).thenAnswer((_) async => const <TrackerInfo>[]);
+    when(
+      () => core.getConnections(resync: any(named: 'resync')),
+    ).thenAnswer((_) async => const ConnectionDelta());
 
     await pumpConnections(tester);
 
@@ -114,14 +116,21 @@ void main() {
   testWidgets('shows nothing until core answers, then its rows at once', (
     tester,
   ) async {
-    final pending = Completer<List<TrackerInfo>>();
-    when(core.getConnections).thenAnswer((_) => pending.future);
+    final pending = Completer<ConnectionDelta>();
+    when(
+      () => core.getConnections(resync: any(named: 'resync')),
+    ).thenAnswer((_) => pending.future);
 
     await pumpConnections(tester);
     expect(find.byType(NullStatus), findsNothing);
     expect(find.textContaining('alpha.test'), findsNothing);
 
-    pending.complete([_tracker(id: 'a', host: 'alpha.test')]);
+    pending.complete(
+      ConnectionDelta(
+        added: [_tracker(id: 'a', host: 'alpha.test')],
+        count: 1,
+      ),
+    );
     await tester.pump();
     await tester.pump();
 
@@ -135,9 +144,12 @@ void main() {
   testWidgets('shows its first connections while its page is pushed in', (
     tester,
   ) async {
-    when(
-      core.getConnections,
-    ).thenAnswer((_) async => [_tracker(id: 'a', host: 'alpha.test')]);
+    when(() => core.getConnections(resync: any(named: 'resync'))).thenAnswer(
+      (_) async => ConnectionDelta(
+        added: [_tracker(id: 'a', host: 'alpha.test')],
+        count: 1,
+      ),
+    );
     tester.view.physicalSize = const Size(1400, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -173,11 +185,14 @@ void main() {
   });
 
   testWidgets('renders one row per reported connection', (tester) async {
-    when(core.getConnections).thenAnswer(
-      (_) async => [
-        _tracker(id: 'a', host: 'alpha.test'),
-        _tracker(id: 'b', host: 'beta.test'),
-      ],
+    when(() => core.getConnections(resync: any(named: 'resync'))).thenAnswer(
+      (_) async => ConnectionDelta(
+        added: [
+          _tracker(id: 'a', host: 'alpha.test'),
+          _tracker(id: 'b', host: 'beta.test'),
+        ],
+        count: 2,
+      ),
     );
 
     await pumpConnections(tester);
@@ -194,17 +209,20 @@ void main() {
   testWidgets('orders rows by total traffic, then newest first', (
     tester,
   ) async {
-    when(core.getConnections).thenAnswer(
-      (_) async => [
-        _tracker(id: 'a', host: 'alpha.test', download: 100),
-        _tracker(id: 'b', host: 'beta.test', upload: 300, download: 300),
-        _tracker(
-          id: 'c',
-          host: 'gamma.test',
-          download: 100,
-          start: DateTime.utc(2026, 2),
-        ),
-      ],
+    when(() => core.getConnections(resync: any(named: 'resync'))).thenAnswer(
+      (_) async => ConnectionDelta(
+        added: [
+          _tracker(id: 'a', host: 'alpha.test', download: 100),
+          _tracker(id: 'b', host: 'beta.test', upload: 300, download: 300),
+          _tracker(
+            id: 'c',
+            host: 'gamma.test',
+            download: 100,
+            start: DateTime.utc(2026, 2),
+          ),
+        ],
+        count: 3,
+      ),
     );
 
     await pumpConnections(tester);
@@ -225,7 +243,10 @@ void main() {
       _tracker(id: 'a', host: 'alpha.test', chains: const ['Tokyo', 'Proxy']),
       _tracker(id: 'b', host: 'beta.test'),
     ];
-    when(core.getConnections).thenAnswer((_) async => connections);
+    when(() => core.getConnections(resync: any(named: 'resync'))).thenAnswer(
+      (_) async =>
+          ConnectionDelta(added: connections, count: connections.length),
+    );
     when(() => core.closeConnection(any())).thenAnswer((_) async => true);
 
     await pumpConnections(tester);
@@ -279,10 +300,13 @@ void main() {
   testWidgets('a live table keeps the totals ahead of protocol and duration', (
     tester,
   ) async {
-    when(core.getConnections).thenAnswer(
-      (_) async => [
-        _tracker(id: 'a', host: 'alpha.test', upload: 512, download: 1536),
-      ],
+    when(() => core.getConnections(resync: any(named: 'resync'))).thenAnswer(
+      (_) async => ConnectionDelta(
+        added: [
+          _tracker(id: 'a', host: 'alpha.test', upload: 512, download: 1536),
+        ],
+        count: 1,
+      ),
     );
 
     await pumpConnections(tester, width: 1100);
@@ -307,12 +331,15 @@ void main() {
   });
 
   testWidgets('a sorted table keeps its order across polls', (tester) async {
-    when(core.getConnections).thenAnswer(
-      (_) async => [
-        _tracker(id: 'a', host: 'alpha.test', process: 'zsh', download: 300),
-        _tracker(id: 'b', host: 'beta.test', process: 'curl', download: 200),
-        _tracker(id: 'c', host: 'gamma.test', process: 'make', download: 100),
-      ],
+    when(() => core.getConnections(resync: any(named: 'resync'))).thenAnswer(
+      (_) async => ConnectionDelta(
+        added: [
+          _tracker(id: 'a', host: 'alpha.test', process: 'zsh', download: 300),
+          _tracker(id: 'b', host: 'beta.test', process: 'curl', download: 200),
+          _tracker(id: 'c', host: 'gamma.test', process: 'make', download: 100),
+        ],
+        count: 3,
+      ),
     );
 
     await pumpConnections(tester);
@@ -335,7 +362,9 @@ void main() {
   });
 
   testWidgets('keeps the empty state when core throws', (tester) async {
-    when(core.getConnections).thenThrow(StateError('core down'));
+    when(
+      () => core.getConnections(resync: any(named: 'resync')),
+    ).thenThrow(StateError('core down'));
 
     await pumpConnections(tester);
 
@@ -346,7 +375,9 @@ void main() {
   });
 
   testWidgets('stops polling once the view is disposed', (tester) async {
-    when(core.getConnections).thenAnswer((_) async => const <TrackerInfo>[]);
+    when(
+      () => core.getConnections(resync: any(named: 'resync')),
+    ).thenAnswer((_) async => const ConnectionDelta());
 
     await pumpConnections(tester);
     await teardownView(tester);
@@ -354,6 +385,6 @@ void main() {
 
     await tester.pump(const Duration(seconds: 3));
 
-    verifyNever(core.getConnections);
+    verifyNever(() => core.getConnections(resync: any(named: 'resync')));
   });
 }

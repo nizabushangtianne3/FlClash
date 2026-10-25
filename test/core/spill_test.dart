@@ -54,7 +54,7 @@ void main() {
     final file = spill(spillDirectory, {
       'id': '4',
       'result': {
-        'connections': [
+        'added': [
           {
             'id': 'c1',
             'metadata': {'network': 'tcp'},
@@ -64,6 +64,8 @@ void main() {
             'rulePayload': '',
           },
         ],
+        'removed': [],
+        'count': 1,
       },
     });
 
@@ -72,7 +74,7 @@ void main() {
       method: CoreMethod.getConnections,
     );
 
-    expect(response.unwrap<List<TrackerInfo>>()?.single.id, 'c1');
+    expect(response.unwrap<ConnectionDelta>()?.added.single.id, 'c1');
   });
 
   test('refuses a file outside the spill directory', () async {

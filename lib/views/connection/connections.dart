@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/controller.dart';
-import 'package:fl_clash/core/method.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/features/features.dart';
 import 'package:fl_clash/models/models.dart';
@@ -14,7 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ConnectionsView extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
-  final Future<List<TrackerInfo>> Function()? connectionsReader;
+  final Future<ConnectionDelta> Function({bool resync})? connectionsReader;
 
   const ConnectionsView({
     super.key,
@@ -37,12 +36,18 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
   final _speedRanker = TrackerSpeedRanker();
   late final ScrollController _scrollController;
   var _loaded = false;
+  ProviderSubscription<ConnectionsSnapshot>? _connections;
 
   @override
   void initState() {
     super.initState();
     _scrollController =
         widget.scrollController ?? sheetScrollController(context);
+    _connections = ref.listenManual(
+      connectionsProvider,
+      (_, snapshot) => _showConnections(snapshot),
+    );
+    ref.read(connectionsProvider.notifier).useReader(widget.connectionsReader);
   }
 
   @override
@@ -63,50 +68,37 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
 
   @override
   Future<void> poll(PollGuard isCurrent) async {
-    final trackerInfos = await _readConnections();
+    await ref.read(connectionsProvider.notifier).refresh();
     if (!isCurrent()) {
       return;
     }
-    _showConnections(trackerInfos);
+    _showConnections(ref.read(connectionsProvider));
   }
 
   Future<void> _refreshConnections() async {
-    final trackerInfos = await _readConnections();
     if (!mounted) {
       return;
     }
-    _showConnections(trackerInfos);
-  }
-
-  Future<List<TrackerInfo>?> _readConnections() async {
-    try {
-      final connectionsReader = widget.connectionsReader;
-      return connectionsReader != null
-          ? await connectionsReader()
-          : await _core.getConnections();
-    } catch (error) {
-      commonPrint.log(
-        'updateConnections error: $error',
-        logLevel: coreFailureLogLevel(error),
-      );
-      return null;
+    await ref.read(connectionsProvider.notifier).refresh();
+    if (!mounted) {
+      return;
     }
+    _showConnections(ref.read(connectionsProvider));
   }
 
-  void _showConnections(List<TrackerInfo>? trackerInfos) {
+  void _showConnections(ConnectionsSnapshot snapshot) {
     final readAt = DateTime.now();
     if (!_loaded) {
       setState(() => _loaded = true);
-      _applyConnections(trackerInfos, readAt);
+      _applyConnections(snapshot.connections, readAt);
       return;
     }
-    updateWhenRouteSettled(() => _applyConnections(trackerInfos, readAt));
+    updateWhenRouteSettled(
+      () => _applyConnections(snapshot.connections, readAt),
+    );
   }
 
-  void _applyConnections(List<TrackerInfo>? trackerInfos, DateTime readAt) {
-    if (trackerInfos == null) {
-      return;
-    }
+  void _applyConnections(List<TrackerInfo> trackerInfos, DateTime readAt) {
     _listController.setTrackerInfos(_speedRanker.rank(trackerInfos, readAt));
   }
 
@@ -117,6 +109,7 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
 
   @override
   void dispose() {
+    _connections?.close();
     _listController.dispose();
     if (widget.scrollController == null) {
       _scrollController.dispose();

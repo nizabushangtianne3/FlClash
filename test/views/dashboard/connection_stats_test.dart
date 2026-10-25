@@ -52,7 +52,9 @@ void main() {
 
   setUp(() {
     core = _MockCore();
-    when(() => core.getConnectionCount()).thenAnswer((_) async => 0);
+    when(
+      () => core.getConnections(resync: any(named: 'resync')),
+    ).thenAnswer((_) async => const ConnectionDelta());
     container = ProviderContainer(
       overrides: [
         profilesProvider.overrideWith(TestProfiles.new),
@@ -97,7 +99,9 @@ void main() {
   }
 
   testWidgets('counts what the Core is holding open', (tester) async {
-    when(() => core.getConnectionCount()).thenAnswer((_) async => 34);
+    when(
+      () => core.getConnections(resync: any(named: 'resync')),
+    ).thenAnswer((_) async => const ConnectionDelta(count: 34));
 
     await pumpCard(tester);
 
@@ -126,7 +130,9 @@ void main() {
 
   testWidgets('a count too long for a third of a phone is shortened in any '
       'locale', (tester) async {
-    when(() => core.getConnectionCount()).thenAnswer((_) async => 99999);
+    when(
+      () => core.getConnections(resync: any(named: 'resync')),
+    ).thenAnswer((_) async => const ConnectionDelta(count: 99999));
     container.read(requestCountProvider.notifier).value = 123456;
 
     await pumpCard(tester, locale: const Locale('zh', 'CN'));

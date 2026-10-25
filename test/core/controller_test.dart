@@ -229,16 +229,22 @@ void main() {
         'rule': 'DIRECT',
         'rulePayload': '',
       });
-      when(() => mock.getConnections()).thenAnswer((_) async => [connection]);
+      when(
+        () => mock.getConnections(),
+      ).thenAnswer((_) async => ConnectionDelta(added: [connection], count: 1));
       final result = await controller.getConnections();
-      expect(result.length, 1);
-      expect(result.first.id, '1');
+      expect(result.added, hasLength(1));
+      expect(result.added.first.id, '1');
+      expect(result.count, 1);
     });
 
     test('getConnections handles empty connections', () async {
-      when(() => mock.getConnections()).thenAnswer((_) async => []);
+      when(
+        () => mock.getConnections(),
+      ).thenAnswer((_) async => const ConnectionDelta());
       final result = await controller.getConnections();
-      expect(result, isEmpty);
+      expect(result.added, isEmpty);
+      expect(result.count, 0);
     });
 
     test('closeConnection delegates', () async {

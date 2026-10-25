@@ -1,13 +1,11 @@
 import 'dart:async';
 
 import 'package:fl_clash/common/common.dart';
-import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/method.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/features/features.dart';
 import 'package:fl_clash/models/models.dart';
-import 'package:fl_clash/providers/app.dart';
-import 'package:fl_clash/providers/core.dart';
+import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/views/connection/connections.dart';
 import 'package:fl_clash/views/connection/requests.dart';
 import 'package:fl_clash/views/dashboard/layout.dart';
@@ -77,8 +75,8 @@ void openDashboardFeed(BuildContext context, DashboardFeed feed) {
   );
 }
 
-/// Polls the live connections while the dashboard is shown: the whole list
-/// while its table is open, only the count otherwise.
+/// Reads the connection table the provider holds while the dashboard is shown:
+/// the whole list while its table is open, only the count otherwise.
 mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
     on
         ConsumerState<T>,
@@ -89,18 +87,27 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
   List<TrackerInfo> connections = const [];
   var tcpCount = 0;
   var udpCount = 0;
+  ProviderSubscription<ConnectionsSnapshot>? _connections;
 
   bool get pollsConnections;
-
-  CoreController get _core => ref.read(coreHandlerProvider);
 
   @override
   Duration get pollInterval => Duration(seconds: pollsConnections ? 1 : 2);
 
   @override
   void dispose() {
+    _connections?.close();
     connectionCount.dispose();
     super.dispose();
+  }
+
+  @override
+  void startPolling() {
+    super.startPolling();
+    _connections ??= ref.listenManual(
+      connectionsProvider,
+      (_, snapshot) => _showConnections(snapshot),
+    );
   }
 
   @override
@@ -119,34 +126,38 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
       return;
     }
     try {
-      if (pollsConnections) {
-        final next = await _core.getConnections();
-        if (!isCurrent()) return;
-        var tcp = 0;
-        for (final item in next) {
-          if (item.metadata.network == 'tcp') {
-            tcp++;
-          }
-        }
-        connectionCount.value = next.length;
-        updateWhenRouteSettled(
-          () => setState(() {
-            connections = next;
-            tcpCount = tcp;
-            udpCount = next.length - tcp;
-          }),
-        );
-      } else {
-        final count = await _core.getConnectionCount();
-        if (!isCurrent()) return;
-        connectionCount.value = count;
-      }
+      await ref.read(connectionsProvider.notifier).refresh();
+      if (!isCurrent()) return;
+      _showConnections(ref.read(connectionsProvider));
     } catch (error) {
       commonPrint.log(
         'dashboard connections error: $error',
         logLevel: coreFailureLogLevel(error),
       );
     }
+  }
+
+  void _showConnections(ConnectionsSnapshot snapshot) {
+    if (!mounted) {
+      return;
+    }
+    connectionCount.value = snapshot.count;
+    if (!pollsConnections) {
+      return;
+    }
+    var tcp = 0;
+    for (final item in snapshot.connections) {
+      if (item.metadata.network == 'tcp') {
+        tcp++;
+      }
+    }
+    updateWhenRouteSettled(
+      () => setState(() {
+        connections = snapshot.connections;
+        tcpCount = tcp;
+        udpCount = snapshot.connections.length - tcp;
+      }),
+    );
   }
 }
 

@@ -215,8 +215,8 @@ class CoreController {
     return _interface.watchRoute(watch);
   }
 
-  Future<List<TrackerInfo>> getConnections() async {
-    return _interface.getConnections();
+  Future<ConnectionDelta> getConnections({bool resync = false}) async {
+    return _interface.getConnections(resync: resync);
   }
 
   Future<int> getConnectionCount() async {

@@ -167,15 +167,18 @@ void main() {
   testWidgets('the table keeps the newest rows, sorts every connection and '
       'counts them all', (tester) async {
     final core = _MockCore();
-    when(() => core.getConnections()).thenAnswer(
-      (_) async => [
-        for (var index = 0; index < 150; index++)
-          _connection(
-            index,
-            network: index < 130 ? 'tcp' : 'udp',
-            download: index == 0 ? 1 << 30 : index,
-          ),
-      ],
+    when(() => core.getConnections(resync: any(named: 'resync'))).thenAnswer(
+      (_) async => ConnectionDelta(
+        added: [
+          for (var index = 0; index < 150; index++)
+            _connection(
+              index,
+              network: index < 130 ? 'tcp' : 'udp',
+              download: index == 0 ? 1 << 30 : index,
+            ),
+        ],
+        count: 150,
+      ),
     );
     final connections = ProviderContainer(
       overrides: [

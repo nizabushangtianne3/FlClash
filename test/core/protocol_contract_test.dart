@@ -53,7 +53,7 @@ class _RecordingCoreHandler extends CoreHandlerInterface {
         'rule-payload': '',
       },
       CoreMethod.getConnections => {
-        'connections': [
+        'added': [
           {
             'id': 'connection-1',
             'metadata': {'network': 'tcp'},
@@ -65,6 +65,8 @@ class _RecordingCoreHandler extends CoreHandlerInterface {
             'rulePayload': '',
           },
         ],
+        'removed': [],
+        'count': 1,
       },
       CoreMethod.getExternalProviders => [
         {
@@ -383,7 +385,7 @@ void main() {
         rule: 'Match',
       ),
     );
-    expect((await handler.getConnections()).single.id, 'connection-1');
+    expect((await handler.getConnections()).added.single.id, 'connection-1');
     expect(await handler.getConnectionCount(), 3);
     expect((await handler.getExternalProviders()).single.name, 'provider-1');
     expect(

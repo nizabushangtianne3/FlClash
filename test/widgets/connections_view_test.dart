@@ -49,7 +49,7 @@ void main() {
 
   Future<void> pumpConnections(
     WidgetTester tester, {
-    required Future<List<TrackerInfo>> Function() connectionsReader,
+    required Future<ConnectionDelta> Function({bool resync}) connectionsReader,
     bool isPageActive = true,
   }) async {
     tester.view.physicalSize = const Size(600, 800);
@@ -76,7 +76,11 @@ void main() {
   testWidgets('ConnectionsView lazily builds every connection', (tester) async {
     final connections = buildConnections(100);
 
-    await pumpConnections(tester, connectionsReader: () async => connections);
+    await pumpConnections(
+      tester,
+      connectionsReader: ({bool resync = false}) async =>
+          ConnectionDelta(added: connections, count: connections.length),
+    );
     await tester.pump(const Duration(seconds: 1));
 
     final builtItems = find.byType(TrackerInfoItem).evaluate().length;
@@ -113,19 +117,30 @@ void main() {
       ],
     );
     globalState.container = container;
-    var connections = buildConnections(2);
+    var rows = buildConnections(2);
+    var removed = <String>[];
     var readCount = 0;
 
     await pumpConnections(
       tester,
-      connectionsReader: () async {
+      connectionsReader: ({bool resync = false}) async {
         readCount++;
-        return connections;
+        // A resync answers the whole table; any other answer reports what
+        // moved since the last one.
+        final delta = ConnectionDelta(
+          added: resync ? rows : const [],
+          removed: removed,
+          count: rows.length,
+        );
+        removed = const [];
+        return delta;
       },
     );
     await tester.pump(const Duration(seconds: 1));
     final reads = readCount;
-    connections = connections.sublist(1);
+    // Blocking a row takes it out, which the next answer reports as a removal.
+    rows = [rows.last];
+    removed = ['0'];
 
     await tester.tap(find.byTooltip('Block connection').first);
     await tester.pumpAndSettle();
@@ -140,7 +155,8 @@ void main() {
   testWidgets('a wide table shows its whole protocol header', (tester) async {
     await pumpConnections(
       tester,
-      connectionsReader: () async => buildConnections(2),
+      connectionsReader: ({bool resync = false}) async =>
+          ConnectionDelta(added: buildConnections(2), count: 2),
     );
     tester.view.physicalSize = const Size(1600, 900);
     await tester.pump(const Duration(seconds: 1));
@@ -156,9 +172,9 @@ void main() {
   ) async {
     var readCount = 0;
 
-    Future<List<TrackerInfo>> readConnections() async {
+    Future<ConnectionDelta> readConnections({bool resync = false}) async {
       readCount++;
-      return const [];
+      return const ConnectionDelta();
     }
 
     await pumpConnections(
@@ -214,9 +230,9 @@ void main() {
   ) async {
     var readCount = 0;
 
-    Future<List<TrackerInfo>> readConnections() async {
+    Future<ConnectionDelta> readConnections({bool resync = false}) async {
       readCount++;
-      return const [];
+      return const ConnectionDelta();
     }
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -246,9 +262,9 @@ void main() {
   ) async {
     var readCount = 0;
 
-    Future<List<TrackerInfo>> readConnections() async {
+    Future<ConnectionDelta> readConnections({bool resync = false}) async {
       readCount++;
-      return const [];
+      return const ConnectionDelta();
     }
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
