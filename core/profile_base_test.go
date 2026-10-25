@@ -112,6 +112,19 @@ func TestReadRawConfigReusesTheParse(t *testing.T) {
 	}
 }
 
+func TestSha256SumIsTheDigestItNames(t *testing.T) {
+	buf := []byte("a profile the host reads twice in one edit")
+
+	sum := sha256Sum(buf)
+
+	if len(sum) != sha256.Size {
+		t.Fatalf("length = %d, want %d", len(sum), sha256.Size)
+	}
+	if want := sha256.Sum256(buf); !bytes.Equal(sum, want[:]) {
+		t.Errorf("sum = %x, want %x", sum, want)
+	}
+}
+
 // The overlay is the host's patch of what getProfileBase returned.
 func overlayOf(t *testing.T, base *ProfileBase, rules []string, patch map[string]any) string {
 	t.Helper()

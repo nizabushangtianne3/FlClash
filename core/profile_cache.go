@@ -71,9 +71,7 @@ func readRawConfig(path string) (*config.RawConfig, []byte, error) {
 
 func sha256Sum(buf []byte) []byte {
 	sum := sha256.Sum256(buf)
-	out := make([]byte, len(sum))
-	copy(out, sum[:])
-	return out
+	return sum[:]
 }
 
 // readProfileDocument parses the profile document, reusing the parse when the

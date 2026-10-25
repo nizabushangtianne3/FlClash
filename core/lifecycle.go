@@ -88,6 +88,7 @@ func updateListeners(cfg *config.Config) {
 func handleShutdown() bool {
 	handleStopLog()
 	stopRouteWatch()
+	forgetProbeConnections()
 
 	configMu.Lock()
 	isRunning.Store(false)
@@ -126,9 +127,18 @@ func scheduleLoadMemoryRelease() {
 	loadReleaseTimer.Reset(loadReleaseDelay)
 }
 
+// ReadMemStats stops the world, and the dashboard polls every few seconds.
+const memoryStatsTTL = time.Second
+
+var (
+	memoryStatsMu    sync.Mutex
+	memoryStatsAt    time.Time
+	memoryStatsValue MemoryStats
+)
+
 // HeapIdle still counts spans the runtime has already handed back to the OS,
 // so the retained-but-unused figure subtracts HeapReleased.
-func handleGetMemoryStats() MemoryStats {
+var readMemoryStats = func() MemoryStats {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
 	return MemoryStats{
@@ -138,4 +148,15 @@ func handleGetMemoryStats() MemoryStats {
 		StackInuse:   stats.StackInuse,
 		RuntimeOther: stats.MSpanInuse + stats.MCacheInuse + stats.BuckHashSys + stats.GCSys + stats.OtherSys,
 	}
+}
+
+func handleGetMemoryStats() MemoryStats {
+	memoryStatsMu.Lock()
+	defer memoryStatsMu.Unlock()
+	if time.Since(memoryStatsAt) < memoryStatsTTL {
+		return memoryStatsValue
+	}
+	memoryStatsValue = readMemoryStats()
+	memoryStatsAt = time.Now()
+	return memoryStatsValue
 }

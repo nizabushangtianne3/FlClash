@@ -998,6 +998,41 @@ func TestHandleGetMemoryStatsReportsALiveRuntime(t *testing.T) {
 	}
 }
 
+func TestHandleGetMemoryStatsStopsTheWorldOncePerPollCadence(t *testing.T) {
+	previous := readMemoryStats
+	reads := 0
+	readMemoryStats = func() MemoryStats {
+		reads++
+		return MemoryStats{Rss: uint64(reads), HeapInuse: uint64(reads)}
+	}
+	resetCache := func() {
+		memoryStatsMu.Lock()
+		defer memoryStatsMu.Unlock()
+		memoryStatsAt = time.Time{}
+		memoryStatsValue = MemoryStats{}
+	}
+	resetCache()
+	t.Cleanup(func() {
+		readMemoryStats = previous
+		resetCache()
+	})
+
+	first := handleGetMemoryStats()
+	second := handleGetMemoryStats()
+	if reads != 1 || first != second {
+		t.Fatalf("two polls inside the TTL made %d runtime reads (%+v then %+v), want one", reads, first, second)
+	}
+
+	memoryStatsMu.Lock()
+	memoryStatsAt = time.Now().Add(-memoryStatsTTL - time.Millisecond)
+	memoryStatsMu.Unlock()
+
+	third := handleGetMemoryStats()
+	if reads != 2 || third == second {
+		t.Fatalf("a stale answer was reused: %d reads, %+v then %+v", reads, second, third)
+	}
+}
+
 func TestAllProxiesFollowsAProviderUpdate(t *testing.T) {
 	provider := newCachingProvider("subscription", "node-a")
 	withTunnelProviders(t, map[string]cp.ProxyProvider{"subscription": provider}, nil)
