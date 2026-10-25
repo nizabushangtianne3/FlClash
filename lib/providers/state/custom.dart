@@ -131,6 +131,21 @@ Map<Map<String, dynamic>, String> customProxyVerdicts(Ref ref) => LinkedHashMap(
   hashCode: _definitionEquality.hash,
 );
 
+/// An edit writes a new definition, so the map keeps every one it ever saw
+/// unless it lets go of the oldest.
+const _verdictLimit = 512;
+
+void _rememberVerdict(
+  Map<Map<String, dynamic>, String> verdicts,
+  Map<String, dynamic> definition,
+  String message,
+) {
+  verdicts[definition] = message;
+  while (verdicts.length > _verdictLimit) {
+    verdicts.remove(verdicts.keys.first);
+  }
+}
+
 @Riverpod(retry: _noRetry)
 Future<Map<int, String>> customProxyCoreErrors(Ref ref) async {
   final proxies = ref
@@ -153,7 +168,7 @@ Future<Map<int, String>> customProxyCoreErrors(Ref ref) async {
         .read(coreHandlerProvider)
         .validateProxies(unchecked);
     for (final (index, message) in results.indexed) {
-      verdicts[unchecked[index]] = message;
+      _rememberVerdict(verdicts, unchecked[index], message);
     }
   }
   return {
