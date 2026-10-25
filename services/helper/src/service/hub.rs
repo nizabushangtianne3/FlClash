@@ -55,6 +55,9 @@ const PROTOCOL_VERSION: &str = "8";
 const PROTOCOL_VERSION: &str = "6";
 const EXPECTED_CORE_SHA256: &str = env!("CORE_SHA256");
 const LOG_CAPACITY: usize = 100;
+/// The Core writes one line per event, so the reader hands the buffer a batch
+/// and the lock moves once per batch instead of once per line.
+const LOG_LINE_BATCH: usize = 16;
 const MAX_REQUEST_BODY_BYTES: u64 = 4096;
 const CORE_EXIT_TIMEOUT: Duration = Duration::from_millis(1500);
 const CORE_GRACEFUL_EXIT_TIMEOUT: Duration = Duration::from_millis(3000);
@@ -510,16 +513,19 @@ fn launch(start_params: StartParams) -> warp::reply::Response {
                 let reader = io::BufReader::new(stderr);
                 let session_id = start_params.session_id.clone();
                 thread::spawn(move || {
+                    let mut pending: Vec<String> = Vec::new();
                     for line in reader.lines() {
                         match line {
-                            Ok(output) => {
-                                log_message(output);
-                            }
+                            Ok(output) => pending.push(output),
                             Err(_) => {
                                 break;
                             }
                         }
+                        if pending.len() >= LOG_LINE_BATCH {
+                            flush_logs(&mut pending);
+                        }
                     }
+                    flush_logs(&mut pending);
                     reap_exited_core(&session_id);
                 });
             }
@@ -614,6 +620,19 @@ pub(super) fn log_message(message: String) {
         log_buffer.pop_front();
     }
     log_buffer.push_back(message);
+}
+
+fn flush_logs(pending: &mut Vec<String>) {
+    if pending.is_empty() {
+        return;
+    }
+    let mut log_buffer = lock_surviving_poison(&LOGS);
+    for message in std::mem::take(pending) {
+        while log_buffer.len() >= LOG_CAPACITY {
+            log_buffer.pop_front();
+        }
+        log_buffer.push_back(message);
+    }
 }
 
 fn get_logs() -> impl Reply {
@@ -1641,5 +1660,35 @@ mod tests {
         assert!(lock_surviving_poison(&LOGS)
             .iter()
             .any(|entry| entry == "helper still logs after poisoning"));
+    }
+
+    #[test]
+    fn a_batch_of_core_lines_lands_whole_and_in_order() {
+        let mut pending = vec!["first".to_string(), "second".to_string()];
+        flush_logs(&mut pending);
+
+        assert!(pending.is_empty());
+
+        let log_buffer = lock_surviving_poison(&LOGS);
+        let position = log_buffer.iter().position(|entry| entry == "first");
+        assert_eq!(
+            position.and_then(|index| log_buffer.get(index + 1)),
+            Some(&"second".to_string())
+        );
+    }
+
+    #[test]
+    fn a_batch_that_overflows_the_buffer_keeps_its_newest_lines() {
+        let mut pending = (0..LOG_CAPACITY + 8)
+            .map(|index| format!("line-{index}"))
+            .collect::<Vec<String>>();
+        flush_logs(&mut pending);
+
+        let log_buffer = lock_surviving_poison(&LOGS);
+        assert_eq!(log_buffer.len(), LOG_CAPACITY);
+        assert!(!log_buffer.iter().any(|entry| entry == "line-0"));
+        assert!(log_buffer
+            .iter()
+            .any(|entry| entry == &format!("line-{}", LOG_CAPACITY + 7)));
     }
 }
