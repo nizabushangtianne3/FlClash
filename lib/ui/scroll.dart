@@ -450,6 +450,27 @@ class _FloatingScrollbarState extends State<FloatingScrollbar> {
   var _pillHeight = 0.0;
   Timer? _hideTimer;
 
+  /// The insets the pill travels within. They come from three inherited
+  /// sources, so they are read once per dependency change rather than once per
+  /// scroll frame.
+  EdgeInsets _barInsets = EdgeInsets.zero;
+
+  /// What the behavior asks the bar itself to sit within.
+  EdgeInsets _scrollbarPadding = EdgeInsets.zero;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final behavior = ScrollConfiguration.of(context);
+    _scrollbarPadding = behavior is BaseScrollBehavior
+        ? behavior.scrollbarPadding
+        : EdgeInsets.zero;
+    _barInsets =
+        MediaQuery.paddingOf(context) +
+        _scrollbarPadding +
+        EdgeInsets.only(top: _barClearance(context));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -545,10 +566,6 @@ class _FloatingScrollbarState extends State<FloatingScrollbar> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = BottomInsetScope.of(context);
-    final behavior = ScrollConfiguration.of(context);
-    final barPadding = behavior is BaseScrollBehavior
-        ? behavior.scrollbarPadding
-        : EdgeInsets.zero;
     // A finger on the thumb covers the bar's edge, so the hint keeps clear.
     final hintGap = isTouchPlatform(Theme.of(context).platform) ? 40.0 : 20.0;
     return LayoutBuilder(
@@ -574,9 +591,7 @@ class _FloatingScrollbarState extends State<FloatingScrollbar> {
             top = _thumbCenter(
               metrics,
               constraints.maxHeight,
-              MediaQuery.paddingOf(context) +
-                  barPadding +
-                  EdgeInsets.only(top: _barClearance(context)),
+              _barInsets,
             ).clamp(half, max(half, limit - half));
             label = widget.hintBuilder(fraction);
           }
@@ -586,7 +601,7 @@ class _FloatingScrollbarState extends State<FloatingScrollbar> {
             CommonScrollBar(
               controller: widget.controller,
               thumbVisibility: widget.thumbVisibility,
-              padding: barPadding,
+              padding: _scrollbarPadding,
               onScrub: _handleScrub,
               child: widget.child,
             ),
