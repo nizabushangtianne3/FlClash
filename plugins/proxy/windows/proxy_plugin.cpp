@@ -261,17 +261,27 @@ bool IsPortListening(int port)
   return false;
 }
 
+// A socket is usually relinquished within a frame or two of the process being
+// issued, so the early probes sit close together. Only a Core that is slow to
+// let go earns the long wait, which bounds how long the platform thread stays
+// blocked on a connection that has nothing to clear yet.
+constexpr int kPortReleaseProbes = 20;
+constexpr int kQuickPortReleaseProbes = 16;
+constexpr DWORD kQuickPortReleaseDelay = 20;
+constexpr DWORD kSlowPortReleaseDelay = 100;
+
 // taskkill /f returns once TerminateProcess has been issued, which is before
 // the killed Core has released its listening socket.
 bool IsPortReleased(int port)
 {
-  for (int attempt = 0; attempt < 20; attempt++)
+  for (int attempt = 0; attempt < kPortReleaseProbes; attempt++)
   {
     if (!IsPortListening(port))
     {
       return true;
     }
-    Sleep(100);
+    Sleep(attempt < kQuickPortReleaseProbes ? kQuickPortReleaseDelay
+                                            : kSlowPortReleaseDelay);
   }
   return false;
 }
