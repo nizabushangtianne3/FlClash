@@ -111,6 +111,12 @@ extension GroupTypeExtension on GroupType {
   bool get isComputedSelected =>
       this == GroupType.URLTest || this == GroupType.Fallback;
 
+  /// The enum's own names, which is what the Core reports as a proxy's type.
+  static final _enumNames = {for (final type in GroupType.values) type.name};
+
+  static bool isEnumName(Object? value) =>
+      value is String && _enumNames.contains(value);
+
   static GroupType? getGroupType(String value) =>
       _groupTypesBySpelling[value.toLowerCase()];
 

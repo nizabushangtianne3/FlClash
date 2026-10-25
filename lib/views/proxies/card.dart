@@ -180,7 +180,7 @@ class _ProxyDesc extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isGroup = GroupType.values.any((type) => type.name == proxy.type);
+    final isGroup = GroupTypeExtension.isEnumName(proxy.type);
     final nodeName = isGroup
         ? ref.watch(
             realSelectedProxyStateProvider(

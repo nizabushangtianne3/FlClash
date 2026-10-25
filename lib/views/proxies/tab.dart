@@ -272,6 +272,7 @@ class ProxyGroupView extends ConsumerWidget {
         itemBuilder: (_, index) {
           final proxy = proxies[index];
           return ProxyCard(
+            key: ValueKey('${group.name}.${proxy.name}'),
             testUrl: group.testUrl,
             groupType: group.type,
             type: cardType,

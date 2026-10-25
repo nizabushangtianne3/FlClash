@@ -558,6 +558,7 @@ class _TableState<T> extends ConsumerState<_Table<T>>
           padding: const EdgeInsets.only(top: 2),
           itemExtent: rowHeight,
           itemCount: items.length,
+          addAutomaticKeepAlives: false,
           itemBuilder: (context, index) {
             final item = items[index];
             final cells = DefaultTextStyle.merge(

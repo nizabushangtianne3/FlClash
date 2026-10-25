@@ -738,7 +738,9 @@ class ServiceStatusSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final targets = ref.watch(enabledServiceTargetsProvider);
-    final state = ref.watch(serviceStatusProvider);
+    final loadingAny = ref.watch(
+      serviceStatusProvider.select((state) => targets.any(state.isLoading)),
+    );
     final services = ref.read(serviceStatusProvider.notifier);
     final localizations = context.appLocalizations;
     return CommonScaffold(
@@ -747,7 +749,7 @@ class ServiceStatusSheet extends ConsumerWidget {
         IconButtonData(
           glyph: AppGlyphs.bolt,
           tooltip: localizations.serviceCheckAll,
-          isLoading: targets.any(state.isLoading),
+          isLoading: loadingAny,
           onPressed: () => services.refresh(targets),
         ),
         IconButtonData(
@@ -774,7 +776,6 @@ class ServiceStatusSheet extends ConsumerWidget {
                   position: ItemPosition.get(index, targets.length),
                   child: _ServiceRow(
                     target: target,
-                    entry: state.entryOf(target),
                     onCheck: () => services.refresh([target]),
                   ),
                 );
@@ -921,14 +922,9 @@ class _ServiceManageItem extends StatelessWidget {
 }
 
 class _ServiceRow extends ConsumerStatefulWidget {
-  const _ServiceRow({
-    required this.target,
-    required this.entry,
-    required this.onCheck,
-  });
+  const _ServiceRow({required this.target, required this.onCheck});
 
   final ServiceTarget target;
-  final ProbeEntry<ServiceCheck> entry;
   final VoidCallback onCheck;
 
   @override
@@ -944,7 +940,9 @@ class _ServiceRowState extends ConsumerState<_ServiceRow>
         .of(context)
         .copyWith(color: context.colorScheme.onSurfaceVariant);
     final target = widget.target;
-    final entry = widget.entry;
+    final entry = ref.watch(
+      serviceStatusProvider.select((state) => state.entryOf(target)),
+    );
     final check = entry.value;
     final loading = entry.isLoading;
     final node = check?.node;
