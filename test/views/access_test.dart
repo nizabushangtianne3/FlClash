@@ -577,5 +577,18 @@ void main() {
 
       await teardownView(tester);
     });
+
+    testWidgets('a keystroke reuses the visible package set', (tester) async {
+      seedAccessControl(const AccessControlProps(enable: true));
+      await pumpAccessView(tester);
+
+      visiblePackageNamesBuildCount = 0;
+      container.read(queryProvider(QueryTag.access).notifier).value = 'chat';
+      await tester.pump();
+
+      expect(visiblePackageNamesBuildCount, 0);
+
+      await teardownView(tester);
+    });
   });
 }

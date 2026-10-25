@@ -289,6 +289,43 @@ class AccessControlState extends _$AccessControlState
 
 final _packageSearchTexts = Expando<String>('packageSearchTexts');
 
+/// The visible set moves only when the package list or a filter does, so a
+/// keystroke reuses the last one instead of rebuilding it.
+(List<Package>, bool, bool, Set<String>)? _visiblePackageNames;
+
+/// Counts rebuilds of that set, which a keystroke must not repeat.
+@visibleForTesting
+int visiblePackageNamesBuildCount = 0;
+
+Set<String> _visibleNamesOf(
+  List<Package> packages, {
+  required bool isFilterSystemApp,
+  required bool isFilterNonInternetApp,
+}) {
+  final cached = _visiblePackageNames;
+  if (cached != null &&
+      identical(cached.$1, packages) &&
+      cached.$2 == isFilterSystemApp &&
+      cached.$3 == isFilterNonInternetApp) {
+    return cached.$4;
+  }
+  final names = packages
+      .whereVisible(
+        isFilterSystemApp: isFilterSystemApp,
+        isFilterNonInternetApp: isFilterNonInternetApp,
+      )
+      .map((item) => item.packageName)
+      .toSet();
+  visiblePackageNamesBuildCount++;
+  _visiblePackageNames = (
+    packages,
+    isFilterSystemApp,
+    isFilterNonInternetApp,
+    names,
+  );
+  return names;
+}
+
 @riverpod
 ({List<Package> packages, Set<String> names}) accessViewPackages(
   Ref ref,
@@ -305,13 +342,11 @@ final _packageSearchTexts = Expando<String>('packageSearchTexts');
     ),
   );
   final query = SearchQuery(ref.watch(queryProvider(QueryTag.access)));
-  final names = packages
-      .whereVisible(
-        isFilterSystemApp: filters.isFilterSystemApp,
-        isFilterNonInternetApp: filters.isFilterNonInternetApp,
-      )
-      .map((item) => item.packageName)
-      .toSet();
+  final names = _visibleNamesOf(
+    packages,
+    isFilterSystemApp: filters.isFilterSystemApp,
+    isFilterNonInternetApp: filters.isFilterNonInternetApp,
+  );
   final viewPackages = packages
       .getViewList(
         pinedList: pinnedList,
