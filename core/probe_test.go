@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/component/ca"
+	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/tunnel"
 )
 

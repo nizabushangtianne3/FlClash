@@ -434,15 +434,15 @@ func TestMergeProfileBaseProducesTheSameDocumentTwice(t *testing.T) {
 }
 
 func profileDocument(proxyCount int) []byte {
-  var document strings.Builder
-  document.WriteString("proxies:\n")
-  for index := range proxyCount {
-    fmt.Fprintf(&document,
-      "  - name: node-%04d\n    type: ss\n    server: 10.%d.%d.1\n    port: 443\n    cipher: aes-128-gcm\n    password: password\n",
-      index, index>>8, index&0xff)
-  }
-  document.WriteString("proxy-groups:\n  - name: Proxy\n    type: select\n    proxies: [DIRECT]\nrules:\n  - MATCH,DIRECT\n")
-  return []byte(document.String())
+	var document strings.Builder
+	document.WriteString("proxies:\n")
+	for index := range proxyCount {
+		fmt.Fprintf(&document,
+			"  - name: node-%04d\n    type: ss\n    server: 10.%d.%d.1\n    port: 443\n    cipher: aes-128-gcm\n    password: password\n",
+			index, index>>8, index&0xff)
+	}
+	document.WriteString("proxy-groups:\n  - name: Proxy\n    type: select\n    proxies: [DIRECT]\nrules:\n  - MATCH,DIRECT\n")
+	return []byte(document.String())
 }
 
 // The host merges a profile once to build it and again to apply it, and each
@@ -450,68 +450,68 @@ func profileDocument(proxyCount int) []byte {
 // The merge reads the profile document back in every time, so the cost of
 // parsing it is the part worth knowing apart from the merge around it.
 func BenchmarkUnmarshalProfileDocument(b *testing.B) {
-  for _, proxyCount := range []int{200, 800} {
-    b.Run(fmt.Sprintf("proxies=%d", proxyCount), func(b *testing.B) {
-      buf := profileDocument(proxyCount)
+	for _, proxyCount := range []int{200, 800} {
+		b.Run(fmt.Sprintf("proxies=%d", proxyCount), func(b *testing.B) {
+			buf := profileDocument(proxyCount)
 
-      b.ReportAllocs()
-      b.ResetTimer()
-      for i := 0; i < b.N; i++ {
-        var document yaml.Node
-        if err := yaml.Unmarshal(buf, &document); err != nil {
-          b.Fatal(err)
-        }
-      }
-    })
-  }
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				var document yaml.Node
+				if err := yaml.Unmarshal(buf, &document); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }
 
 // The host merges the same profile twice per edit, once to build it and once to
 // apply it, so the merge that runs on the second call is the one that repeats.
 func BenchmarkMergeProfileBaseCached(b *testing.B) {
-  for _, proxyCount := range []int{200, 800} {
-    b.Run(fmt.Sprintf("proxies=%d", proxyCount), func(b *testing.B) {
-      path := filepath.Join(b.TempDir(), "profile.yaml")
-      if err := os.WriteFile(path, profileDocument(proxyCount), 0o644); err != nil {
-        b.Fatal(err)
-      }
-      base := &SetupBase{Path: path, Overlay: "rules:\n  - MATCH,DIRECT\n"}
-      if _, err := mergeProfileBase(base); err != nil {
-        b.Fatal(err)
-      }
+	for _, proxyCount := range []int{200, 800} {
+		b.Run(fmt.Sprintf("proxies=%d", proxyCount), func(b *testing.B) {
+			path := filepath.Join(b.TempDir(), "profile.yaml")
+			if err := os.WriteFile(path, profileDocument(proxyCount), 0o644); err != nil {
+				b.Fatal(err)
+			}
+			base := &SetupBase{Path: path, Overlay: "rules:\n  - MATCH,DIRECT\n"}
+			if _, err := mergeProfileBase(base); err != nil {
+				b.Fatal(err)
+			}
 
-      b.ReportAllocs()
-      b.ResetTimer()
-      for i := 0; i < b.N; i++ {
-        if _, err := mergeProfileBase(base); err != nil {
-          b.Fatal(err)
-        }
-      }
-    })
-  }
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := mergeProfileBase(base); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }
 
 func BenchmarkMergeProfileBase(b *testing.B) {
-  for _, proxyCount := range []int{200, 800} {
-    b.Run(fmt.Sprintf("proxies=%d", proxyCount), func(b *testing.B) {
-      path := filepath.Join(b.TempDir(), "profile.yaml")
-      base := &SetupBase{Path: path, Overlay: "rules:\n  - MATCH,DIRECT\n"}
+	for _, proxyCount := range []int{200, 800} {
+		b.Run(fmt.Sprintf("proxies=%d", proxyCount), func(b *testing.B) {
+			path := filepath.Join(b.TempDir(), "profile.yaml")
+			base := &SetupBase{Path: path, Overlay: "rules:\n  - MATCH,DIRECT\n"}
 
-      b.ReportAllocs()
-      b.ResetTimer()
-      for i := 0; i < b.N; i++ {
-        b.StopTimer()
-        document := profileDocument(proxyCount)
-        document = append(document, []byte(fmt.Sprintf("# round %d\n", i))...)
-        if err := os.WriteFile(path, document, 0o644); err != nil {
-        b.Fatal(err)
-      }
-        b.StartTimer()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				document := profileDocument(proxyCount)
+				document = append(document, []byte(fmt.Sprintf("# round %d\n", i))...)
+				if err := os.WriteFile(path, document, 0o644); err != nil {
+					b.Fatal(err)
+				}
+				b.StartTimer()
 
-        if _, err := mergeProfileBase(base); err != nil {
-          b.Fatal(err)
-        }
-      }
-    })
-  }
+				if _, err := mergeProfileBase(base); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }
