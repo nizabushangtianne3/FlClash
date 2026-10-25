@@ -398,6 +398,22 @@ fn release_managed_core(managed: &mut Option<ManagedCore>) -> Result<(), Error> 
     Ok(())
 }
 
+/// Takes the managed Core out of the shared slot. Terminating it must run with
+/// no lock held, so a stop, a ping, or a log request that arrives meanwhile is
+/// answered instead of waiting out the shutdown.
+fn take_managed_core() -> Option<ManagedCore> {
+    lock_surviving_poison(&MANAGED_CORE).take()
+}
+
+/// Exchanges the slot under the lock and hands back whatever it displaced,
+/// which the caller releases once the lock is dropped.
+fn swap_managed_core(core: Option<ManagedCore>) -> Option<ManagedCore> {
+    let mut managed = lock_surviving_poison(&MANAGED_CORE);
+    let displaced = managed.take();
+    *managed = core;
+    displaced
+}
+
 fn json_response<T: Serialize>(value: &T, status: StatusCode) -> warp::reply::Response {
     warp::reply::with_status(warp::reply::json(value), status).into_response()
 }
@@ -456,12 +472,20 @@ fn start(start_params: StartParams) -> warp::reply::Response {
 
 /// Releases the managed Core before anything else, so a request reaching this
 /// point must already be accepted: a rejected one has to leave it running.
+/// Terminating the old Core and verifying the new one take seconds, so they
+/// run with the lock dropped; the lock guards no more than the swap.
 fn launch(start_params: StartParams) -> warp::reply::Response {
-    let mut managed = lock_surviving_poison(&MANAGED_CORE);
-    if let Err(error) = release_managed_core(&mut managed) {
+    let mut previous = take_managed_core();
+    if let Err(error) = release_managed_core(&mut previous) {
         log_message(format!(
             "Helper could not release the managed Core: {error}"
         ));
+        // A Core that refused to die stays managed, so a later stop can retry
+        // it; one a concurrent launch installed is newer and keeps the slot,
+        // and the refused Core then dies with the job it was confined to.
+        if lock_surviving_poison(&MANAGED_CORE).is_none() {
+            swap_managed_core(previous.take());
+        }
         return error_response(
             "coreStopFailed",
             error.to_string(),
@@ -499,8 +523,8 @@ fn launch(start_params: StartParams) -> warp::reply::Response {
                     reap_exited_core(&session_id);
                 });
             }
-            *managed = match ManagedCore::adopt(start_params.session_id.clone(), child) {
-                Ok(core) => Some(core),
+            let core = match ManagedCore::adopt(start_params.session_id.clone(), child) {
+                Ok(core) => core,
                 Err(error) => {
                     log_message(format!("Helper could not confine the Core: {error}"));
                     return error_response(
@@ -510,6 +534,15 @@ fn launch(start_params: StartParams) -> warp::reply::Response {
                     );
                 }
             };
+
+            // Only a launch that ran concurrently displaces anything here;
+            // that Core loses the slot to this one.
+            let mut displaced = swap_managed_core(Some(core));
+            if let Err(error) = release_managed_core(&mut displaced) {
+                log_message(format!(
+                    "Helper could not release a superseded Core: {error}"
+                ));
+            }
             json_response(
                 &StartResponse {
                     session_id: start_params.session_id,
@@ -1113,6 +1146,84 @@ mod tests {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         let body: serde_json::Value = serde_json::from_slice(response.body()).unwrap();
         assert_eq!(body["code"], "invalidRequest");
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_stop_racing_a_launch_is_answered_without_waiting() {
+        let _state = lock_process_state();
+        adopt_core("0123456789abcdef0123456789abcdef");
+
+        // Both requests borrow the routes, so they outlive the builder calls.
+        let routes = routes();
+        let stop = warp::test::request()
+            .method("POST")
+            .path("/stop")
+            .json(&StopParams {
+                session_id: "0123456789abcdef0123456789abcdef".to_string(),
+            })
+            .reply(&routes);
+        let start = warp::test::request()
+            .method("POST")
+            .path("/start")
+            .json(&StartParams {
+                address: ALLOWED_CORE_ADDRESS.to_string(),
+                session_id: "fedcba9876543210fedcba9876543210".to_string(),
+            })
+            .reply(&routes);
+
+        let (stop_response, start_response) = tokio::join!(
+            tokio::time::timeout(Duration::from_secs(5), stop),
+            tokio::time::timeout(Duration::from_secs(15), start)
+        );
+
+        let stop_response = stop_response.expect("a stop must not wait behind a launch");
+        assert_eq!(stop_response.status(), StatusCode::OK);
+        let stop_body: serde_json::Value = serde_json::from_slice(stop_response.body()).unwrap();
+        assert!(
+            stop_body["stopped"] == serde_json::json!(true)
+                || stop_body["reason"] == serde_json::json!("notRunning"),
+            "the stop reports the Core it raced as stopped or already gone",
+        );
+        assert!(start_response.is_ok(), "the launch still completes");
+
+        let mut managed = lock_surviving_poison(&MANAGED_CORE);
+        if let Err(error) = release_managed_core(&mut managed) {
+            log_message(format!("Helper could not release the raced Core: {error}"));
+        }
+    }
+
+    #[test]
+    fn a_core_taken_out_leaves_the_slot_open_until_the_new_one_is_swapped_in() {
+        let _state = lock_process_state();
+
+        adopt_core("0123456789abcdef0123456789abcdef");
+        let previous = take_managed_core();
+        assert!(previous.is_some());
+        assert!(
+            lock_surviving_poison(&MANAGED_CORE).is_none(),
+            "the slot is open while the Core is out of it",
+        );
+
+        let displaced = swap_managed_core(previous);
+        assert!(displaced.is_none());
+        assert!(lock_surviving_poison(&MANAGED_CORE).is_some());
+
+        // Two launches in flight: the later swap hands the earlier Core back
+        // for release outside the lock, and the later one keeps the slot.
+        let contender = ManagedCore::adopt(
+            "fedcba9876543210fedcba9876543210".to_string(),
+            spawn_running_core(),
+        )
+        .unwrap();
+        let mut displaced = swap_managed_core(Some(contender));
+        assert!(displaced.is_some(), "the earlier Core is displaced");
+        release_managed_core(&mut displaced).unwrap();
+        assert!(displaced.is_none());
+
+        assert!(lock_surviving_poison(&MANAGED_CORE).is_some());
+        let mut managed = lock_surviving_poison(&MANAGED_CORE);
+        release_managed_core(&mut managed).unwrap();
     }
 
     #[tokio::test]
