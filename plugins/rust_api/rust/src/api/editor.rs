@@ -89,7 +89,8 @@ pub fn folds_compute_all(rope: &RopeBridge, tab_size: usize) -> Vec<RustFoldRang
 
 #[frb(sync)]
 pub fn folds_find_matching_bracket(rope: &RopeBridge, target_offset: usize) -> Option<usize> {
-    editor::find_matching_bracket(&rope.buffer.rope(), target_offset)
+    let rope = rope.buffer.rope();
+    editor::find_matching_bracket(&rope, target_offset, rope.len_chars())
 }
 
 #[frb(sync)]
