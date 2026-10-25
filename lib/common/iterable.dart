@@ -35,8 +35,9 @@ extension ListExt<T> on List<T> {
     }
   }
 
-  List<T> intersection(List<T> list) {
-    final lookup = list.toSet();
+  /// [lookup] must already be a set: a list argument would pay for building
+  /// one on every call.
+  List<T> intersection(Set<T> lookup) {
     return where(lookup.contains).toList();
   }
 

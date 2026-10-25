@@ -520,4 +520,62 @@ void main() {
       await teardownView(tester);
     });
   });
+
+  group('per-build work', () {
+    testWidgets('the count holds only the visible selected apps', (
+      tester,
+    ) async {
+      seedAccessControl(
+        const AccessControlProps(
+          enable: true,
+          rejectList: ['com.android.settings', 'com.example.chat'],
+        ),
+      );
+
+      await pumpAccessView(tester);
+
+      expect(
+        find.descendant(
+          of: find.byType(MaterialBanner),
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+      );
+
+      await teardownView(tester);
+    });
+
+    testWidgets('a keystroke refilters nothing while nothing has changed', (
+      tester,
+    ) async {
+      seedAccessControl(const AccessControlProps(enable: true));
+      await pumpAccessView(tester);
+
+      accessControlPropsFilterCount = 0;
+      container.read(queryProvider(QueryTag.access).notifier).value = 'chat';
+      await tester.pump();
+
+      expect(accessControlPropsFilterCount, 0);
+
+      await teardownView(tester);
+    });
+
+    testWidgets('a keystroke refilters each side once after an edit', (
+      tester,
+    ) async {
+      seedAccessControl(const AccessControlProps(enable: true));
+      await pumpAccessView(tester);
+
+      await tester.tap(find.text('Chat'));
+      await tester.pump();
+
+      accessControlPropsFilterCount = 0;
+      container.read(queryProvider(QueryTag.access).notifier).value = 'chat';
+      await tester.pump();
+
+      expect(accessControlPropsFilterCount, 2);
+
+      await teardownView(tester);
+    });
+  });
 }

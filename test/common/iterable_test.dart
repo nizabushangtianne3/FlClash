@@ -145,6 +145,20 @@ void main() {
     });
   });
 
+  group('ListExt.intersection', () {
+    test('keeps the order of the receiver', () {
+      expect(['a', 'b', 'c'].intersection({'c', 'a'}), ['a', 'c']);
+    });
+
+    test('repeats duplicates of the receiver', () {
+      expect(['a', 'a', 'b'].intersection({'a'}), ['a', 'a']);
+    });
+
+    test('drops everything the lookup lacks', () {
+      expect(['a', 'b'].intersection(const <String>{}), isEmpty);
+    });
+  });
+
   group('ListExt.addOrRemove', () {
     test('adds when not present', () {
       final list = [1, 2, 3];

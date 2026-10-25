@@ -12,6 +12,14 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+final _savedAccessControlProps = vpnSettingProvider.select(
+  (state) => state.accessControlProps,
+);
+
+/// Counts refilters, which a page refresh must not repeat.
+@visibleForTesting
+int accessControlPropsFilterCount = 0;
+
 class AccessView extends ConsumerStatefulWidget {
   const AccessView({super.key});
 
@@ -106,7 +114,7 @@ class _AccessViewState extends ConsumerState<AccessView>
 
   IconButtonData _buildSelectAllAction({
     required bool isSelectedAll,
-    required List<String> allValueList,
+    required Set<String> allValueList,
   }) {
     void onPressed() {
       ref.read(accessControlStateProvider.notifier).update((state) {
@@ -212,6 +220,7 @@ class _AccessViewState extends ConsumerState<AccessView>
     AccessControlProps accessControl, {
     Set<String>? visiblePackageNames,
   }) {
+    accessControlPropsFilterCount++;
     final packages = ref.read(packagesProvider);
     if (packages.isEmpty) {
       return accessControl;
@@ -455,31 +464,32 @@ class _AccessViewState extends ConsumerState<AccessView>
     final isSearching = ref.watch(queryProvider(QueryTag.access)).isNotEmpty;
     final mode = accessControl.mode;
     final currentList = accessControl.currentList;
-    final viewPackageNameList = viewPackages.map((e) => e.packageName).toList();
-    final valueList = currentList.intersection(viewPackageNameList);
+    final viewPackageNameSet = {
+      for (final package in viewPackages) package.packageName,
+    };
+    final valueList = currentList.intersection(viewPackageNameSet);
     final needsInstalledAppsPermission =
         packages.isEmpty && !_installedAppsPermissionGranted;
     final selectAllAction =
         accessControl.enable &&
             !needsInstalledAppsPermission &&
-            viewPackageNameList.isNotEmpty
+            viewPackageNameSet.isNotEmpty
         ? _buildSelectAllAction(
-            isSelectedAll: valueList.length == viewPackageNameList.length,
-            allValueList: viewPackageNameList,
+            isSelectedAll: valueList.length == viewPackageNameSet.length,
+            allValueList: viewPackageNameSet,
           )
         : null;
-    final savedAccessControl = ref.watch(
-      vpnSettingProvider.select((state) => state.accessControlProps),
-    );
+    final savedAccessControl = ref.watch(_savedAccessControlProps);
     final hasChanges =
+        savedAccessControl != accessControl &&
         _getRealAccessControlProps(
-          savedAccessControl,
-          visiblePackageNames: viewPackageNames,
-        ) !=
-        _getRealAccessControlProps(
-          accessControl,
-          visiblePackageNames: viewPackageNames,
-        );
+              savedAccessControl,
+              visiblePackageNames: viewPackageNames,
+            ) !=
+            _getRealAccessControlProps(
+              accessControl,
+              visiblePackageNames: viewPackageNames,
+            );
     return CommonPopScope(
       onPop: hasChanges
           ? (_) {

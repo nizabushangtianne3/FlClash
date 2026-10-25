@@ -66,6 +66,39 @@ const _everyName = '*';
 List<String> _everyOf(bool? includeAll) =>
     includeAll == true ? const [_everyName] : const [];
 
+final _groupTypesCache = Expando<Map<String, String>>();
+final _nodeTypesCache = Expando<Map<String, String>>();
+
+// An inline select closure runs on every build, so a table is kept per source.
+@visibleForTesting
+int memberTableRebuilds = 0;
+
+Map<String, String> _groupTypesOf(CustomProfileData? data) {
+  if (data == null) {
+    return const <String, String>{};
+  }
+  final cached = _groupTypesCache[data];
+  if (cached != null) {
+    return cached;
+  }
+  memberTableRebuilds++;
+  return _groupTypesCache[data] = {
+    for (final group in data.proxyGroups) group.name: group.type.value,
+  };
+}
+
+Map<String, String> _nodeTypesOf(AsyncValue<List<CustomProxy>> state) {
+  final cached = _nodeTypesCache[state];
+  if (cached != null) {
+    return cached;
+  }
+  memberTableRebuilds++;
+  return _nodeTypesCache[state] = {
+    for (final proxy in state.value ?? const <CustomProxy>[])
+      proxy.name: proxy.type,
+  };
+}
+
 /// The form state of type [M] whose [kinds] of members are listed.
 abstract class _MemberHost<M> {
   const _MemberHost();
@@ -429,13 +462,9 @@ class _MembersSliverState<M> extends ConsumerState<_MembersSliver<M>>
     final groupTypes = hasProxies
         ? ref
               .watch(
-                customProfileDataProvider(profileId).select(
-                  (state) => SelectValue({
-                    for (final group
-                        in state?.proxyGroups ?? const <ProxyGroup>[])
-                      group.name: group.type.value,
-                  }),
-                ),
+                customProfileDataProvider(
+                  profileId,
+                ).select((state) => SelectValue(_groupTypesOf(state))),
               )
               .value
         : const <String, String>{};
@@ -443,10 +472,7 @@ class _MembersSliverState<M> extends ConsumerState<_MembersSliver<M>>
         ? ref
               .watch(
                 customProxiesProvider.select(
-                  (state) => SelectValue({
-                    for (final proxy in state.value ?? const <CustomProxy>[])
-                      proxy.name: proxy.type,
-                  }),
+                  (state) => SelectValue(_nodeTypesOf(state)),
                 ),
               )
               .value
@@ -706,10 +732,7 @@ class _MemberPickerState<M> extends ConsumerState<_MemberPicker<M>> {
     final nodes = ref
         .watch(
           customProxiesProvider.select(
-            (state) => SelectValue({
-              for (final proxy in state.value ?? const <CustomProxy>[])
-                proxy.name: proxy.type,
-            }),
+            (state) => SelectValue(_nodeTypesOf(state)),
           ),
         )
         .value;

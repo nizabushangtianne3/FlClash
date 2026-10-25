@@ -3,6 +3,10 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  setUp(() {
+    keyedAnimatedListIndexBuilds = 0;
+  });
+
   Widget buildList(List<String> items) {
     return MaterialApp(
       home: Scaffold(
@@ -10,7 +14,7 @@ void main() {
           items: items,
           keyOf: (item) => item,
           separator: const Divider(height: 0),
-          itemBuilder: (_, item) => SizedBox(
+          itemBuilder: (_, item, _) => SizedBox(
             key: ValueKey('row-$item'),
             height: 40,
             child: Text(item),
@@ -121,5 +125,58 @@ void main() {
     await tester.pump();
     expect(find.text('10'), findsOneWidget);
     expect(topOf(tester, '10'), 400);
+  });
+
+  testWidgets('a row is built with its position among the items', (
+    tester,
+  ) async {
+    final positions = <String, int?>{};
+    Widget buildList(List<String> items) {
+      return MaterialApp(
+        home: Scaffold(
+          body: KeyedAnimatedList<String>(
+            items: items,
+            keyOf: (item) => item,
+            itemBuilder: (_, item, index) {
+              positions[item] = index;
+              return SizedBox(
+                key: ValueKey('row-$item'),
+                height: 40,
+                child: Text(item),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildList(const ['a', 'b', 'c']));
+    expect(positions, {'a': 0, 'b': 1, 'c': 2});
+
+    await tester.pumpWidget(buildList(const ['c', 'a']));
+    expect(positions, {'a': 1, 'b': null, 'c': 0});
+
+    await tester.pumpAndSettle();
+    expect(find.text('b'), findsNothing);
+  });
+
+  testWidgets('a rebuild with the same items keeps the index table', (
+    tester,
+  ) async {
+    const items = ['a', 'b', 'c'];
+    await tester.pumpWidget(buildList(items));
+    expect(keyedAnimatedListIndexBuilds, 1);
+
+    await tester.pumpWidget(buildList(items));
+    expect(keyedAnimatedListIndexBuilds, 1);
+  });
+
+  testWidgets('a refresh over new item objects builds it once', (tester) async {
+    await tester.pumpWidget(buildList(const ['a', 'b', 'c']));
+    expect(keyedAnimatedListIndexBuilds, 1);
+
+    await tester.pumpWidget(buildList(['a', 'b', 'c']));
+    await tester.pump();
+    expect(keyedAnimatedListIndexBuilds, 2);
   });
 }

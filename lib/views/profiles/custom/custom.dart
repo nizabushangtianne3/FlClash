@@ -411,14 +411,8 @@ class _Overview extends ConsumerWidget {
     final providers = referencedProviders(ref, profileId);
     final missingProviders = ref.watch(
       customProfileDataProvider(profileId).select(
-        (state) => state != null
-            ? [
-                for (final name in providers.proxy)
-                  if (!state.proxyProviders.contains(name)) name,
-                for (final name in providers.rule)
-                  if (!state.ruleProviders.contains(name)) name,
-              ].length
-            : 0,
+        (state) =>
+            state != null ? _missingProviderCountOf(state, providers) : 0,
       ),
     );
     final status = ref.watch(_sectionStatus(profileId));
@@ -485,11 +479,44 @@ ProviderListenable<_SectionStatus> _sectionStatus(int profileId) =>
     });
 
 ProviderListenable<int> _dialerCount(int profileId) =>
-    customProfileDataProvider(profileId).select(
-      (state) => state == null
-          ? 0
-          : state.dialers.keys.where(state.namedProxies.contains).length,
-    );
+    customProfileDataProvider(
+      profileId,
+    ).select((state) => state == null ? 0 : _dialerCountOf(state));
+
+final _dialerCountsCache = Expando<int>();
+final _missingProviderCountsCache = Expando<int>();
+
+// An inline select closure runs on every build, so a count is kept per source.
+@visibleForTesting
+int overviewTableRebuilds = 0;
+
+int _dialerCountOf(CustomProfileData data) {
+  final cached = _dialerCountsCache[data];
+  if (cached != null) {
+    return cached;
+  }
+  overviewTableRebuilds++;
+  return _dialerCountsCache[data] = data.dialers.keys
+      .where(data.namedProxies.contains)
+      .length;
+}
+
+int _missingProviderCountOf(
+  CustomProfileData data,
+  ReferencedProviders providers,
+) {
+  final cached = _missingProviderCountsCache[data];
+  if (cached != null) {
+    return cached;
+  }
+  overviewTableRebuilds++;
+  return _missingProviderCountsCache[data] = [
+    for (final name in providers.proxy)
+      if (!data.proxyProviders.contains(name)) name,
+    for (final name in providers.rule)
+      if (!data.ruleProviders.contains(name)) name,
+  ].length;
+}
 
 String _enabledText(AppLocalizations l, bool enabled) =>
     enabled ? l.enabled : l.disabled;

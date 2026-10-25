@@ -149,6 +149,22 @@ enum _OptionSection {
   };
 }
 
+final _proxyIdsCache = Expando<Set<int>>();
+
+@visibleForTesting
+int proxyIdTableRebuilds = 0;
+
+Set<int> _proxyIdsOf(AsyncValue<List<CustomProxy>> state) {
+  final cached = _proxyIdsCache[state];
+  if (cached != null) {
+    return cached;
+  }
+  proxyIdTableRebuilds++;
+  return _proxyIdsCache[state] = {
+    for (final proxy in state.value ?? const <CustomProxy>[]) proxy.id,
+  };
+}
+
 class CustomProxiesView extends ConsumerStatefulWidget {
   const CustomProxiesView({super.key});
 
@@ -387,10 +403,7 @@ class _CustomProxiesViewState extends ConsumerState<CustomProxiesView> {
       ref
           .watch(
             customProxiesProvider.select(
-              (state) => SelectValue(<int>{
-                for (final proxy in state.value ?? const <CustomProxy>[])
-                  proxy.id,
-              }),
+              (state) => SelectValue(_proxyIdsOf(state)),
             ),
           )
           .value,

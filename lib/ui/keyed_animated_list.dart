@@ -4,6 +4,10 @@ import 'package:material_ui/material_ui.dart';
 
 const _defaultDuration = Duration(milliseconds: 300);
 
+/// Counts index-table builds, which a refresh must not repeat.
+@visibleForTesting
+int keyedAnimatedListIndexBuilds = 0;
+
 // Rows sized towards zero all fit the viewport, so each one is laid out.
 const _maxAnimatedChanges = 50;
 
@@ -13,7 +17,9 @@ const _maxAnimatedChanges = 50;
 class KeyedAnimatedList<T> extends StatefulWidget {
   final List<T> items;
   final Object Function(T item) keyOf;
-  final Widget Function(BuildContext context, T item) itemBuilder;
+
+  /// [index] is the item's position in [items], null once it collapses out.
+  final Widget Function(BuildContext context, T item, int? index) itemBuilder;
   final Widget? separator;
   final ScrollController? controller;
   final EdgeInsetsGeometry? padding;
@@ -39,15 +45,38 @@ enum _Phase { settled, entering, leaving }
 class _Entry<T> {
   final Object key;
   T item;
+  int? itemIndex;
   _Phase phase = _Phase.settled;
 
-  _Entry(this.key, this.item);
+  _Entry.of(this.key, this.item, this.itemIndex);
 }
 
 class _KeyedAnimatedListState<T> extends State<KeyedAnimatedList<T>>
     with SingleTickerProviderStateMixin {
   List<_Entry<T>> _entries = [];
+  Map<Object, _Entry<T>>? _entryByKey;
+  Map<Object, int>? _indexByKey;
   int _generation = 0;
+
+  void _invalidateMaps() {
+    _entryByKey = null;
+    _indexByKey = null;
+  }
+
+  Map<Object, _Entry<T>> get _byKey {
+    return _entryByKey ??= {for (final entry in _entries) entry.key: entry};
+  }
+
+  Map<Object, int> get _indexes {
+    final cached = _indexByKey;
+    if (cached != null) {
+      return cached;
+    }
+    keyedAnimatedListIndexBuilds++;
+    return _indexByKey = {
+      for (final (index, entry) in _entries.indexed) entry.key: index,
+    };
+  }
 
   // One controller drives every row entering or leaving in an update, so a
   // refresh that touches rows far off screen still runs a single ticker.
@@ -71,8 +100,10 @@ class _KeyedAnimatedListState<T> extends State<KeyedAnimatedList<T>>
   void initState() {
     super.initState();
     _entries = [
-      for (final item in widget.items) _Entry(widget.keyOf(item), item),
+      for (final (index, item) in widget.items.indexed)
+        _Entry.of(widget.keyOf(item), item, index),
     ];
+    _invalidateMaps();
   }
 
   @override
@@ -97,14 +128,19 @@ class _KeyedAnimatedListState<T> extends State<KeyedAnimatedList<T>>
     for (final entry in _entries) {
       entry.phase = _Phase.settled;
     }
+    _invalidateMaps();
   }
 
   void _replaceItems(List<T> items) {
     _transition.stop();
     setState(() {
-      _entries = [for (final item in items) _Entry(widget.keyOf(item), item)];
+      _entries = [
+        for (final (index, item) in items.indexed)
+          _Entry.of(widget.keyOf(item), item, index),
+      ];
       _generation++;
     });
+    _invalidateMaps();
   }
 
   void _applyItems(List<T> items) {
@@ -112,7 +148,7 @@ class _KeyedAnimatedListState<T> extends State<KeyedAnimatedList<T>>
       _transition.stop();
       _settle();
     }
-    final oldByKey = {for (final entry in _entries) entry.key: entry};
+    final oldByKey = _byKey;
     final newKeys = {for (final item in items) widget.keyOf(item)};
     final inserted = newKeys.where((key) => !oldByKey.containsKey(key));
     final removed = _entries.where((entry) => !newKeys.contains(entry.key));
@@ -131,20 +167,22 @@ class _KeyedAnimatedListState<T> extends State<KeyedAnimatedList<T>>
         }
       } else {
         entry.phase = _Phase.leaving;
+        entry.itemIndex = null;
         pending.add(entry);
       }
     }
 
     final next = <_Entry<T>>[];
-    for (final item in items) {
+    for (final (index, item) in items.indexed) {
       final key = widget.keyOf(item);
       next.addAll(removedBefore[key] ?? const []);
       final existing = oldByKey[key];
       if (existing == null) {
-        next.add(_Entry(key, item)..phase = _Phase.entering);
+        next.add(_Entry.of(key, item, index)..phase = _Phase.entering);
         continue;
       }
       existing.item = item;
+      existing.itemIndex = index;
       next.add(existing);
     }
     next.addAll(pending);
@@ -153,6 +191,7 @@ class _KeyedAnimatedListState<T> extends State<KeyedAnimatedList<T>>
       _entries = next;
       _generation++;
     });
+    _invalidateMaps();
     if (next.any((entry) => entry.phase != _Phase.settled)) {
       _transition.forward(from: 0);
     }
@@ -161,7 +200,7 @@ class _KeyedAnimatedListState<T> extends State<KeyedAnimatedList<T>>
   Widget _buildRow(BuildContext context, int index) {
     final entry = _entries[index];
     final separator = widget.separator;
-    Widget row = widget.itemBuilder(context, entry.item);
+    Widget row = widget.itemBuilder(context, entry.item, entry.itemIndex);
     if (separator != null && index < _entries.length - 1) {
       row = Column(mainAxisSize: MainAxisSize.min, children: [row, separator]);
     }
@@ -187,16 +226,14 @@ class _KeyedAnimatedListState<T> extends State<KeyedAnimatedList<T>>
 
   @override
   Widget build(BuildContext context) {
-    final indexByKey = {
-      for (final (index, entry) in _entries.indexed) entry.key: index,
-    };
+    final indexes = _indexes;
     return ListView.builder(
       controller: widget.controller,
       padding: widget.padding,
       itemCount: _entries.length,
       addRepaintBoundaries: false,
       findChildIndexCallback: (key) =>
-          key is ValueKey<Object> ? indexByKey[key.value] : null,
+          key is ValueKey<Object> ? indexes[key.value] : null,
       itemBuilder: _buildRow,
     );
   }

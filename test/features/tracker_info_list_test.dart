@@ -1,6 +1,11 @@
 import 'package:fl_clash/features/connection/tracker_info_list.dart';
+import 'package:fl_clash/features/connection/tracker_info_item.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:fl_clash/state.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/test_app.dart';
 
 TrackerInfo _tracker(
   String id, {
@@ -53,4 +58,37 @@ void main() {
       expect(notifications, 1);
     },
   );
+
+  testWidgets('a poll that republishes the same ids keeps the rows', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    globalState.container = container;
+
+    Future<void> pump(List<TrackerInfo> trackerInfos) async {
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: TestApp(
+            child: TrackerInfoAnimatedList(
+              trackerInfos: trackerInfos,
+              detailTitle: 'detail',
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    await pump([_tracker('a'), _tracker('b')]);
+    expect(find.byType(TrackerInfoItem), findsNWidgets(2));
+
+    await pump([_tracker('a', upload: 10), _tracker('b')]);
+    expect(find.byType(TrackerInfoItem), findsNWidgets(2));
+
+    await pump([_tracker('b')]);
+    await tester.pumpAndSettle();
+    expect(find.byType(TrackerInfoItem), findsOneWidget);
+  });
 }

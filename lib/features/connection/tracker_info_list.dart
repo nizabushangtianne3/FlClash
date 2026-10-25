@@ -144,25 +144,19 @@ class TrackerInfoAnimatedList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final table = this.table;
-    final positions = table == null
-        ? const <String, int>{}
-        : {
-            for (final (index, trackerInfo) in trackerInfos.indexed)
-              trackerInfo.id: index,
-          };
     return KeyedAnimatedList<TrackerInfo>(
       controller: controller,
       padding: padding,
       items: trackerInfos,
       keyOf: (trackerInfo) => trackerInfo.id,
       separator: table == null ? const SizedBox(height: recordListGap) : null,
-      itemBuilder: (context, trackerInfo) => _buildTrackerInfoItem(
+      itemBuilder: (context, trackerInfo, index) => _buildTrackerInfoItem(
         context,
         trackerInfo,
         isLive: true,
         detailTitle: detailTitle,
         table: table,
-        striped: positions[trackerInfo.id]?.isOdd ?? false,
+        striped: index?.isOdd ?? false,
         actionBuilder: actionBuilder,
       ),
     );
