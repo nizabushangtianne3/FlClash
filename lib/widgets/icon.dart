@@ -139,7 +139,13 @@ class GroupMonogram extends StatelessWidget {
 
   static final _letter = RegExp(r'[\p{L}\p{N}]', unicode: true);
 
-  String get _mark {
+  // The mark depends on the name alone, and a proxy list shows the same group
+  // names build after build.
+  static final _marks = <String, String>{};
+
+  String get _mark => _marks[name] ??= _markOf(name);
+
+  static String _markOf(String name) {
     final letter = _letter.firstMatch(name)?.group(0);
     if (letter != null) {
       return letter.toUpperCase();

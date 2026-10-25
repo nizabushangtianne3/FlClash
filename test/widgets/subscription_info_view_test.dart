@@ -85,6 +85,52 @@ void main() {
     );
   });
 
+  testWidgets('the expiry follows the width it is laid out in', (tester) async {
+    Future<void> pumpAt(double width) {
+      return tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => wrapAppScopes(context, child!),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            AppUiLocalizations.delegate,
+            ...GlobalMaterialLocalizations.delegates,
+          ],
+          supportedLocales: AppLocalizations.delegate.supportedLocales,
+          home: Scaffold(
+            body: SizedBox(
+              width: width,
+              child: const SubscriptionInfoView(
+                subscriptionInfo: SubscriptionInfo(
+                  upload: 1024,
+                  total: 1073741824,
+                  expire: 4102444800,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    await pumpAt(120);
+    expect(
+      find.descendant(
+        of: find.byType(SubscriptionInfoView),
+        matching: find.byType(Text),
+      ),
+      findsOneWidget,
+    );
+
+    await pumpAt(300);
+    expect(
+      find.descendant(
+        of: find.byType(SubscriptionInfoView),
+        matching: find.byType(Text),
+      ),
+      findsNWidgets(2),
+    );
+  });
+
   testWidgets('shows full subscription details in information rows', (
     tester,
   ) async {

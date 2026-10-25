@@ -1,9 +1,13 @@
+import 'dart:ui' as ui;
+
 import 'package:fl_clash/ui/loading.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   Size loadingSize(WidgetTester tester) => tester.getSize(
     find.descendant(
       of: find.byType(CommonCircleLoading),
@@ -89,5 +93,37 @@ void main() {
     );
 
     expect(find.bySemanticsLabel('Loading profiles'), findsOneWidget);
+  });
+
+  test('the ring painter rebuilds its shader only when the ring changes', () {
+    final canvas = ui.Canvas(ui.PictureRecorder());
+    final painter = CometRingPainter(
+      turns: const AlwaysStoppedAnimation(0.5),
+      color: const Color(0xFF2196F3),
+    );
+
+    painter.paint(canvas, const Size.square(48));
+    final shader = painter.sweepShader;
+    expect(shader, isNotNull);
+
+    painter.paint(canvas, const Size.square(48));
+    expect(painter.sweepShader, same(shader));
+
+    painter.paint(canvas, const Size.square(24));
+    expect(painter.sweepShader, isNot(same(shader)));
+  });
+
+  test('a ring painter stands still for its own turns and color', () {
+    final painter = CometRingPainter(
+      turns: const AlwaysStoppedAnimation(0.5),
+      color: const Color(0xFF2196F3),
+    );
+
+    expect(
+      painter.shouldRepaint(
+        CometRingPainter(turns: painter.turns, color: painter.color),
+      ),
+      isFalse,
+    );
   });
 }

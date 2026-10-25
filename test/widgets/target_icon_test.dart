@@ -38,6 +38,50 @@ void main() {
     }
   });
 
+  testWidgets('a mark is memoized per name, byte for byte', (tester) async {
+    final letter = RegExp(r'[\p{L}\p{N}]', unicode: true);
+    String markOf(String name) {
+      final match = letter.firstMatch(name)?.group(0);
+      if (match != null) {
+        return match.toUpperCase();
+      }
+      return name.characters.firstOrNull ?? '';
+    }
+
+    const names = [
+      '🚀 节点选择',
+      'proxy',
+      '♻️ 9 Auto',
+      '🇭🇰',
+      'α Alpha',
+      'straße',
+      'ßeta',
+      'Ⅻ chapter',
+      '',
+    ];
+
+    for (final name in names) {
+      await _pump(tester, GroupMonogram(name));
+      final mark = markOf(name);
+      if (mark.isEmpty) {
+        expect(find.byGlyph(AppGlyphs.photos), findsOne, reason: name);
+      } else {
+        expect(find.text(mark), findsOne, reason: name);
+      }
+
+      // A second build from a fresh widget instance reads the same mark, and
+      // another name between two builds does not displace it.
+      await _pump(tester, const GroupMonogram('proxy'));
+      expect(find.text(markOf('proxy')), findsOne);
+      await _pump(tester, GroupMonogram(name));
+      if (mark.isEmpty) {
+        expect(find.byGlyph(AppGlyphs.photos), findsOne, reason: name);
+      } else {
+        expect(find.text(mark), findsOne, reason: name);
+      }
+    }
+  });
+
   testWidgets('a missing image shows a placeholder, as does an empty name', (
     tester,
   ) async {

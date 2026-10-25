@@ -1735,6 +1735,8 @@ class _RenderLensTint extends RenderProxyBox {
   final _tint = LayerHandle<ColorFilterLayer>();
   final _outsideMotion = LayerHandle<TransformLayer>();
   final _insideMotion = LayerHandle<TransformLayer>();
+  Path? _lensPath;
+  Rect? _lensPathBounds;
 
   _LensPart _part;
   set part(_LensPart value) {
@@ -1853,12 +1855,27 @@ class _RenderLensTint extends RenderProxyBox {
 
   @override
   void dispose() {
+    _lensPath = null;
+    _lensPathBounds = null;
     _outside.layer = null;
     _inside.layer = null;
     _tint.layer = null;
     _outsideMotion.layer = null;
     _insideMotion.layer = null;
     super.dispose();
+  }
+
+  /// Rebuilt only when the bounds move: while the lens rests still the same
+  /// shape is asked for on every frame.
+  Path _lensPathFor(Rect bounds) {
+    final cached = _lensPath;
+    if (cached != null && _lensPathBounds == bounds) {
+      return cached;
+    }
+    final path = AppShape.full.getOuterPath(bounds);
+    _lensPath = path;
+    _lensPathBounds = bounds;
+    return path;
   }
 
   Rect get _lensBounds {
@@ -1956,7 +1973,7 @@ class _RenderLensTint extends RenderProxyBox {
       return;
     }
     final reach = moved(rest).expandToInclude(bounds).inflate(_labelInset);
-    final lens = AppShape.full.getOuterPath(lensBounds);
+    final lens = _lensPathFor(lensBounds);
     if (outside) {
       _outside.layer = context.pushClipPath(
         needsCompositing,

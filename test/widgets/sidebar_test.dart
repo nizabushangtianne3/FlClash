@@ -234,6 +234,68 @@ void main() {
     expect(glyph('Collapse'), isNot(midway));
   });
 
+  testWidgets('widening the pane rebuilds the labels once, not per frame', (
+    tester,
+  ) async {
+    const cut = 'Подключения и активные соединения';
+    await tester.pumpWidget(
+      _sidebar(
+        expanded: false,
+        onToggle: () {},
+        destinations: const [
+          ..._destinations,
+          SidebarDestination(glyph: AppGlyphs.connections, label: cut),
+        ],
+      ),
+    );
+    final fitting = find.text('Proxies');
+    final cutOff = find.text(cut);
+
+    await tester.pumpWidget(
+      _sidebar(
+        onToggle: () {},
+        destinations: const [
+          ..._destinations,
+          SidebarDestination(glyph: AppGlyphs.connections, label: cut),
+        ],
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 40));
+    final fittingText = tester.widget<Text>(fitting);
+    final cutOffText = tester.widget<Text>(cutOff);
+
+    await tester.pump(const Duration(milliseconds: 40));
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(
+      tester.getSize(_sidebarFinder).width,
+      allOf(greaterThan(48), lessThan(220)),
+    );
+    expect(identical(tester.widget<Text>(fitting), fittingText), isTrue);
+    expect(identical(tester.widget<Text>(cutOff), cutOffText), isTrue);
+
+    // The widen never rebuilds a row. What rebuilds one, once and only
+    // after the settle, is the framework collapsing its empty tooltip to
+    // the bare row.
+    await tester.pumpAndSettle();
+    expect(identical(tester.widget<Text>(cutOff), cutOffText), isTrue);
+    expect(_labelOpacities(tester, 'Proxies'), [1]);
+    expect(_rowTooltip('Proxies'), findsNothing);
+    expect(_rowTooltip(cut), findsOneWidget);
+  });
+
+  testWidgets('a fitting label keeps its tooltip until the pane settles', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_sidebar(expanded: false, onToggle: () {}));
+    await tester.pumpWidget(_sidebar(onToggle: () {}));
+
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(_rowTooltip('Proxies'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+    expect(_rowTooltip('Proxies'), findsNothing);
+  });
+
   testWidgets('window controls keep their corner clear', (tester) async {
     await tester.pumpWidget(
       _sidebar(

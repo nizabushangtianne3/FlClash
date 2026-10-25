@@ -51,7 +51,7 @@ class _CommonCircleLoadingState extends State<CommonCircleLoading>
       child: RepaintBoundary(
         child: CustomPaint(
           size: Size.square(side),
-          painter: _CometRingPainter(
+          painter: CometRingPainter(
             turns: _turns,
             color: widget.color ?? context.colorScheme.primary,
           ),
@@ -61,8 +61,8 @@ class _CommonCircleLoadingState extends State<CommonCircleLoading>
   }
 }
 
-class _CometRingPainter extends CustomPainter {
-  _CometRingPainter({required this.turns, required this.color})
+class CometRingPainter extends CustomPainter {
+  CometRingPainter({required this.turns, required this.color})
     : super(repaint: turns);
 
   // A glyph keeps its outline within 20 of its 24 grid, so the ring standing
@@ -74,6 +74,37 @@ class _CometRingPainter extends CustomPainter {
   final Animation<double> turns;
   final Color color;
 
+  Paint? _ringStroke;
+  Paint? _arcStroke;
+  Paint? _headFill;
+  Rect? _paintedRing;
+
+  /// The shader the arc paints with, kept until the ring's rect changes.
+  @visibleForTesting
+  Shader? get sweepShader => _arcStroke?.shader;
+
+  (Paint ringStroke, Paint arcStroke, Paint headFill) _strokes(
+    Rect ring,
+    double strokeWidth,
+  ) {
+    if (_paintedRing != ring) {
+      _paintedRing = ring;
+      _ringStroke = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..color = color.opacity12;
+      _arcStroke = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..shader = SweepGradient(
+          colors: [color.opacity0, color.opacity30, color, color.opacity0],
+          stops: const [0, _tail / 2, _tail, _tail],
+        ).createShader(ring);
+      _headFill = Paint()..color = color;
+    }
+    return (_ringStroke!, _arcStroke!, _headFill!);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final side = size.shortestSide;
@@ -83,35 +114,23 @@ class _CometRingPainter extends CustomPainter {
       return;
     }
     final ring = Rect.fromCircle(center: Offset.zero, radius: radius);
+    final (ringStroke, arcStroke, headFill) = _strokes(ring, strokeWidth);
     const sweep = _tail * 2 * math.pi;
-    Paint stroke() => Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth;
     canvas.save();
     canvas.translate(size.width / 2, size.height / 2);
-    canvas.drawCircle(Offset.zero, radius, stroke()..color = color.opacity12);
+    canvas.drawCircle(Offset.zero, radius, ringStroke);
     canvas.rotate(turns.value * 2 * math.pi);
-    canvas.drawArc(
-      ring,
-      0,
-      sweep,
-      false,
-      stroke()
-        ..shader = SweepGradient(
-          colors: [color.opacity0, color.opacity30, color, color.opacity0],
-          stops: const [0, _tail / 2, _tail, _tail],
-        ).createShader(ring),
-    );
+    canvas.drawArc(ring, 0, sweep, false, arcStroke);
     canvas.drawCircle(
       Offset(math.cos(sweep), math.sin(sweep)) * radius,
       strokeWidth / 2,
-      Paint()..color = color,
+      headFill,
     );
     canvas.restore();
   }
 
   @override
-  bool shouldRepaint(_CometRingPainter oldDelegate) {
+  bool shouldRepaint(CometRingPainter oldDelegate) {
     return oldDelegate.turns != turns || oldDelegate.color != color;
   }
 }

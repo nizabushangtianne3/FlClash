@@ -4,6 +4,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:fl_clash/ui/context.dart';
 import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/ui/l10n.dart';
+import 'package:fl_clash/ui/measure.dart';
 import 'package:fl_clash/ui/scroll_behavior.dart';
 import 'package:fl_clash/ui/shape.dart';
 import 'package:fl_clash/ui/surface.dart';
@@ -61,7 +62,7 @@ class NavigationSidebar extends StatefulWidget {
 }
 
 class _NavigationSidebarState extends State<NavigationSidebar>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final _overlayController = OverlayPortalController();
   late final AnimationController _overlayExpansion = AnimationController(
     vsync: this,
@@ -71,10 +72,34 @@ class _NavigationSidebarState extends State<NavigationSidebar>
     parent: _overlayExpansion,
     curve: Easing.standard,
   );
+  late final AnimationController _expansion = AnimationController(
+    vsync: this,
+    duration: _expandDuration,
+    value: widget.expanded ? 1 : 0,
+  );
+  late final CurvedAnimation _progress = CurvedAnimation(
+    parent: _expansion,
+    curve: Easing.standard,
+  );
+  late final CurvedAnimation _labelOpacity = CurvedAnimation(
+    parent: _progress,
+    curve: const Interval(0.4, 1.0),
+  );
+  late final CurvedAnimation _overlayLabelOpacity = CurvedAnimation(
+    parent: _overlayProgress,
+    curve: const Interval(0.4, 1.0),
+  );
 
   @override
   void didUpdateWidget(covariant NavigationSidebar oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.expanded != widget.expanded) {
+      if (widget.expanded) {
+        _expansion.forward();
+      } else {
+        _expansion.reverse();
+      }
+    }
     if (widget.onToggle != null && _overlayController.isShowing) {
       _overlayExpansion.value = 0;
       WidgetsBinding.instance.addPostFrameCallback((_) => _hideIfDismissed());
@@ -105,7 +130,11 @@ class _NavigationSidebarState extends State<NavigationSidebar>
 
   @override
   void dispose() {
+    _labelOpacity.dispose();
+    _overlayLabelOpacity.dispose();
     _overlayProgress.dispose();
+    _progress.dispose();
+    _expansion.dispose();
     _overlayExpansion.dispose();
     super.dispose();
   }
@@ -122,12 +151,12 @@ class _NavigationSidebarState extends State<NavigationSidebar>
             Offset.zero & info.childSize,
           ),
           overlayWidth: info.overlaySize.width,
-          progress: _overlayProgress,
           onDismiss: _closeOverlay,
-          builder: (progress) => Padding(
+          builder: () => Padding(
             padding: safePadding,
             child: _SidebarPane(
-              progress: progress,
+              progress: _overlayProgress,
+              labelOpacity: _overlayLabelOpacity,
               windowControls: widget.windowControls,
               expanded: true,
               destinations: widget.destinations,
@@ -142,19 +171,15 @@ class _NavigationSidebarState extends State<NavigationSidebar>
         );
       },
       child: SafeArea(
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(end: widget.expanded ? 1.0 : 0.0),
-          duration: _expandDuration,
-          curve: Easing.standard,
-          builder: (context, progress, _) => _SidebarPane(
-            progress: progress,
-            windowControls: widget.windowControls,
-            expanded: widget.expanded,
-            destinations: widget.destinations,
-            selectedIndex: widget.selectedIndex,
-            onSelected: widget.onSelected,
-            onToggle: _handleToggle,
-          ),
+        child: _SidebarPane(
+          progress: _progress,
+          labelOpacity: _labelOpacity,
+          windowControls: widget.windowControls,
+          expanded: widget.expanded,
+          destinations: widget.destinations,
+          selectedIndex: widget.selectedIndex,
+          onSelected: widget.onSelected,
+          onToggle: _handleToggle,
         ),
       ),
     );
@@ -165,16 +190,14 @@ class _SidebarOverlay extends StatelessWidget {
   const _SidebarOverlay({
     required this.anchor,
     required this.overlayWidth,
-    required this.progress,
     required this.onDismiss,
     required this.builder,
   });
 
   final Rect anchor;
   final double overlayWidth;
-  final Animation<double> progress;
   final VoidCallback onDismiss;
-  final Widget Function(double progress) builder;
+  final Widget Function() builder;
 
   @override
   Widget build(BuildContext context) {
@@ -215,10 +238,7 @@ class _SidebarOverlay extends StatelessWidget {
                   ),
                   elevation: 8,
                   shadowColor: colorScheme.shadow,
-                  child: AnimatedBuilder(
-                    animation: progress,
-                    builder: (_, _) => builder(progress.value),
-                  ),
+                  child: builder(),
                 ),
               ),
             ),
@@ -252,6 +272,7 @@ class _SidebarColors {
 class _SidebarPane extends StatelessWidget {
   const _SidebarPane({
     required this.progress,
+    required this.labelOpacity,
     required this.windowControls,
     required this.expanded,
     required this.destinations,
@@ -260,7 +281,8 @@ class _SidebarPane extends StatelessWidget {
     required this.onToggle,
   });
 
-  final double progress;
+  final Animation<double> progress;
+  final Animation<double> labelOpacity;
   final Size windowControls;
   final bool expanded;
   final List<SidebarDestination> destinations;
@@ -272,7 +294,6 @@ class _SidebarPane extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = _SidebarColors(context.colorScheme);
     final fontSize = AppTextStyle.subheadline.size;
-    final labelOpacity = ((progress - 0.4) / 0.6).clamp(0.0, 1.0);
     final compactWidth = math.max(_compactWidth, windowControls.width);
     final sideInset = math.min(_maxSideInset, (compactWidth - _itemSize) / 2);
     final itemWidth = compactWidth - sideInset * 2;
@@ -284,14 +305,30 @@ class _SidebarPane extends StatelessWidget {
         .of(context)
         .copyWith(color: colors.label);
     final labelWidth = rowWidth - iconInset - _iconSize - _labelGap * 2;
-    String rowTooltip(String label) =>
-        expanded &&
-            progress == 1 &&
-            _fitsOneLine(context, label, labelStyle, labelWidth)
+    final measure = MeasureScope.of(context);
+    final textDirection = Directionality.of(context);
+    final labelFits = [
+      for (final destination in destinations)
+        !measure.computeTextIsOverflow(
+          Text(
+            destination.label,
+            maxLines: 1,
+            style: labelStyle,
+            textDirection: textDirection,
+          ),
+          maxWidth: labelWidth,
+        ),
+    ];
+    String rowTooltip(int index, double value) =>
+        expanded && value == 1 && labelFits[index]
         ? ''
-        : label;
-    return SizedBox(
-      width: lerpDouble(compactWidth, _expandedWidth, progress),
+        : destinations[index].label;
+    return AnimatedBuilder(
+      animation: progress,
+      builder: (context, child) => SizedBox(
+        width: lerpDouble(compactWidth, _expandedWidth, progress.value),
+        child: child,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -302,14 +339,21 @@ class _SidebarPane extends StatelessWidget {
               colors: colors,
               height: itemHeight,
               sideInset: sideInset,
-              tooltip: expanded
+              progress: progress,
+              tooltip: (_) => expanded
                   ? UiLocalizations.of(context).showLess
                   : UiLocalizations.of(context).showMore,
               tooltipIsLabel: true,
               onTap: onToggle,
               child: SizedBox(
                 width: itemWidth,
-                child: Center(child: GlyphIcon(AppGlyphs.sidebar(progress))),
+                child: Center(
+                  child: AnimatedBuilder(
+                    animation: progress,
+                    builder: (_, _) =>
+                        GlyphIcon(AppGlyphs.sidebar(progress.value)),
+                  ),
+                ),
               ),
             ),
           ),
@@ -329,8 +373,9 @@ class _SidebarPane extends StatelessWidget {
                             colors: colors,
                             height: itemHeight,
                             sideInset: sideInset,
+                            progress: progress,
                             selected: index == selectedIndex,
-                            tooltip: rowTooltip(destination.label),
+                            tooltip: (value) => rowTooltip(index, value),
                             onTap: () => onSelected(index),
                             child: _DestinationRow(
                               destination: destination,
@@ -368,6 +413,7 @@ class _SidebarButton extends StatelessWidget {
     required this.colors,
     required this.height,
     required this.sideInset,
+    required this.progress,
     required this.tooltip,
     required this.onTap,
     required this.child,
@@ -378,8 +424,9 @@ class _SidebarButton extends StatelessWidget {
   final _SidebarColors colors;
   final double height;
   final double sideInset;
+  final Animation<double> progress;
   final bool? selected;
-  final String tooltip;
+  final String Function(double progress) tooltip;
   final bool tooltipIsLabel;
   final VoidCallback onTap;
   final Widget child;
@@ -406,9 +453,13 @@ class _SidebarButton extends StatelessWidget {
               mouseCursor: SystemMouseCursors.basic,
               splashFactory: NoSplash.splashFactory,
               overlayColor: colors.overlay,
-              child: Tooltip(
-                message: tooltip,
-                excludeFromSemantics: !tooltipIsLabel,
+              child: AnimatedBuilder(
+                animation: progress,
+                builder: (context, child) => Tooltip(
+                  message: tooltip(progress.value),
+                  excludeFromSemantics: !tooltipIsLabel,
+                  child: child,
+                ),
                 child: IconTheme.merge(
                   data: IconThemeData(size: _iconSize, color: colors.icon),
                   child: SizedBox(height: height, child: child),
@@ -420,24 +471,6 @@ class _SidebarButton extends StatelessWidget {
       ),
     );
   }
-}
-
-bool _fitsOneLine(
-  BuildContext context,
-  String text,
-  TextStyle? style,
-  double width,
-) {
-  final painter = TextPainter(
-    text: TextSpan(text: text, style: style),
-    maxLines: 1,
-    textDirection: Directionality.of(context),
-    textScaler: MediaQuery.textScalerOf(context),
-    locale: Localizations.maybeLocaleOf(context),
-  )..layout(maxWidth: width);
-  final fits = !painter.didExceedMaxLines;
-  painter.dispose();
-  return fits;
 }
 
 /// The row lays out at the expanded width whatever the pane's current width,
@@ -457,7 +490,7 @@ class _DestinationRow extends StatelessWidget {
   final double width;
   final double iconInset;
   final TextStyle? style;
-  final double labelOpacity;
+  final Animation<double> labelOpacity;
 
   @override
   Widget build(BuildContext context) {
@@ -472,9 +505,13 @@ class _DestinationRow extends StatelessWidget {
             AnimatedGlyph(glyph: destination.glyph, filled: selected),
             const SizedBox(width: _labelGap),
             Expanded(
-              child: Opacity(
-                opacity: labelOpacity,
-                alwaysIncludeSemantics: true,
+              child: AnimatedBuilder(
+                animation: labelOpacity,
+                builder: (context, child) => Opacity(
+                  opacity: labelOpacity.value,
+                  alwaysIncludeSemantics: true,
+                  child: child,
+                ),
                 child: Text(
                   destination.label,
                   maxLines: 1,

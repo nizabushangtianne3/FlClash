@@ -10,19 +10,6 @@ class SubscriptionInfoView extends StatelessWidget {
 
   const SubscriptionInfoView({super.key, this.subscriptionInfo});
 
-  double _textWidth(BuildContext context, String text, TextStyle? style) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: Directionality.of(context),
-      textScaler: MediaQuery.textScalerOf(context),
-      locale: Localizations.maybeLocaleOf(context),
-      maxLines: 1,
-    )..layout();
-    final width = painter.width;
-    painter.dispose();
-    return width;
-  }
-
   @override
   Widget build(BuildContext context) {
     final info = subscriptionInfo;
@@ -60,10 +47,11 @@ class SubscriptionInfoView extends StatelessWidget {
       children: [
         LayoutBuilder(
           builder: (context, constraints) {
+            final measure = MeasureScope.of(context);
             final showExpire =
-                _textWidth(context, trafficLabel, valueStyle) +
+                measure.computeTextSize(trafficText).width +
                     _expireGap +
-                    _textWidth(context, expireShow, metaStyle) <=
+                    measure.computeTextSize(expireText).width <=
                 constraints.maxWidth;
             return Row(
               children: [

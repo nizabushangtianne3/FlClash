@@ -1,7 +1,11 @@
 import 'package:fl_clash/ui/table_layout.dart';
+import 'package:fl_clash/ui/shape.dart';
+import 'package:fl_clash/ui/typography.dart';
 import 'package:fl_clash/widgets/record_table.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart';
+
+import '../helpers/test_app.dart';
 
 class _Item {
   const _Item(this.value, this.newest);
@@ -119,5 +123,62 @@ void main() {
 
     expect(sorted.map((item) => item.value), [3, 2, 2]);
     expect(sorted.map((item) => item.newest), [1, 3, 2]);
+  });
+
+  testWidgets('every visible row shares the table\'s shape and text style', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      TestApp(
+        wrapInProviderScope: true,
+        child: Scaffold(
+          body: RecordTableFrame<String>(
+            tableId: 'test-table',
+            items: const ['alpha', 'beta'],
+            columnsOf: (_) => [
+              RecordColumn<String>(
+                const TableColumn('value', 'Value', flex: 1),
+                cell: (_, item) => RecordCellText(item),
+              ),
+            ],
+            builder: (context, table, items) => Column(
+              children: [
+                for (final item in items)
+                  RecordTableRow(
+                    table: table!,
+                    striped: false,
+                    cells: table.cellsOf(context, item),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final tables = tester
+        .widgetList<RecordTableRow>(find.byType(RecordTableRow))
+        .map((row) => row.table)
+        .toList();
+    expect(tables, hasLength(2));
+
+    final shape = tables.first.rowShape;
+    final style = tables.first.rowStyle;
+    expect(shape, AppShape.all(AppCorner.fit(tables.first.rowHeight)));
+    expect(style.fontSize, AppTextStyle.subheadline.size);
+    expect(style.fontFeatures, const [FontFeature.tabularFigures()]);
+    for (final table in tables) {
+      expect(identical(table.rowShape, shape), isTrue);
+      expect(identical(table.rowStyle, style), isTrue);
+    }
+
+    for (final row in tester.widgetList<InkWell>(
+      find.descendant(
+        of: find.byType(RecordTableRow),
+        matching: find.byType(InkWell),
+      ),
+    )) {
+      expect(row.customBorder, same(shape));
+    }
   });
 }

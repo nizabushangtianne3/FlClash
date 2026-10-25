@@ -216,12 +216,16 @@ class RecordTable<T> {
   final List<TableColumn> layouts;
   final List<double> widths;
   final double rowHeight;
+  final RoundedSuperellipseBorder rowShape;
+  final TextStyle rowStyle;
 
   const RecordTable._({
     required this.columns,
     required this.layouts,
     required this.widths,
     required this.rowHeight,
+    required this.rowShape,
+    required this.rowStyle,
   });
 
   List<Widget> cellsOf(BuildContext context, T item) => [
@@ -279,6 +283,10 @@ class _RecordTableFrameState<T> extends ConsumerState<RecordTableFrame<T>>
     }
     final columns = widget.columnsOf(width);
     final layouts = [for (final column in columns) column.layout];
+    final rowHeight =
+        MediaQuery.textScalerOf(context).scale(_recordCellLineHeight) +
+        _recordRowPadding * 2;
+    final rowBaseStyle = AppTextStyle.subheadline.of(context);
     return RecordTable._(
       columns: columns,
       layouts: layouts,
@@ -287,9 +295,13 @@ class _RecordTableFrameState<T> extends ConsumerState<RecordTableFrame<T>>
         width - _recordTableMargin * 2,
         columnWidths,
       ),
-      rowHeight:
-          MediaQuery.textScalerOf(context).scale(_recordCellLineHeight) +
-          _recordRowPadding * 2,
+      rowHeight: rowHeight,
+      rowShape: AppShape.all(AppCorner.fit(rowHeight)),
+      rowStyle: rowBaseStyle.copyWith(
+        color: context.colorScheme.onSurface,
+        height: _recordCellLineHeight / rowBaseStyle.fontSize!,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
     );
   }
 
@@ -507,8 +519,8 @@ class RecordTableRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = context.colorScheme;
-    final style = AppTextStyle.subheadline.of(context);
-    final shape = AppShape.all(AppCorner.fit(table.rowHeight));
+    final style = table.rowStyle;
+    final shape = table.rowShape;
     final level = striped ? context.raisedSurfaceLevel : context.surfaceLevel;
     final fill = striped ? level.colorOf(colorScheme) : null;
     Widget row = Material(
@@ -517,11 +529,7 @@ class RecordTableRow extends StatelessWidget {
         onTap: onTap,
         customBorder: shape,
         child: DefaultTextStyle(
-          style: style.copyWith(
-            color: colorScheme.onSurface,
-            height: _recordCellLineHeight / style.fontSize!,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
+          style: style,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           child: TableCells(
