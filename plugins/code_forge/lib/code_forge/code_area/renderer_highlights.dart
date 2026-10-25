@@ -36,8 +36,17 @@ extension _RendererHighlights on _CodeFieldRenderer {
 
     if (cursorOffset < 0 || textLength == 0) return (null, null);
 
-    if (cursorOffset > 0 && cursorOffset <= textLength) {
-      final before = controller.rope.substring(cursorOffset - 1, cursorOffset);
+    // Both neighbours live in the caret's own line, which the layout already
+    // holds; a caret on a line boundary has the newline that ends the line
+    // beside it, and that is never a bracket.
+    final caret = _getCaretInfo();
+    final lineText = _lineText(caret.lineIndex);
+    final column = lineText
+        .toUtf16Offset(caret.columnIndex)
+        .clamp(0, lineText.length);
+
+    if (cursorOffset > 0 && cursorOffset <= textLength && column > 0) {
+      final before = lineText[column - 1];
       if (bracketChars.contains(before)) {
         final match = _findMatchingBracket(cursorOffset - 1);
         if (match != null) {
@@ -46,8 +55,8 @@ extension _RendererHighlights on _CodeFieldRenderer {
       }
     }
 
-    if (cursorOffset >= 0 && cursorOffset < textLength) {
-      final after = controller.rope.substring(cursorOffset, cursorOffset + 1);
+    if (cursorOffset < textLength && column < lineText.length) {
+      final after = lineText[column];
       if (openingBracketChars.contains(after)) {
         final match = _findMatchingBracket(cursorOffset);
         if (match != null) {

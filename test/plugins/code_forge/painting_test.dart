@@ -247,6 +247,74 @@ void main() {
     expect(boxes.last.top - boxes.first.top, 2 * editorLineHeight);
   });
 
+  testWidgets('a caret beside an opening bracket highlights the pair', (
+    tester,
+  ) async {
+    final controller = CodeForgeController()..text = 'a: {\n  b: 1\n}';
+    await pumpEditor(tester, controller);
+    await focusEditor(tester);
+    controller.selection = const TextSelection.collapsed(offset: 4);
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(_bracketBoxes(tester), hasLength(2));
+  });
+
+  testWidgets('a caret after the last closing bracket highlights the pair', (
+    tester,
+  ) async {
+    final controller = CodeForgeController()..text = 'a: {\n  b: 1\n}';
+    await pumpEditor(tester, controller);
+    await focusEditor(tester);
+    controller.selection = const TextSelection.collapsed(offset: 13);
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(_bracketBoxes(tester), hasLength(2));
+  });
+
+  testWidgets('a caret before a closing bracket draws no highlight', (
+    tester,
+  ) async {
+    final controller = CodeForgeController()..text = 'a: {\n  b: 1\n}';
+    await pumpEditor(tester, controller);
+    await focusEditor(tester);
+    controller.selection = const TextSelection.collapsed(offset: 12);
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(_bracketBoxes(tester), isEmpty);
+  });
+
+  testWidgets('a caret on a line boundary has no bracket beside it', (
+    tester,
+  ) async {
+    final controller = CodeForgeController()..text = '{\n}';
+    await pumpEditor(tester, controller);
+    await focusEditor(tester);
+
+    // The newline beside the caret is its line's end, on either side of it.
+    controller.selection = const TextSelection.collapsed(offset: 2);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(_bracketBoxes(tester), isEmpty);
+
+    controller.selection = const TextSelection.collapsed(offset: 3);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(_bracketBoxes(tester), hasLength(2));
+  });
+
+  testWidgets('a caret after a pair past a surrogate pair highlights it', (
+    tester,
+  ) async {
+    final controller = CodeForgeController()..text = '\u{1D4C2}{\n}';
+    await pumpEditor(tester, controller);
+    await focusEditor(tester);
+
+    // The rope counts the astral character as one offset while the line text
+    // holds it as two code units.
+    controller.selection = const TextSelection.collapsed(offset: 2);
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(_bracketBoxes(tester), hasLength(2));
+  });
+
   SyntaxHighlighter yamlHighlighter() {
     final highlighter = SyntaxHighlighter(
       language: langYaml,

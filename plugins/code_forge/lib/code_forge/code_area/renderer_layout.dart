@@ -106,7 +106,13 @@ extension _RendererLayout on _CodeFieldRenderer {
     _lineWidthCache.removeWhere(stale);
     _indentGuideCache.removeWhere(stale);
     _lineIndentCache.removeWhere(stale);
-    _bracketCache.clear();
+    // A bracket pair survives an edit that touched neither end, so only the
+    // offsets at or past the edit give up their answer; an offset that had
+    // none is dropped too, because an insertion can create one.
+    final editStart = controller.getLineStartOffset(line);
+    _bracketCache.removeWhere(
+      (key, value) => key >= editStart || value == null || value! >= editStart,
+    );
     _invalidateCaret();
   }
 
