@@ -112,7 +112,6 @@ class _RecordingCoreHandler extends CoreHandlerInterface {
       },
       CoreMethod.changeProxy => {'message': '', 'changed': true},
       CoreMethod.compileRuleSet => {'behavior': 'ipcidr', 'format': 'text'},
-      CoreMethod.getConnectionCount => 3,
       CoreMethod.validateFilters => ['', 'missing closing )'],
       CoreMethod.watchRoute => {
         'core-epoch': 1,
@@ -386,7 +385,6 @@ void main() {
       ),
     );
     expect((await handler.getConnections()).added.single.id, 'connection-1');
-    expect(await handler.getConnectionCount(), 3);
     expect((await handler.getExternalProviders()).single.name, 'provider-1');
     expect(
       (await handler.getExternalProvider('provider-1'))?.name,

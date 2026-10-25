@@ -33,7 +33,6 @@ enum CoreMethod {
   outboundIp,
   serviceCheck,
   getConnections,
-  getConnectionCount,
   closeConnections,
   resetConnections,
   closeConnection,

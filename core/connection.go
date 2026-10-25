@@ -137,15 +137,6 @@ func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 	return delta
 }
 
-func handleGetConnectionCount() int {
-	count := 0
-	statistic.DefaultManager.Range(func(statistic.Tracker) bool {
-		count++
-		return true
-	})
-	return count
-}
-
 func collectTrackers() []statistic.Tracker {
 	var trackers []statistic.Tracker
 	statistic.DefaultManager.Range(func(c statistic.Tracker) bool {

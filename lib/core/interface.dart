@@ -113,8 +113,6 @@ mixin CoreInterface {
 
   FutureOr<ConnectionDelta> getConnections({bool resync});
 
-  FutureOr<int> getConnectionCount();
-
   FutureOr<bool> closeConnection(String id);
 
   FutureOr<String> clearEffect(int profileId);
@@ -509,11 +507,6 @@ abstract class CoreHandlerInterface with CoreInterface {
       arguments: {'resync': resync},
     );
     return data is ConnectionDelta ? data : connectionDeltaOf(data);
-  }
-
-  @override
-  Future<int> getConnectionCount() async {
-    return await _invokeMethod<int>(method: CoreMethod.getConnectionCount) ?? 0;
   }
 
   @override

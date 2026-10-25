@@ -219,10 +219,6 @@ class CoreController {
     return _interface.getConnections(resync: resync);
   }
 
-  Future<int> getConnectionCount() async {
-    return _interface.getConnectionCount();
-  }
-
   Future<void> closeConnection(String id) async {
     await _interface.closeConnection(id);
   }
