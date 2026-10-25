@@ -111,7 +111,7 @@ extension _RendererLayout on _CodeFieldRenderer {
     // none is dropped too, because an insertion can create one.
     final editStart = controller.getLineStartOffset(line);
     _bracketCache.removeWhere(
-      (key, value) => key >= editStart || value == null || value! >= editStart,
+      (key, value) => key >= editStart || value == null || value >= editStart,
     );
     _invalidateCaret();
   }
