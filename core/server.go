@@ -28,6 +28,8 @@ var (
 const (
 	maxIPCFrameSize = 64 * 1024 * 1024
 	ipcWriteTimeout = 10 * time.Second
+
+	maxPooledFrameSize = 1 << 20
 )
 
 var deliveryFailureReported atomic.Bool
@@ -51,18 +53,30 @@ func hasEventListener() bool {
 	return true
 }
 
+// One write per frame: the header and the payload share a pooled buffer.
+var frameBuffers = sync.Pool{New: func() any {
+	buffer := make([]byte, 0, 4096)
+	return &buffer
+}}
+
 func writeFrame(w io.Writer, data []byte) (int, error) {
 	if len(data) > maxIPCFrameSize {
 		return 0, fmt.Errorf("IPC frame exceeds %d bytes", maxIPCFrameSize)
 	}
-	lenBuf := [4]byte{}
-	binary.LittleEndian.PutUint32(lenBuf[:], uint32(len(data)))
-	written, err := writeAll(w, lenBuf[:])
-	if err != nil {
-		return written, err
+	pooled, _ := frameBuffers.Get().(*[]byte)
+	buffer := *pooled
+	if cap(buffer) < 4+len(data) {
+		buffer = make([]byte, 4+len(data))
 	}
-	n, err := writeAll(w, data)
-	return written + n, err
+	buffer = buffer[:4+len(data)]
+	binary.LittleEndian.PutUint32(buffer, uint32(len(data)))
+	copy(buffer[4:], data)
+	written, err := writeAll(w, buffer)
+	if cap(buffer) <= maxPooledFrameSize {
+		*pooled = buffer[:0]
+		frameBuffers.Put(pooled)
+	}
+	return written, err
 }
 
 type resumingWriter struct {

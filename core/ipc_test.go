@@ -30,6 +30,7 @@ type fakeConn struct {
 	deadlines     int
 	deadlineErr   error
 	deadlineOK    int
+	writes        int
 }
 
 func (fake *fakeConn) Read(p []byte) (int, error) {
@@ -42,6 +43,7 @@ func (fake *fakeConn) Read(p []byte) (int, error) {
 func (fake *fakeConn) Write(p []byte) (int, error) {
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
+	fake.writes++
 	if fake.writeErr == nil {
 		return fake.written.Write(p)
 	}
@@ -68,6 +70,12 @@ func (fake *fakeConn) deadlineCount() int {
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	return fake.deadlines
+}
+
+func (fake *fakeConn) writeCount() int {
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	return fake.writes
 }
 
 func (fake *fakeConn) setWriteErr(err error) {
@@ -491,6 +499,23 @@ func TestSendArmsAWriteDeadlineOnEveryFrame(t *testing.T) {
 	defer fake.mu.Unlock()
 	if fake.deadlines != 2 {
 		t.Errorf("deadlines armed = %d, want one per frame", fake.deadlines)
+	}
+}
+
+func TestSendWritesEachFrameInOneTransfer(t *testing.T) {
+	fake := &fakeConn{}
+	previous := swapConn(fake)
+	defer swapConn(previous)
+
+	send([]byte("{}"))
+	send([]byte(`{"traffic":true}`))
+
+	if got := fake.writeCount(); got != 2 {
+		t.Errorf("write calls = %d, want one per frame", got)
+	}
+	frames := fake.frames(t)
+	if len(frames) != 2 || string(frames[0]) != "{}" || string(frames[1]) != `{"traffic":true}` {
+		t.Errorf("frames = %q, want both payloads whole and in order", frames)
 	}
 }
 
