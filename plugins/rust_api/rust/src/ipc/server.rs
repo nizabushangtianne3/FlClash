@@ -183,7 +183,8 @@ async fn receive(reader: RecvHalf, emit: &EventSink) -> io::Result<()> {
 async fn transmit(mut writer: SendHalf, outbox: &Outbox) -> io::Result<()> {
     loop {
         let frame = outbox.next().await;
-        writer.write_all(&frame).await?;
+        let batch = outbox.drain_into(frame);
+        writer.write_all(&batch).await?;
     }
 }
 

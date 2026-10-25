@@ -7,6 +7,10 @@ use tokio::sync::Notify;
 // has stopped reading.
 const MAX_PENDING_BYTES: usize = 16 * 1024 * 1024;
 
+/// What a burst may drain into a single write. Past it the rest leaves on the
+/// next one, which keeps the buffer bounded whatever the burst.
+const MAX_DRAINED_BYTES: usize = 256 * 1024;
+
 #[derive(Default)]
 struct Queue {
     frames: VecDeque<Vec<u8>>,
@@ -64,6 +68,18 @@ impl Outbox {
             }
             self.ready.notified().await;
         }
+    }
+
+    /// Appends whatever is already queued to [first], so a burst reaches the
+    /// socket in one write instead of one per frame. Frames keep the order they
+    /// were pushed in, and the byte bounds below are the ones `push` enforces.
+    pub fn drain_into(&self, first: Vec<u8>) -> Vec<u8> {
+        let mut batch = first;
+        while batch.len() < MAX_DRAINED_BYTES {
+            let Some(frame) = self.pop() else { break };
+            batch.extend_from_slice(&frame);
+        }
+        batch
     }
 
     fn pop(&self) -> Option<Vec<u8>> {
@@ -161,5 +177,31 @@ mod tests {
 
         pushed.join().unwrap();
         assert_eq!(frame, b"late");
+    }
+
+    #[test]
+    fn a_burst_drains_into_one_batch_in_push_order() {
+        let outbox = open_outbox();
+        outbox.push(b"one".to_vec()).unwrap();
+        outbox.push(b"two".to_vec()).unwrap();
+
+        let batch = outbox.drain_into(b"head".to_vec());
+
+        assert_eq!(batch, b"headonetwo");
+        assert!(outbox.pop().is_none());
+    }
+
+    #[test]
+    fn a_drain_stops_once_the_batch_reaches_the_bound() {
+        let outbox = open_outbox();
+        let frame = vec![b'x'; MAX_DRAINED_BYTES / 2];
+        outbox.push(frame.clone()).unwrap();
+        outbox.push(frame.clone()).unwrap();
+        outbox.push(frame.clone()).unwrap();
+
+        let batch = outbox.drain_into(Vec::new());
+
+        assert_eq!(batch.len(), MAX_DRAINED_BYTES);
+        assert_eq!(outbox.pop().unwrap().len(), MAX_DRAINED_BYTES / 2);
     }
 }
