@@ -17,7 +17,9 @@ enum SupportPlatform {
   Linux,
   Android;
 
-  static SupportPlatform get currentPlatform {
+  static final SupportPlatform currentPlatform = _resolvePlatform();
+
+  static SupportPlatform _resolvePlatform() {
     if (system.isWindows) {
       return SupportPlatform.Windows;
     } else if (system.isMacOS) {
