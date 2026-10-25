@@ -46,9 +46,28 @@ void main() {
     expect(
       pluginSource,
       contains('''
-  if (loaded == nullptr) {
-    return false;
-  }'''),
+    if (loaded == nullptr) {
+      return false;
+    }'''),
+    );
+  });
+
+  test('windows show leaves an unchanged icon alone', () {
+    expect(pluginSource, contains('state.icon_path != wanted_icon_path'));
+    expect(pluginSource, contains('icon_changed ? NIF_ICON : 0'));
+  });
+
+  test('windows show rebuilds a changed menu only', () {
+    expect(pluginSource, contains('!state.has_menu || state.menu != *items'));
+  });
+
+  test('windows hide forgets the cached icon and menu', () {
+    final hide = _body(pluginSource, 'void TrayPlugin::Hide(');
+
+    expect(hide, contains('TrayStates().erase(registrar_);'));
+    expect(
+      hide.indexOf('::DestroyIcon(icon_data_.hIcon);'),
+      greaterThan(hide.indexOf('NIM_DELETE')),
     );
   });
 

@@ -35,7 +35,10 @@ final class Tray {
 
   Map<int, TrayMenuItem> _itemsById = const {};
   Future<void> _queue = Future<void>.value();
-  String? _signature;
+  String? _iconSignature;
+  String? _menuSignature;
+  String? _titleSignature;
+  Map<String, Object?>? _resolvedIcon;
   String _title = '';
   String _requestedTitle = '';
   bool _isVisible = false;
@@ -68,7 +71,10 @@ final class Tray {
   void resetForTesting() {
     _itemsById = const {};
     _queue = Future<void>.value();
-    _signature = null;
+    _iconSignature = null;
+    _menuSignature = null;
+    _titleSignature = null;
+    _resolvedIcon = null;
     _title = '';
     _requestedTitle = '';
     _isVisible = false;
@@ -91,24 +97,40 @@ final class Tray {
       return;
     }
     final encoded = TrayCodec.encode(spec);
-    if (_isVisible && encoded.signature == _signature) {
+    final iconSignature = jsonEncode(encoded.icon);
+    final menuSignature = jsonEncode(encoded.menu);
+    final titleSignature = jsonEncode([encoded.toolTip, _title]);
+    if (_isVisible &&
+        iconSignature == _iconSignature &&
+        menuSignature == _menuSignature &&
+        titleSignature == _titleSignature) {
       _itemsById = encoded.itemsById;
       return;
+    }
+    // Only the icon channel resolves an asset again; an unchanged one is
+    // replayed as the native side last saw it.
+    if (iconSignature != _iconSignature || _resolvedIcon == null) {
+      _resolvedIcon = await _resolveIcon(spec.icon);
     }
     final isApplied = await _channel
         .invokeMethod<bool>(_methodShow, <String, Object?>{
           'id': _stableId,
-          'icon': await _resolveIcon(spec.icon),
+          'icon': _resolvedIcon!,
           'toolTip': encoded.toolTip,
           'title': _title,
           'menu': encoded.menu,
         });
     if (isApplied != true) {
-      _signature = null;
+      _iconSignature = null;
+      _menuSignature = null;
+      _titleSignature = null;
+      _resolvedIcon = null;
       return;
     }
     _itemsById = encoded.itemsById;
-    _signature = encoded.signature;
+    _iconSignature = iconSignature;
+    _menuSignature = menuSignature;
+    _titleSignature = titleSignature;
     _isVisible = true;
   }
 
@@ -128,7 +150,10 @@ final class Tray {
 
   Future<void> _hide() async {
     _itemsById = const {};
-    _signature = null;
+    _iconSignature = null;
+    _menuSignature = null;
+    _titleSignature = null;
+    _resolvedIcon = null;
     _title = '';
     if (!_isVisible) {
       return;

@@ -1,5 +1,7 @@
 #include "tray_plugin.h"
 
+#include <map>
+
 #include <strsafe.h>
 
 #include <variant>
@@ -41,6 +43,22 @@ const flutter::EncodableList* ListAt(const flutter::EncodableMap& map,
 const flutter::EncodableMap* MapAt(const flutter::EncodableMap& map,
                                    const char* key) {
   return std::get_if<flutter::EncodableMap>(ValueAt(map, key));
+}
+
+// A Show call repeats the whole tray state, so each plugin instance keeps
+// what it last sent: the icon path its live HICON came from, and the menu it
+// built. Only a changed part is read from disk, decoded, or rebuilt again.
+struct RepeatedTrayState {
+  std::wstring icon_path;
+  flutter::EncodableList menu;
+  bool has_menu = false;
+};
+
+std::map<const flutter::PluginRegistrarWindows*, RepeatedTrayState>&
+TrayStates() {
+  static std::map<const flutter::PluginRegistrarWindows*, RepeatedTrayState>
+      states;
+  return states;
 }
 
 std::wstring Utf16FromUtf8(const std::string& value) {
@@ -106,9 +124,9 @@ bool TrayPlugin::ApplyIcon(bool add) {
   icon_data_.hWnd = MainWindow();
   icon_data_.uID = kTrayIconId;
   icon_data_.uCallbackMessage = kTrayCallbackMessage;
-  icon_data_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
-  ::StringCchCopyW(icon_data_.szTip, ARRAYSIZE(icon_data_.szTip),
-                   tool_tip_.c_str());
+  // The caller records the parts that changed in uFlags; a notification
+  // always carries the callback message.
+  icon_data_.uFlags |= NIF_MESSAGE;
 
   return ::Shell_NotifyIconW(add ? NIM_ADD : NIM_MODIFY, &icon_data_) != FALSE;
 }
@@ -173,34 +191,59 @@ bool TrayPlugin::Show(const flutter::EncodableMap& arguments) {
     return false;
   }
 
-  const HICON loaded = static_cast<HICON>(::LoadImageW(
-      nullptr, Utf16FromUtf8(*icon_path).c_str(), IMAGE_ICON,
-      ::GetSystemMetrics(SM_CXSMICON), ::GetSystemMetrics(SM_CYSMICON),
-      LR_LOADFROMFILE));
-  if (loaded == nullptr) {
-    return false;
+  RepeatedTrayState& state = TrayStates()[registrar_];
+  const std::wstring wanted_icon_path = Utf16FromUtf8(*icon_path);
+  const bool add = !visible_;
+  const bool icon_changed =
+      add || state.icon_path != wanted_icon_path || icon_data_.hIcon == nullptr;
+  if (icon_changed) {
+    const HICON loaded = static_cast<HICON>(::LoadImageW(
+        nullptr, wanted_icon_path.c_str(), IMAGE_ICON,
+        ::GetSystemMetrics(SM_CXSMICON), ::GetSystemMetrics(SM_CYSMICON),
+        LR_LOADFROMFILE));
+    if (loaded == nullptr) {
+      return false;
+    }
+    if (icon_data_.hIcon != nullptr) {
+      ::DestroyIcon(icon_data_.hIcon);
+    }
+    icon_data_.hIcon = loaded;
+    state.icon_path = wanted_icon_path;
   }
-  if (icon_data_.hIcon != nullptr) {
-    ::DestroyIcon(icon_data_.hIcon);
-  }
-  icon_data_.hIcon = loaded;
 
   const std::string* tool_tip = StringAt(arguments, "toolTip");
+  const bool tool_tip_changed =
+      add || (tool_tip != nullptr && Utf16FromUtf8(*tool_tip) != tool_tip_);
   if (tool_tip != nullptr) {
     tool_tip_ = Utf16FromUtf8(*tool_tip);
   }
 
   const flutter::EncodableList* items = ListAt(arguments, "menu");
   if (items != nullptr) {
-    if (menu_ == nullptr) {
-      menu_ = ::CreatePopupMenu();
+    if (!state.has_menu || state.menu != *items) {
+      if (menu_ == nullptr) {
+        menu_ = ::CreatePopupMenu();
+      }
+      RebuildMenu(menu_, *items);
+      state.menu = *items;
+      state.has_menu = true;
     }
-    RebuildMenu(menu_, *items);
   }
 
   icon_requested_ = true;
-  bool applied = ApplyIcon(!visible_);
+  icon_data_.uFlags = (icon_changed ? NIF_ICON : 0) |
+                      (tool_tip_changed ? NIF_TIP : 0);
+  if (tool_tip_changed) {
+    ::StringCchCopyW(icon_data_.szTip, ARRAYSIZE(icon_data_.szTip),
+                     tool_tip_.c_str());
+  }
+  bool applied = ApplyIcon(add);
   if (!applied && visible_) {
+    // The add may still have landed with nothing to change, so the whole
+    // icon goes out again.
+    icon_data_.uFlags = NIF_ICON | NIF_TIP;
+    ::StringCchCopyW(icon_data_.szTip, ARRAYSIZE(icon_data_.szTip),
+                     tool_tip_.c_str());
     applied = ApplyIcon(true);
   }
   if (applied) {
@@ -218,6 +261,9 @@ void TrayPlugin::ScheduleRestore() {
 
 // An add that timed out may still have landed, so modify goes first.
 void TrayPlugin::RestoreIcon() {
+  icon_data_.uFlags = NIF_ICON | NIF_TIP;
+  ::StringCchCopyW(icon_data_.szTip, ARRAYSIZE(icon_data_.szTip),
+                   tool_tip_.c_str());
   if (ApplyIcon(false) || ApplyIcon(true)) {
     visible_ = true;
     ::KillTimer(MainWindow(), kRestoreTimerId);
@@ -236,6 +282,7 @@ void TrayPlugin::Hide() {
     ::DestroyIcon(icon_data_.hIcon);
   }
   icon_data_ = NOTIFYICONDATAW{};
+  TrayStates().erase(registrar_);
 
   if (menu_ != nullptr) {
     ::DestroyMenu(menu_);

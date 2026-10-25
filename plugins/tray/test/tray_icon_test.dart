@@ -77,6 +77,84 @@ void main() {
     },
   );
 
+  test(
+    'a tooltip-only change replays the tray without reloading the icon',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+      var probes = 0;
+      Tray.fileExists = (filePath) {
+        probes++;
+        return _assetPath(filePath).contains('/3.0x/');
+      };
+
+      await Tray.instance.show(const TraySpec(icon: TrayIcon.asset(_asset)));
+      final resolved = lastIcon()['path'];
+
+      await Tray.instance.show(
+        const TraySpec(
+          icon: TrayIcon.asset(_asset),
+          toolTip: 'FlClash - 2 nodes',
+        ),
+      );
+
+      expect(calls.where((call) => call.method == 'show').length, 2);
+      expect(probes, 2, reason: 'the unchanged icon is not resolved again');
+      expect(lastIcon()['path'], resolved);
+      expect((calls.last.arguments as Map)['toolTip'], 'FlClash - 2 nodes');
+    },
+  );
+
+  test('a menu change replays the tray without reloading the icon', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    var probes = 0;
+    Tray.fileExists = (filePath) {
+      probes++;
+      return _assetPath(filePath).contains('/3.0x/');
+    };
+
+    await Tray.instance.show(
+      const TraySpec(
+        icon: TrayIcon.asset(_asset),
+        menu: [TrayMenuCheckbox(label: 'System proxy', checked: false)],
+      ),
+    );
+    final resolved = lastIcon()['path'];
+
+    await Tray.instance.show(
+      const TraySpec(
+        icon: TrayIcon.asset(_asset),
+        menu: [TrayMenuCheckbox(label: 'System proxy', checked: true)],
+      ),
+    );
+
+    expect(calls.where((call) => call.method == 'show').length, 2);
+    expect(probes, 2, reason: 'the unchanged icon is not resolved again');
+    expect(lastIcon()['path'], resolved);
+    final menu = (calls.last.arguments as Map)['menu'] as List<Object?>;
+    expect((menu.first as Map<Object?, Object?>)['checked'], isTrue);
+  });
+
+  test('a hidden tray reloads the icon when it returns', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    var probes = 0;
+    Tray.fileExists = (filePath) {
+      probes++;
+      return _assetPath(filePath).contains('/3.0x/');
+    };
+
+    await Tray.instance.show(const TraySpec(icon: TrayIcon.asset(_asset)));
+    await Tray.instance.hide();
+    await Tray.instance.show(const TraySpec(icon: TrayIcon.asset(_asset)));
+
+    final shows = calls.where((call) => call.method == 'show');
+    expect(shows.length, 2);
+    expect(probes, 4, reason: 'the icon is resolved again once hidden');
+    final icon =
+        (shows.last.arguments as Map<Object?, Object?>)['icon']
+            as Map<Object?, Object?>;
+    expect(_assetPath(icon['path']), endsWith('3.0x/status_1.png'));
+  });
+
   test('macOS sends every bundled scale as a representation', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     final bundled = {
