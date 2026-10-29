@@ -2,6 +2,423 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "1.0.0",
+      "tag": "v1.0.0",
+      "date": "2026-10-29",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "feat",
+          "entries": [
+            {
+              "id": "e8aac17",
+              "scope": "access",
+              "text": "Access control state shown in a bar at the bottom"
+            },
+            {
+              "id": "5d6552d",
+              "scope": "config",
+              "text": "Optional general overrides; settings apply sooner"
+            },
+            {
+              "id": "8176cce",
+              "scope": "dashboard",
+              "text": "IP quality cached for 3 days; simpler Android dashboard"
+            },
+            {
+              "id": "0817c3b",
+              "text": "Update the core to mihomo v1.19.33"
+            },
+            {
+              "id": "bbfafde",
+              "scope": "tray",
+              "text": "Colored tray status icons; monochrome option on macOS"
+            },
+            {
+              "id": "6928521",
+              "scope": "desktop",
+              "text": "Sidebar blur; Windows fixes; keeps system proxies FlClash didn't set"
+            },
+            {
+              "id": "eaaf3e3",
+              "scope": "profiles",
+              "text": "Profile QR codes, phone-to-TV links, more proxy fields"
+            },
+            {
+              "id": "0f9f89c",
+              "scope": "proxies",
+              "text": "Add proxies to local proxies; adjustable delay test timeout"
+            },
+            {
+              "id": "a4fc067",
+              "scope": "theme",
+              "text": "Higher-contrast dark mode and a refreshed app icon"
+            },
+            {
+              "id": "0d98a9d",
+              "scope": "ui",
+              "text": "iOS-style docked search and menus; bar buttons lift on hover"
+            },
+            {
+              "id": "ae902ed",
+              "scope": "ui",
+              "text": "iOS-style switches, stretchy sheets, menus and long-press reordering"
+            },
+            {
+              "id": "4837fb3",
+              "scope": "ui",
+              "text": "Pages scroll under the Android navigation bar"
+            },
+            {
+              "id": "09e7e56",
+              "scope": "core",
+              "text": "Clear the DNS cache by hand or on network change"
+            }
+          ]
+        },
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "4e68b31",
+              "scope": "ui",
+              "text": "Reconcile upstream route, access and status interfaces"
+            },
+            {
+              "id": "99b3381",
+              "scope": "android",
+              "text": "Opening the app no longer reloads a running VPN"
+            }
+          ]
+        },
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "9338f2d",
+              "scope": "core",
+              "text": "Faster proxy core, health checks and queue handling"
+            },
+            {
+              "id": "7cbc827",
+              "scope": "proxy",
+              "text": "Faster Core shutdown on Windows"
+            },
+            {
+              "id": "0b1a1d2",
+              "scope": "views",
+              "text": "Faster proxy and service lists"
+            },
+            {
+              "id": "dad722c",
+              "scope": "models",
+              "text": "Large rule lists import faster"
+            },
+            {
+              "id": "ecdb9cc",
+              "scope": "views",
+              "text": "Faster access, proxy and member lists while searching"
+            },
+            {
+              "id": "59b9591",
+              "scope": "ui",
+              "text": "Smoother sidebar, picker and loading animations"
+            },
+            {
+              "id": "c8ae7f3",
+              "scope": "editor",
+              "text": "Bracket highlighting costs no extra Core round trip"
+            },
+            {
+              "id": "c554aef",
+              "scope": "tray",
+              "text": "The tray keeps its icon across status updates"
+            },
+            {
+              "id": "b26f156",
+              "scope": "helper",
+              "text": "Restarts no longer stall Core stop requests"
+            },
+            {
+              "id": "35e00da",
+              "scope": "editor",
+              "text": "Faster editing of large configuration files"
+            },
+            {
+              "id": "03999af",
+              "scope": "core",
+              "text": "Fewer pauses reading Core memory"
+            },
+            {
+              "id": "d792dcb",
+              "scope": "core",
+              "text": "Leaner connection and request tracking"
+            },
+            {
+              "id": "c6c7275",
+              "scope": "core",
+              "text": "Faster service checks and probes"
+            },
+            {
+              "id": "30b3360",
+              "scope": "connections",
+              "text": "Faster connection list and dashboard counts"
+            },
+            {
+              "id": "a80b457",
+              "scope": "connections",
+              "text": "Answer a poll of the table with what moved"
+            },
+            {
+              "id": "8f0bfd3",
+              "scope": "profiles",
+              "text": "Faster profile switching on large subscriptions"
+            },
+            {
+              "id": "78f0403",
+              "scope": "proxies",
+              "text": "Faster proxy panel updates"
+            },
+            {
+              "id": "9b99631",
+              "scope": "core",
+              "text": "Drop the synchronous GC from the config switch"
+            },
+            {
+              "id": "90447ce",
+              "scope": "core",
+              "text": "Reuse the parse of an unchanged profile"
+            },
+            {
+              "id": "5752279",
+              "scope": "editor",
+              "text": "Lay the completion popup out per change"
+            },
+            {
+              "id": "9b4906c",
+              "scope": "nav",
+              "text": "Lay out the dock labels per change"
+            },
+            {
+              "id": "e451acd",
+              "scope": "proxies",
+              "text": "Derive the selection ids per change"
+            },
+            {
+              "id": "851f02f",
+              "scope": "profiles",
+              "text": "Keep the picker search text per entry"
+            },
+            {
+              "id": "7fd0cbc",
+              "scope": "profiles",
+              "text": "Derive member types per change"
+            },
+            {
+              "id": "6279695",
+              "scope": "editor",
+              "text": "Keep the relaxed field lookup per schema"
+            },
+            {
+              "id": "077c3fb",
+              "scope": "config",
+              "text": "Precompile the bypass wildcard"
+            },
+            {
+              "id": "a847295",
+              "scope": "icons",
+              "text": "Build each glyph path once"
+            },
+            {
+              "id": "1979f96",
+              "scope": "common",
+              "text": "Split version strings once"
+            },
+            {
+              "id": "89d51f6",
+              "scope": "common",
+              "text": "Faster paused feed updates"
+            },
+            {
+              "id": "eaad980",
+              "scope": "proxies",
+              "text": "Faster proxy lookups"
+            },
+            {
+              "id": "a07cec9",
+              "scope": "models",
+              "text": "Faster group lookup"
+            },
+            {
+              "id": "1106d86",
+              "scope": "network",
+              "text": "Faster local IP selection"
+            },
+            {
+              "id": "b90e27c",
+              "scope": "ip-quality",
+              "text": "Faster IP quality parsing"
+            },
+            {
+              "id": "04e790c",
+              "scope": "icons",
+              "text": "Faster icon search"
+            },
+            {
+              "id": "88178b0",
+              "scope": "access",
+              "text": "Faster access search"
+            },
+            {
+              "id": "a393305",
+              "scope": "proxies",
+              "text": "Faster proxy search"
+            },
+            {
+              "id": "be054a1",
+              "scope": "proxies",
+              "text": "Faster proxy state caching"
+            },
+            {
+              "id": "5b6501b",
+              "scope": "network",
+              "text": "Faster local IP lookup"
+            },
+            {
+              "id": "f69c417",
+              "scope": "proxies",
+              "text": "Faster delay sorting"
+            },
+            {
+              "id": "c5ea547",
+              "scope": "proxies",
+              "text": "Faster proxy delay handling"
+            },
+            {
+              "id": "d914aa3",
+              "scope": "proxies",
+              "text": "Faster proxy group indexing"
+            },
+            {
+              "id": "464eaf9",
+              "scope": "proxies",
+              "text": "Faster timeout filtering"
+            },
+            {
+              "id": "0066cbb",
+              "scope": "proxies",
+              "text": "Faster name sorting"
+            },
+            {
+              "id": "49e7d14",
+              "scope": "proxies",
+              "text": "Faster proxy sorting"
+            },
+            {
+              "id": "cf2b0d2",
+              "scope": "common",
+              "text": "Faster country flag rendering"
+            },
+            {
+              "id": "8559d58",
+              "scope": "access",
+              "text": "Faster smart access selection"
+            },
+            {
+              "id": "5270c01",
+              "scope": "startup",
+              "text": "Faster font family loading"
+            },
+            {
+              "id": "f54cb0e",
+              "scope": "common",
+              "text": "Faster URL parsing"
+            },
+            {
+              "id": "6414a1e",
+              "scope": "editor",
+              "text": "Faster editor interactions"
+            },
+            {
+              "id": "b02f3f3",
+              "scope": "dashboard",
+              "text": "Faster dashboard feeds"
+            },
+            {
+              "id": "c296826",
+              "scope": "common",
+              "text": "Faster proxy list chunking"
+            },
+            {
+              "id": "4a32afe",
+              "scope": "common",
+              "text": "Faster icon decoding"
+            },
+            {
+              "id": "a75ab1e",
+              "scope": "models",
+              "text": "Faster DNS reference parsing"
+            },
+            {
+              "id": "24656a9",
+              "scope": "common",
+              "text": "Faster profile generation"
+            },
+            {
+              "id": "30a80ec",
+              "scope": "models",
+              "text": "Faster rule import validation"
+            },
+            {
+              "id": "d3a8681",
+              "scope": "common",
+              "text": "Faster traffic formatting"
+            },
+            {
+              "id": "42a3502",
+              "scope": "connections",
+              "text": "Faster live connection lists"
+            },
+            {
+              "id": "66d6a1b",
+              "scope": "connections",
+              "text": "Faster live connection ranking"
+            },
+            {
+              "id": "d4a63b8",
+              "scope": "editor",
+              "text": "Faster editor completion"
+            },
+            {
+              "id": "ae2d608",
+              "scope": "connections",
+              "text": "Faster live connection tables"
+            },
+            {
+              "id": "7abb7a9",
+              "scope": "ui",
+              "text": "Faster connection tables and status updates"
+            },
+            {
+              "id": "0014252",
+              "scope": "dashboard",
+              "text": "Count tcp connections without lowercasing"
+            },
+            {
+              "id": "7035edd",
+              "scope": "editor",
+              "text": "Smoother editor for large files and in sheets"
+            },
+            {
+              "id": "9134ed5",
+              "scope": "access",
+              "text": "Reuse the package view across selection changes"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.9.9",
       "tag": "v0.9.9",
       "date": "2026-10-22",
