@@ -620,11 +620,12 @@ void main() {
       );
 
       await pumpAccessView(tester);
+      final l10n = AppLocalizations.current;
 
       expect(
         find.descendant(
-          of: find.byType(MaterialBanner),
-          matching: find.text('1'),
+          of: find.byType(TonalChip),
+          matching: find.text(l10n.accessControlSelectedCount(1)),
         ),
         findsOneWidget,
       );

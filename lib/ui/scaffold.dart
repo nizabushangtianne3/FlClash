@@ -16,8 +16,6 @@ import 'package:fl_clash/ui/view_scope.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/physics.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/physics.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
@@ -364,6 +362,7 @@ class CommonScaffoldState extends State<CommonScaffold>
   }
 
   void _setKeywords(List<String> keywords) {
+    _lastKeywords = List.of(keywords);
     _keywordsNotifier.value = keywords;
     widget.onKeywordsUpdate?.call(keywords);
   }

@@ -119,35 +119,33 @@ class _CoreStatusButtonState extends ConsumerState<CoreStatusButton> {
       CoreStatus.connected => const GlyphIcon(AppGlyphs.check, fill: 1),
       CoreStatus.disconnected => const GlyphIcon(AppGlyphs.refresh, fill: 1),
     };
-    return Tooltip(
-      message: appLocalizations.coreStatus,
-      child: FadeScaleBox(
-        alignment: Alignment.centerRight,
-        child: iconOnly
-            ? IconButton.filled(
-                key: ValueKey(coreStatus),
-                style: style,
-                onPressed: _handleConnection,
-                tooltip: appLocalizations.coreStatus,
-                icon: icon,
-              )
-            : FilledButton.icon(
-                key: ValueKey(coreStatus),
-                onPressed: _handleConnection,
-                style: style,
-                icon: SizedBox.square(
-                  dimension: globalState.measure.textHeight(
-                    AppTextStyle.subheadline,
-                  ),
-                  child: icon,
+    final button = iconOnly
+        ? IconButton.filled(
+            key: ValueKey(coreStatus),
+            style: style,
+            onPressed: _handleConnection,
+            tooltip: appLocalizations.coreStatus,
+            icon: icon,
+          )
+        : Tooltip(
+            message: appLocalizations.coreStatus,
+            child: FilledButton.icon(
+              key: ValueKey(coreStatus),
+              onPressed: _handleConnection,
+              style: style,
+              icon: SizedBox.square(
+                dimension: globalState.measure.textHeight(
+                  AppTextStyle.subheadline,
                 ),
-                label: Text(switch (coreStatus) {
-                  CoreStatus.connecting => appLocalizations.connecting,
-                  CoreStatus.connected => appLocalizations.connected,
-                  CoreStatus.disconnected => appLocalizations.disconnected,
-                }),
+                child: icon,
               ),
-      ),
-    );
+              label: Text(switch (coreStatus) {
+                CoreStatus.connecting => appLocalizations.connecting,
+                CoreStatus.connected => appLocalizations.connected,
+                CoreStatus.disconnected => appLocalizations.disconnected,
+              }),
+            ),
+          );
+    return FadeScaleBox(alignment: Alignment.centerRight, child: button);
   }
 }

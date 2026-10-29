@@ -427,8 +427,6 @@ class _AccessViewState extends ConsumerState<AccessView>
     );
     final viewPackages = accessView.packages;
     final viewPackageNames = accessView.names;
-    final isSearching = ref.watch(queryProvider(QueryTag.access)).isNotEmpty;
-    final mode = accessControl.mode;
     final query = SearchQuery(ref.watch(queryProvider(QueryTag.access)));
     final currentList = accessControl.currentList;
     final viewPackageNameSet = {
