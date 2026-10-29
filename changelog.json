@@ -80,6 +80,11 @@
           "type": "fix",
           "entries": [
             {
+              "id": "880aa65",
+              "scope": "core",
+              "text": "Coalesce simultaneous route resets and restarts"
+            },
+            {
               "id": "4e68b31",
               "scope": "ui",
               "text": "Reconcile upstream route, access and status interfaces"

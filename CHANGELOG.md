@@ -20,6 +20,7 @@
 
 **Bug Fixes**
 
+- **core** Coalesce simultaneous route resets and restarts (880aa65)
 - **ui** Reconcile upstream route, access and status interfaces (4e68b31)
 - **android** Opening the app no longer reloads a running VPN (99b3381)
 
