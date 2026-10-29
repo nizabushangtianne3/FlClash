@@ -565,7 +565,11 @@ class _FloatingScrollbarState extends State<FloatingScrollbar> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = BottomInsetScope.of(context);
+    final bottomInset = context.bottomInset;
+    final behavior = ScrollConfiguration.of(context);
+    final barPadding = behavior is BaseScrollBehavior
+        ? behavior.scrollbarPadding
+        : EdgeInsets.zero;
     // A finger on the thumb covers the bar's edge, so the hint keeps clear.
     final hintGap = isTouchPlatform(Theme.of(context).platform) ? 40.0 : 20.0;
     return LayoutBuilder(

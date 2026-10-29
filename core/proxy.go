@@ -104,7 +104,11 @@ func handleGetProxies() ProxiesData {
 // was encoded; decoding it to stamp the name back on cost more than every group
 // marshal together. The built-in GLOBAL is the one document that needs an edit.
 func proxyView(proxy constant.Proxy) any {
-	node := nodeView{Name: proxy.Name(), Type: proxy.Type().String()}
+	node := nodeView{
+		Name:         proxy.Name(),
+		Type:         proxy.Type().String(),
+		ProviderName: proxy.ProxyInfo().ProviderName,
+	}
 	if !isProxyGroupType(proxy.Type()) {
 		return node
 	}
@@ -171,7 +175,7 @@ func handleChangeProxy(params *ChangeProxyParams) *ChangeProxyResult {
 		return &ChangeProxyResult{Message: err.Error()}
 	}
 	changed := selector.Now() != before
-	refreshRouteLocked(false)
+	refreshRouteLocked(routeUnchanged)
 	return &ChangeProxyResult{Changed: changed}
 }
 

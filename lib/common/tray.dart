@@ -49,25 +49,34 @@ class AppTray implements TrayPort {
     return isWindows ? 'ico' : 'png';
   }
 
-  String get _trayIconDir {
+  bool _isTemplate(bool monochrome) => isMacOS && monochrome;
+
+  String _trayIconDir(bool monochrome) {
     if (isWindows) {
       return 'assets/images/tray/windows';
     }
-    return isMacOS ? 'assets/images/tray/macos' : 'assets/images/tray/unix';
+    return _isTemplate(monochrome)
+        ? 'assets/images/tray/macos'
+        : 'assets/images/tray/unix';
   }
 
   String getTrayIcon({
     required bool isStart,
     required bool tunEnable,
     required bool safeMode,
+    bool monochrome = true,
   }) {
-    final status = switch ((safeMode, isMacOS || !isStart, tunEnable)) {
+    final status = switch ((
+      safeMode,
+      _isTemplate(monochrome) || !isStart,
+      tunEnable,
+    )) {
       (true, _, _) => 4,
       (false, true, _) => 1,
       (false, false, false) => 2,
       (false, false, true) => 3,
     };
-    return '$_trayIconDir/status_$status.$_trayIconSuffix';
+    return '${_trayIconDir(monochrome)}/status_$status.$_trayIconSuffix';
   }
 
   /// Stable key for "does the tray shell need a native rebuild?"
@@ -134,6 +143,7 @@ class AppTray implements TrayPort {
     final delays = isMacOS
         ? read(trayDelaysProvider)
         : const <String, Map<String, int>>{};
+    final monochrome = trayState.monochromeTrayIcon;
     final fingerprint = _trayFingerprint(trayState, delays);
     final needRebuild = fingerprint != _lastTrayFingerprint;
 
@@ -146,8 +156,9 @@ class AppTray implements TrayPort {
               isStart: trayState.isStart && !trayState.suspended,
               tunEnable: trayState.tunEnable,
               safeMode: trayState.safeMode,
+              monochrome: monochrome,
             ),
-            isTemplate: isMacOS,
+            isTemplate: _isTemplate(monochrome),
             size: isMacOS ? 18 : 16,
           ),
           toolTip: trayState.safeMode
@@ -226,12 +237,18 @@ class AppTray implements TrayPort {
         detail: shortcut(HotAction.start),
         onSelected: commonAction.toggleRunning,
       ),
-      if (isMacOS)
+      if (isMacOS) ...[
         TrayMenuCheckbox(
           label: appLocalizations.speedStatistics,
           checked: trayState.showTrayTitle,
           onSelected: commonAction.updateSpeedStatistics,
         ),
+        TrayMenuCheckbox(
+          label: appLocalizations.monochromeIcon,
+          checked: trayState.monochromeTrayIcon,
+          onSelected: commonAction.updateMonochromeTrayIcon,
+        ),
+      ],
       const TrayMenuSeparator(),
       for (final mode in Mode.values)
         TrayMenuCheckbox(

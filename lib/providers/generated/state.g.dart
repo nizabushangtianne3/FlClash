@@ -179,7 +179,7 @@ final class TrayStateProvider
   }
 }
 
-String _$trayStateHash() => r'b7da57e41143cd8c284260d33b368b1be044bd01';
+String _$trayStateHash() => r'd4fe17e62e479ff316ab5deb11475b4ea533d0bb';
 
 /// Measured delays of the proxies the tray lists, by group and then proxy
 /// name. Resolved like a proxy card, so a nested group shows its selection.
@@ -236,7 +236,7 @@ final class TrayDelaysProvider
   }
 }
 
-String _$trayDelaysHash() => r'3e67a7e9f1236afc2b881d95e54f0ef906a1e22c';
+String _$trayDelaysHash() => r'62b543ff16afd365054dc036e5fe95ce2d45d9e7';
 
 @ProviderFor(trayTitleState)
 final trayTitleStateProvider = TrayTitleStateProvider._();
@@ -437,7 +437,7 @@ final class SharedStateProvider
   }
 }
 
-String _$sharedStateHash() => r'c78c01097468ec6de887e0c94a9d5432403730a1';
+String _$sharedStateHash() => r'98486029d33bd542b933d43e0c92a1f74aaa69a0';
 
 @ProviderFor(vpnRouteAddress)
 final vpnRouteAddressProvider = VpnRouteAddressProvider._();
@@ -637,7 +637,7 @@ final class AccessViewPackagesProvider
 }
 
 String _$accessViewPackagesHash() =>
-    r'590b89db75f0e66436f3bb29887593a113174cfc';
+    r'4aa91f99f8583b46fd7a9301984edd3f53d5beb6';
 
 final class AccessViewPackagesFamily extends $Family
     with
@@ -900,7 +900,7 @@ final class WindowBlurRequestProvider
   }
 }
 
-String _$windowBlurRequestHash() => r'e22ea22957373c5b864e3fb80af56a2d08646666';
+String _$windowBlurRequestHash() => r'90b7a731689db7fa39d979866c428843b1073cf8';
 
 @ProviderFor(currentBrightness)
 final currentBrightnessProvider = CurrentBrightnessProvider._();
@@ -1458,7 +1458,7 @@ final class CustomProxyCoreErrorsProvider
 }
 
 String _$customProxyCoreErrorsHash() =>
-    r'a5d5015b5e8ed8d7591bca190a5c242073020a70';
+    r'f02376450ef2fb5fdab0b5ac5c18eba532b035a2';
 
 @ProviderFor(customProxyListIssues)
 final customProxyListIssuesProvider = CustomProxyListIssuesProvider._();
@@ -1836,7 +1836,7 @@ final class ConnectionsProvider
   }
 }
 
-String _$connectionsHash() => r'6d625edeb69f2a20ef0447c70b38b5f158d6f403';
+String _$connectionsHash() => r'16d4d3782bf28053cb9121346d11eb78d40922f9';
 
 abstract class _$Connections extends $Notifier<ConnectionsSnapshot> {
   ConnectionsSnapshot build();

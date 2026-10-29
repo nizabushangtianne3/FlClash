@@ -233,16 +233,14 @@ class Bootstrap {
       case BootRecovery.none:
         return;
       case BootRecovery.skipAutoSetup:
-        await dialogs.showMessage(
+        await dialogs.showAlert(
           title: currentAppLocalizations.launchInterrupted,
-          cancelable: false,
           dismissible: false,
           message: TextSpan(text: currentAppLocalizations.launchInterruptedTip),
         );
       case BootRecovery.clearProfile:
-        await dialogs.showMessage(
+        await dialogs.showAlert(
           title: currentAppLocalizations.crashDetected,
-          cancelable: false,
           dismissible: false,
           message: TextSpan(
             text: currentAppLocalizations.crashDetectedTip(_failedProfileLabel),
@@ -274,21 +272,32 @@ class Bootstrap {
     await _container.read(systemActionProvider.notifier).handleExit(false);
   }
 
+  /// Unattended desktop installs, such as a container nobody watches, accept
+  /// up front: the core only starts after the disclaimer is accepted.
+  bool get _isDisclaimerAcceptedByEnvironment =>
+      system.isDesktop &&
+      Platform.environment['FLCLASH_ACCEPT_DISCLAIMER'] == '1';
+
   /// Android's exit only finishes the activity, so Dart keeps running after
   /// [SystemAction.handleExit] returns and must not go on to start the app.
   Future<bool> _handlerDisclaimer(bool isFirstLaunch) async {
-    if (!isFirstLaunch) {
-      final acceptedVersion = _container.read(
-        appSettingProvider.select((state) => state.acceptedDisclaimerVersion),
-      );
-      if (acceptedVersion >= disclaimerVersion) {
-        return true;
-      }
-      final isDisclaimerAccepted = await requestDisclaimerConsent();
-      if (!isDisclaimerAccepted) {
-        await _container.read(systemActionProvider.notifier).handleExit();
-        return false;
-      }
+    final acceptedVersion = _container.read(
+      appSettingProvider.select((state) => state.acceptedDisclaimerVersion),
+    );
+    final accepted = acceptedVersion >= disclaimerVersion;
+    if (accepted || (!isFirstLaunch && _isDisclaimerAcceptedByEnvironment)) {
+      _container
+          .read(appSettingProvider.notifier)
+          .update(
+            (state) =>
+                state.copyWith(acceptedDisclaimerVersion: disclaimerVersion),
+          );
+      return true;
+    }
+    final isDisclaimerAccepted = await requestDisclaimerConsent();
+    if (!isDisclaimerAccepted) {
+      await _container.read(systemActionProvider.notifier).handleExit();
+      return false;
     }
     _container
         .read(appSettingProvider.notifier)
