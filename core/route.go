@@ -6,7 +6,6 @@ import (
 	"maps"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
@@ -18,7 +17,10 @@ import (
 
 // Group re-picks and rule-set swaps both notify, so this poll is the only net
 // left for a proxy provider swapping its list behind the host's back.
-const routePollInterval = 5 * time.Second
+const (
+	routePollInterval  = 5 * time.Second
+	routeResetDebounce = 5 * time.Millisecond
+)
 
 // An answer outlives a move while the hosts it reached keep their exits.
 type routeChange int
@@ -42,9 +44,9 @@ type routeTracker struct {
 }
 
 var (
-	routeRefreshPending atomic.Bool
-	routeRefreshDirty   atomic.Bool
-	routeRefreshReset   atomic.Bool
+	routeRefreshMu          sync.Mutex
+	routeRefreshQueued      bool
+	routeRefreshQueuedReset bool
 )
 
 func routeWatched() bool {
@@ -57,36 +59,53 @@ func scheduleRouteRefresh(reset bool) {
 	if !isRunning.Load() {
 		return
 	}
-	routeRefreshReset.Store(reset)
-	routeRefreshDirty.Store(true)
-	if !routeRefreshPending.CompareAndSwap(false, true) {
+	routeRefreshMu.Lock()
+	defer routeRefreshMu.Unlock()
+	routeRefreshQueuedReset = routeRefreshQueuedReset || reset
+	if routeRefreshQueued {
 		return
 	}
+	routeRefreshQueued = true
 	if !routeWatched() {
-		routeRefreshPending.Store(false)
-		routeRefreshDirty.Store(false)
+		routeRefreshQueued = false
+		routeRefreshQueuedReset = false
 		return
 	}
-	safeGo("route invalidate", func() {
-		for {
-			dirty := routeRefreshDirty.Swap(false)
-			reset := routeRefreshReset.Swap(false)
-			if dirty && isRunning.Load() {
-				if reset {
-					bumpRouteEpoch()
-				} else {
-					refreshRouteVersions()
-				}
-			}
-			routeRefreshPending.Store(false)
-			if !routeRefreshDirty.Load() {
-				return
-			}
-			if !routeRefreshPending.CompareAndSwap(false, true) {
-				return
-			}
+	safeGo("route invalidate", routeRefreshWorker)
+}
+
+func routeRefreshWorker() {
+	for {
+		routeRefreshMu.Lock()
+		if !routeWatched() {
+			routeRefreshQueued = false
+			routeRefreshQueuedReset = false
+			routeRefreshMu.Unlock()
+			return
 		}
-	})
+		reset := routeRefreshQueuedReset
+		routeRefreshQueuedReset = false
+		routeRefreshMu.Unlock()
+		if reset {
+			time.Sleep(routeResetDebounce)
+			routeRefreshMu.Lock()
+			routeRefreshQueued = false
+			routeRefreshQueuedReset = false
+			routeRefreshMu.Unlock()
+			bumpRouteEpoch()
+			return
+		}
+		refreshRouteVersions()
+		routeRefreshMu.Lock()
+		more := routeRefreshQueuedReset
+		if !more {
+			routeRefreshQueued = false
+		}
+		routeRefreshMu.Unlock()
+		if !more {
+			return
+		}
+	}
 }
 
 func init() {
