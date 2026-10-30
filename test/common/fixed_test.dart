@@ -100,6 +100,21 @@ void main() {
       expect(second.revision, first.revision + 1);
       expect(identical(first.appendAll(const []), first), isTrue);
     });
+    test('appendAll from a full buffer drops the oldest batch-sized head', () {
+      final first = FixedList(3, list: [1, 2, 3]);
+      final second = first.appendAll([4, 5]);
+
+      expect(second.list, [3, 4, 5]);
+      expect(second.revision, first.revision + 1);
+    });
+
+    test('appendAll caps a batch larger than maxLength from its tail', () {
+      final first = FixedList(3, list: [9]);
+      final second = first.appendAll([1, 2, 3, 4, 5]);
+
+      expect(second.list, [3, 4, 5]);
+      expect(second.revision, first.revision + 1);
+    });
   });
 
   group('retainTrimmedHead', () {

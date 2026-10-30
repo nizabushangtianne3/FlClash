@@ -35,12 +35,21 @@ class FixedList<T> {
   /// One generation bump for a batch, so a burst of logs/requests does not
   /// rebuild listeners once per event.
   FixedList<T> appendAll(Iterable<T> items) {
-    final oldLength = _list.length;
-    _list.addAll(items);
-    if (_list.length == oldLength) {
+    if (items.isEmpty) {
       return this;
     }
-    _list.truncate(maxLength);
+    final incomingLength = items.length;
+    if (incomingLength >= maxLength) {
+      _list.clear();
+      _list.addAll(items);
+      _list.truncate(maxLength);
+    } else {
+      final overflow = _list.length + incomingLength - maxLength;
+      if (overflow > 0) {
+        _list.removeRange(0, overflow);
+      }
+      _list.addAll(items);
+    }
     _snapshot = null;
     return FixedList._(maxLength, _list, _revision + 1);
   }
