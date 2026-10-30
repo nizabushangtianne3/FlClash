@@ -149,20 +149,34 @@ class ConnectionDelta {
   final int count;
 }
 
+Map<String, Object?>? _typedMap(Object? value) {
+  if (value is Map<String, Object?>) return value;
+  return value is Map ? Map<String, Object?>.from(value) : null;
+}
+
+List<TrackerInfo> _addedConnections(Object? value) {
+  if (value is List<TrackerInfo>) return value;
+  if (value is! List) return const [];
+  return [
+    for (final item in value)
+      if (item is Map) TrackerInfo.fromJson(_typedMap(item)!),
+  ];
+}
+
+List<String> _removedConnections(Object? value) {
+  if (value is List<String>) return value;
+  if (value is! List) return const [];
+  return [
+    for (final item in value)
+      if (item is String) item,
+  ];
+}
+
 ConnectionDelta connectionDeltaOf(Object? data) {
-  final result = data is Map ? data : null;
-  final added = result?['added'];
-  final removed = result?['removed'];
+  final result = _typedMap(data);
   return ConnectionDelta(
-    added: added is List
-        ? [
-            for (final item in added.whereType<Map>())
-              TrackerInfo.fromJson(Map<String, Object?>.from(item)),
-          ]
-        : const [],
-    removed: removed is List
-        ? [for (final id in removed.whereType<String>()) id]
-        : const [],
+    added: _addedConnections(result?['added']),
+    removed: _removedConnections(result?['removed']),
     count: result?['count'] as int? ?? 0,
   );
 }

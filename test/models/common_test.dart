@@ -324,6 +324,53 @@ void main() {
     });
   });
 
+  group('ConnectionDelta', () {
+    final connection = {
+      'id': 'connection-1',
+      'start': '2026-09-18T04:30:01Z',
+      'metadata': {'network': 'tcp', 'host': 'example.com'},
+      'chains': ['DIRECT'],
+      'rule': 'MATCH',
+      'rulePayload': '',
+    };
+
+    test('parses typed transport maps without changing their shape', () {
+      final delta = connectionDeltaOf({
+        'added': [connection],
+        'removed': ['connection-2'],
+        'count': 1,
+      });
+
+      expect(delta.added.single.id, 'connection-1');
+      expect(delta.added.single.metadata.host, 'example.com');
+      expect(delta.removed, ['connection-2']);
+      expect(delta.count, 1);
+    });
+
+    test('parses legacy object maps and skips malformed rows', () {
+      final delta = connectionDeltaOf(<Object?, Object?>{
+        'added': [Map<String, Object?>.from(connection), 'not-a-connection'],
+        'removed': ['connection-2', 3],
+        'count': 2,
+      });
+
+      expect(delta.added, hasLength(1));
+      expect(delta.added.single.id, 'connection-1');
+      expect(delta.removed, ['connection-2']);
+      expect(delta.count, 2);
+    });
+
+    test('uses empty answers for absent transport fields', () {
+      const delta = ConnectionDelta();
+
+      expect(delta.added, isEmpty);
+      expect(delta.removed, isEmpty);
+      expect(delta.count, 0);
+      expect(connectionDeltaOf(null).added, isEmpty);
+      expect(connectionDeltaOf(null).removed, isEmpty);
+      expect(connectionDeltaOf(null).count, 0);
+    });
+  });
   group('ResultExt', () {
     test('identifies success and error results', () {
       final success = Result.success('ok');
