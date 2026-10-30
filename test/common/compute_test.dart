@@ -739,6 +739,18 @@ void main() {
       expect(visible, hasLength(maxTrayProxiesPerGroup));
       expect(visible.first.name, 'p0');
       expect(visible[1].name, 'p1');
+      expect(visible.last.name, 'p${maxTrayProxiesPerGroup - 1}');
+    });
+
+    test('keeps the first nodes when no selected node exists', () {
+      final all = proxies(maxTrayProxiesPerGroup + 5);
+      final group = Group(name: 'group', type: GroupType.Selector, all: all);
+
+      final visible = visibleTrayProxies(group, 'missing');
+
+      expect(visible.map((proxy) => proxy.name), [
+        for (var index = 0; index < maxTrayProxiesPerGroup; index++) 'p$index',
+      ]);
     });
   });
 }

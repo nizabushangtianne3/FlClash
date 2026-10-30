@@ -152,14 +152,20 @@ List<Proxy> visibleTrayProxies(Group group, String? selectedName) {
   if (all.length <= maxTrayProxiesPerGroup) {
     return all;
   }
-  final selected = all
-      .where((proxy) => proxy.name == selectedName)
-      .toList(growable: false);
-  final others = all
-      .where((proxy) => proxy.name != selectedName)
-      .take(maxTrayProxiesPerGroup - selected.length)
-      .toList(growable: false);
-  return [...selected, ...others];
+
+  final others = <Proxy>[];
+  Proxy? selected;
+  for (final proxy in all) {
+    if (proxy.name == selectedName) {
+      selected = proxy;
+    } else if (others.length < maxTrayProxiesPerGroup) {
+      others.add(proxy);
+    }
+  }
+  if (selected != null && others.length == maxTrayProxiesPerGroup) {
+    others.removeLast();
+  }
+  return selected == null ? others : [selected, ...others];
 }
 
 Map<String, String>? _proxyTypesCache;
