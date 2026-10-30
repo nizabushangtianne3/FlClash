@@ -1,5 +1,6 @@
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/state.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 TrackerInfo _tracker(
@@ -20,7 +21,65 @@ TrackerInfo _tracker(
   );
 }
 
+Future<void> seedConnections(
+  Connections notifier,
+  ConnectionDelta delta,
+) async {
+  notifier.useReader(({resync = false}) async => delta);
+  await notifier.refresh();
+}
+
 void main() {
+  test('folds a connection delta into the existing table', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final notifier = container.read(connectionsProvider.notifier);
+    await seedConnections(
+      notifier,
+      ConnectionDelta(
+        added: [_tracker('connection-1'), _tracker('connection-2')],
+        count: 2,
+      ),
+    );
+
+    notifier.useReader(
+      ({resync = false}) async => ConnectionDelta(
+        removed: const ['connection-1'],
+        added: [_tracker('connection-3', download: 7)],
+        count: 2,
+      ),
+    );
+    await notifier.refresh();
+
+    final snapshot = container.read(connectionsProvider);
+    expect(snapshot.count, 2);
+    expect(snapshot.connections.map((row) => row.id), [
+      'connection-2',
+      'connection-3',
+    ]);
+    expect(snapshot.connections.last.download, 7);
+  });
+
+  test('an unchanged connection delta keeps revision and rows', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final notifier = container.read(connectionsProvider.notifier);
+    await seedConnections(
+      notifier,
+      ConnectionDelta(added: [_tracker('connection-1')], count: 1),
+    );
+    final before = container.read(connectionsProvider);
+
+    notifier.useReader(
+      ({resync = false}) async => const ConnectionDelta(count: 1),
+    );
+    await notifier.refresh();
+
+    final after = container.read(connectionsProvider);
+    expect(identical(after, before), isTrue);
+    expect(after.revision, before.revision);
+  });
+
   test('a repolled connection with the same identity and traffic is equal', () {
     final first = ConnectionsSnapshot(
       count: 1,

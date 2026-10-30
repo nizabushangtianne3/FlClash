@@ -146,9 +146,7 @@ class Connections extends _$Connections {
   void _merge(ConnectionDelta delta, {required bool resync}) {
     // A resync answers the whole table, so it replaces what the app holds
     // instead of folding into it.
-    final rows = resync
-        ? <String, TrackerInfo>{}
-        : Map<String, TrackerInfo>.of(_rows);
+    final rows = resync ? <String, TrackerInfo>{} : _rows;
     var changed = resync;
     for (final id in delta.removed) {
       if (rows.remove(id) != null) {
