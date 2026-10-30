@@ -35,7 +35,7 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   final ListQueue<Log> _bufferedLogs = ListQueue();
   final ListQueue<TrackerInfo> _bufferedRequests = ListQueue();
   final ListQueue<DnsQuery> _bufferedDns = ListQueue();
-  final Map<String, RequestTraffic> _bufferedTraffic = {};
+  Map<String, RequestTraffic> _bufferedTraffic = {};
   int _bufferedRequestCount = 0;
   int _bufferedDnsCount = 0;
   late final Logs _logsNotifier;
@@ -175,8 +175,8 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     _feedFlushTimer?.cancel();
     _feedFlushTimer = null;
     if (_bufferedTraffic.isNotEmpty) {
-      final traffic = Map.of(_bufferedTraffic);
-      _bufferedTraffic.clear();
+      final traffic = _bufferedTraffic;
+      _bufferedTraffic = {};
       _requestsNotifier.updateTraffic(traffic);
       _connectionsNotifier.updateTraffic(traffic);
     }

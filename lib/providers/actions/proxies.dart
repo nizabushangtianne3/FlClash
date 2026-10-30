@@ -31,13 +31,13 @@ class ProxiesAction extends _$ProxiesAction {
 
   final List<_DelayTestJob> _delayTestJobs = [];
 
-  final Map<String, Delay> _bufferedDelays = {};
+  Map<String, Delay> _bufferedDelays = {};
 
   final Map<String, Future<Delay?>> _delayTestFutures = {};
 
-  final List<String> _bufferedStarts = [];
+  List<String> _bufferedStarts = [];
 
-  final List<String> _bufferedFinishes = [];
+  List<String> _bufferedFinishes = [];
 
   Timer? _delayFlushTimer;
 
@@ -98,15 +98,15 @@ class ProxiesAction extends _$ProxiesAction {
     _delayFlushTimer?.cancel();
     _delayFlushTimer = null;
     if (_bufferedDelays.isNotEmpty) {
-      final delays = _bufferedDelays.values.toList(growable: false);
-      _bufferedDelays.clear();
+      final delays = _bufferedDelays.values;
+      _bufferedDelays = {};
       ref.read(delayDataSourceProvider.notifier).setDelays(delays);
     }
     if (_bufferedStarts.isNotEmpty || _bufferedFinishes.isNotEmpty) {
-      final started = List.of(_bufferedStarts);
-      final finished = List.of(_bufferedFinishes);
-      _bufferedStarts.clear();
-      _bufferedFinishes.clear();
+      final started = _bufferedStarts;
+      final finished = _bufferedFinishes;
+      _bufferedStarts = [];
+      _bufferedFinishes = [];
       ref
           .read(pendingDelayTestsProvider.notifier)
           .apply(started: started, finished: finished);
