@@ -79,7 +79,7 @@ void main() {
     test('replace swaps items in a new generation', () {
       final first = FixedList(3, list: [1, 2, 3]);
       final before = first.list;
-      final second = first.replace({0: 10, 2: 30});
+      final second = first.replace(const [MapEntry(0, 10), MapEntry(2, 30)]);
       expect(second.list, [10, 2, 30]);
       expect(second.revision, first.revision + 1);
       expect(before, [1, 2, 3]);

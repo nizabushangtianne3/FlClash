@@ -48,8 +48,10 @@ class FixedList<T> {
     return FixedList._(maxLength, _list, _revision + 1);
   }
 
-  FixedList<T> replace(Map<int, T> items) {
-    items.forEach((index, item) => _list[index] = item);
+  FixedList<T> replace(Iterable<MapEntry<int, T>> items) {
+    for (final item in items) {
+      _list[item.key] = item.value;
+    }
     _snapshot = null;
     return FixedList._(maxLength, _list, _revision + 1);
   }
