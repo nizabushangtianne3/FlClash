@@ -35,11 +35,13 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   final ListQueue<Log> _bufferedLogs = ListQueue();
   final ListQueue<TrackerInfo> _bufferedRequests = ListQueue();
   final ListQueue<DnsQuery> _bufferedDns = ListQueue();
+  final Map<String, RequestTraffic> _bufferedTraffic = {};
   int _bufferedRequestCount = 0;
   int _bufferedDnsCount = 0;
   late final Logs _logsNotifier;
   late final Requests _requestsNotifier;
   late final DnsQueries _dnsNotifier;
+  late final Connections _connectionsNotifier;
   late final RequestCount _requestCountNotifier;
   late final DnsQueryCount _dnsCountNotifier;
 
@@ -67,6 +69,7 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     _logsNotifier = ref.read(logsProvider.notifier);
     _requestsNotifier = ref.read(requestsProvider.notifier);
     _dnsNotifier = ref.read(dnsQueriesProvider.notifier);
+    _connectionsNotifier = ref.read(connectionsProvider.notifier);
     _requestCountNotifier = ref.read(requestCountProvider.notifier);
     _dnsCountNotifier = ref.read(dnsQueryCountProvider.notifier);
     _isVisible = ref.read(appVisibleProvider);
@@ -171,6 +174,12 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   void _flushFeeds() {
     _feedFlushTimer?.cancel();
     _feedFlushTimer = null;
+    if (_bufferedTraffic.isNotEmpty) {
+      final traffic = Map.of(_bufferedTraffic);
+      _bufferedTraffic.clear();
+      _requestsNotifier.updateTraffic(traffic);
+      _connectionsNotifier.updateTraffic(traffic);
+    }
     if (_bufferedLogs.isNotEmpty) {
       _logsNotifier.addAll(_bufferedLogs);
       _bufferedLogs.clear();
@@ -256,8 +265,11 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   void onRequestTraffic(Map<String, RequestTraffic> traffic) {
-    ref.read(requestsProvider.notifier).updateTraffic(traffic);
-    ref.read(connectionsProvider.notifier).updateTraffic(traffic);
+    if (!mounted) {
+      return;
+    }
+    _bufferedTraffic.addAll(traffic);
+    _scheduleFeedFlush();
     super.onRequestTraffic(traffic);
   }
 

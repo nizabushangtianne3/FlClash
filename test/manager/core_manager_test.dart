@@ -744,4 +744,51 @@ void main() {
       },
     );
   });
+
+  testWidgets('connection traffic updates are batched and merged', (
+    tester,
+  ) async {
+    final coreInterface = _coreInterface();
+    final container = await _pumpCoreManager(tester, coreInterface);
+
+    List<Map<String, Object?>> traffic(int upload) => [
+      {'id': 'connection-1', 'upload': upload, 'download': upload * 2},
+    ];
+
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.request,
+        data: {
+          'id': 'connection-1',
+          'metadata': <String, Object?>{'network': 'tcp'},
+          'upload': 0,
+          'download': 0,
+          'start': '2026-09-18T04:30:01Z',
+          'chains': <String>[],
+          'rule': 'MATCH',
+          'rulePayload': '',
+        },
+      ),
+    );
+    await tester.pump(renderThrottleDuration);
+
+    coreEventManager.sendEvent(
+      CoreEvent(type: CoreEventType.requestTraffic, data: traffic(10)),
+    );
+    await tester.pump();
+    expect(container.read(requestsProvider)[0].upload, 0);
+
+    coreEventManager.sendEvent(
+      CoreEvent(type: CoreEventType.requestTraffic, data: traffic(20)),
+    );
+    await tester.pump(renderThrottleDuration);
+
+    final requests = container.read(requestsProvider).list;
+    expect(requests, hasLength(1));
+    expect(requests.single.id, 'connection-1');
+    expect(requests.single.upload, 20);
+    expect(requests.single.download, 40);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }
