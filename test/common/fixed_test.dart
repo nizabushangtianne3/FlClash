@@ -76,13 +76,14 @@ void main() {
       expect(before, [1, 2]);
     });
 
-    test('replace swaps items in a new generation', () {
+    test('update swaps matching items in a new generation', () {
       final first = FixedList(3, list: [1, 2, 3]);
       final before = first.list;
-      final second = first.replace(const [MapEntry(0, 10), MapEntry(2, 30)]);
-      expect(second.list, [10, 2, 30]);
+      final second = first.update((item) => item.isOdd ? item * 5 : item);
+      expect(second.list, [5, 2, 15]);
       expect(second.revision, first.revision + 1);
       expect(before, [1, 2, 3]);
+      expect(identical(first.update((item) => item), first), isTrue);
     });
 
     test('append still honours maxLength', () {

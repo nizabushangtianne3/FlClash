@@ -54,9 +54,19 @@ class FixedList<T> {
     return FixedList._(maxLength, _list, _revision + 1);
   }
 
-  FixedList<T> replace(Iterable<MapEntry<int, T>> items) {
-    for (final item in items) {
-      _list[item.key] = item.value;
+  FixedList<T> update(T Function(T item) update) {
+    var changed = false;
+    for (var index = 0; index < _list.length; index++) {
+      final current = _list[index];
+      final next = update(current);
+      if (identical(current, next)) {
+        continue;
+      }
+      _list[index] = next;
+      changed = true;
+    }
+    if (!changed) {
+      return this;
     }
     _snapshot = null;
     return FixedList._(maxLength, _list, _revision + 1);

@@ -82,25 +82,13 @@ class Requests extends _$Requests with AutoDisposeNotifierMixin {
     if (!ref.mounted) {
       return;
     }
-    final updated = <MapEntry<int, TrackerInfo>>[];
-    var pending = traffic.length;
-    for (var index = state.length - 1; index >= 0 && pending > 0; index--) {
-      final request = state[index];
+    value = state.update((request) {
       final item = traffic[request.id];
       if (item == null) {
-        continue;
+        return request;
       }
-      updated.add(
-        MapEntry(
-          index,
-          request.copyWith(upload: item.upload, download: item.download),
-        ),
-      );
-      pending--;
-    }
-    if (updated.isNotEmpty) {
-      value = state.replace(updated);
-    }
+      return request.copyWith(upload: item.upload, download: item.download);
+    });
   }
 }
 
