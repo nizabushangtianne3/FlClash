@@ -2,26 +2,36 @@ part of '../state.dart';
 
 @immutable
 class ConnectionsSnapshot {
-  const ConnectionsSnapshot({this.count = 0, this.connections = const []});
+  const ConnectionsSnapshot({
+    this.count = 0,
+    this.connections = const [],
+    this.revision = 0,
+  });
 
   final int count;
   final List<TrackerInfo> connections;
+  final int revision;
 
   ConnectionsSnapshot copyWith({int? count, List<TrackerInfo>? connections}) {
     return ConnectionsSnapshot(
       count: count ?? this.count,
       connections: connections ?? this.connections,
+      revision: revision,
     );
   }
 
-  /// A Core connection ID identifies its immutable descriptive fields; polling
-  /// only moves the traffic counters, so equality stays off the deep model.
+  /// Provider-produced snapshots carry a revision, so traffic updates can skip
+  /// an O(n) comparison. Hand-built snapshots retain the old value equality.
   @override
-  bool operator ==(Object other) =>
-      other is ConnectionsSnapshot &&
-      other.count == count &&
-      other.connections.length == connections.length &&
-      _sameConnections(other.connections);
+  bool operator ==(Object other) {
+    if (other is! ConnectionsSnapshot) return false;
+    if (revision != 0 && other.revision != 0) {
+      return revision == other.revision && other.count == count;
+    }
+    return other.count == count &&
+        other.connections.length == connections.length &&
+        _sameConnections(other.connections);
+  }
 
   bool _sameConnections(List<TrackerInfo> other) {
     for (var index = 0; index < connections.length; index++) {
@@ -41,7 +51,9 @@ class ConnectionsSnapshot {
   }
 
   @override
-  int get hashCode => Object.hash(count, connections.length);
+  int get hashCode => revision == 0
+      ? Object.hash(count, connections.length)
+      : Object.hash(count, connections.length, revision);
 }
 
 @Riverpod(keepAlive: true)
@@ -54,6 +66,7 @@ class Connections extends _$Connections {
   bool _resync = true;
   DateTime? _lastRead;
   Map<String, TrackerInfo> _rows = {};
+  int _revision = 0;
   Future<ConnectionDelta> Function({bool resync})? _reader;
 
   @override
@@ -102,6 +115,7 @@ class Connections extends _$Connections {
     state = ConnectionsSnapshot(
       count: _rows.length,
       connections: _rows.values.toList(),
+      revision: ++_revision,
     );
   }
 
@@ -157,6 +171,7 @@ class Connections extends _$Connections {
       // two disagree only until an answer it missed is asked for again.
       count: delta.count,
       connections: rows.values.toList(),
+      revision: ++_revision,
     );
   }
 
@@ -166,6 +181,6 @@ class Connections extends _$Connections {
     }
     _rows = {};
     _resync = true;
-    state = const ConnectionsSnapshot();
+    state = ConnectionsSnapshot(revision: ++_revision);
   }
 }
