@@ -3,12 +3,17 @@ import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:flutter/foundation.dart';
 
+Map<String, Object?> _typedEventData(Map data) {
+  return data is Map<String, Object?> ? data : Map<String, Object?>.from(data);
+}
+
 List<CoreEvent> coreEventsFromData(Object? data) {
   final items = data is List ? data : [data];
   final events = <CoreEvent>[];
-  for (final item in items.whereType<Map>()) {
+  for (final item in items) {
+    if (item is! Map) continue;
     try {
-      events.add(CoreEvent.fromJson(Map<String, Object?>.from(item)));
+      events.add(CoreEvent.fromJson(_typedEventData(item)));
     } catch (error) {
       commonPrint.log(
         'Unable to parse Core event: $error',

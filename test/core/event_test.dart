@@ -241,4 +241,14 @@ void main() {
       expect(identical(first.logs.single, second.logs.single), isTrue);
     },
   );
+
+  test('normalizes raw maps and skips non-map entries', () {
+    final events = coreEventsFromData([
+      <String, dynamic>{'type': 'loaded', 'data': 'provider-a'},
+      'ignored',
+      <String, dynamic>{'type': 'loaded', 'data': 'provider-b'},
+    ]);
+
+    expect(events.map((event) => event.data), ['provider-a', 'provider-b']);
+  });
 }
