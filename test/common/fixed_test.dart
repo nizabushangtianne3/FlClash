@@ -116,6 +116,30 @@ void main() {
       expect(second.list, [3, 4, 5]);
       expect(second.revision, first.revision + 1);
     });
+
+    test('updateByKey follows keys across truncation', () {
+      var list = FixedList<(String, int)>(3, keyOf: (item) => item.$1);
+      list = list.appendAll([('a', 1), ('b', 2), ('c', 3)]);
+      list = list.append(('d', 4));
+
+      expect(list.list, [('b', 2), ('c', 3), ('d', 4)]);
+
+      final unchanged = list.updateByKey({
+        'gone': 9,
+      }, (item, value) => (item.$1, value));
+      expect(identical(unchanged, list), isTrue);
+
+      final changed = list.updateByKey({
+        'gone': 9,
+        'c': 30,
+      }, (item, value) => (item.$1, value));
+      expect(changed.list, [('b', 2), ('c', 30), ('d', 4)]);
+      expect(changed.revision, list.revision + 1);
+      expect(
+        () => FixedList<int>(3).updateByKey({}, (item, _) => item),
+        throwsStateError,
+      );
+    });
   });
 
   group('retainTrimmedHead', () {

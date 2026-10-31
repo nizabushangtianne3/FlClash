@@ -14,7 +14,7 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final notifier = container.read(requestsProvider.notifier);
-    notifier.value = FixedList(1000);
+    notifier.value = FixedList(1000, keyOf: (request) => request.id);
     final start = DateTime.utc(2026);
     for (var index = 0; index < 500; index++) {
       notifier.addRequest(

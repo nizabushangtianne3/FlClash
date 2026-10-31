@@ -61,7 +61,7 @@ class Logs extends _$Logs with AutoDisposeNotifierMixin {
 class Requests extends _$Requests with AutoDisposeNotifierMixin {
   @override
   FixedList<TrackerInfo> build() {
-    return FixedList(maxRequestsLength);
+    return FixedList(maxRequestsLength, keyOf: (request) => request.id);
   }
 
   void addRequest(TrackerInfo value) {
@@ -82,13 +82,11 @@ class Requests extends _$Requests with AutoDisposeNotifierMixin {
     if (!ref.mounted) {
       return;
     }
-    value = state.update((request) {
-      final item = traffic[request.id];
-      if (item == null) {
-        return request;
-      }
-      return request.copyWith(upload: item.upload, download: item.download);
-    });
+    value = state.updateByKey(
+      traffic,
+      (request, item) =>
+          request.copyWith(upload: item.upload, download: item.download),
+    );
   }
 }
 

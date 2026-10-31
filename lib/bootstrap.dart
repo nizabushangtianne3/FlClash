@@ -138,7 +138,7 @@ class Bootstrap {
       brightness: WidgetsBinding.instance.platformDispatcher.platformBrightness,
       version: version,
       viewSize: viewSize ?? Size.zero,
-      requests: FixedList(maxRequestsLength),
+      requests: FixedList(maxRequestsLength, keyOf: (request) => request.id),
       logs: FixedList(maxLogsLength),
       traffics: FixedList(trafficSampleLength),
       totalTraffic: const Traffic(),

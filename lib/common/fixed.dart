@@ -2,34 +2,52 @@ import 'iterable.dart';
 
 class FixedList<T> {
   final int maxLength;
+  final Object? Function(T item)? keyOf;
   final List<T> _list;
+  final Map<Object, int>? _keyIndexes;
 
   final int _revision;
   List<T>? _snapshot;
 
-  FixedList(this.maxLength, {List<T>? list})
+  FixedList(this.maxLength, {List<T>? list, this.keyOf})
     : assert(maxLength > 0, 'FixedList without a cap grows without bound'),
       _list = (list ?? [])..truncate(maxLength),
-      _revision = 0;
+      _keyIndexes = keyOf == null ? null : {},
+      _revision = 0 {
+    _reindexKeys();
+  }
 
-  FixedList._(this.maxLength, this._list, this._revision);
+  FixedList._(
+    this.maxLength,
+    this._list,
+    this._revision,
+    this.keyOf,
+    this._keyIndexes,
+  );
 
   int get revision => _revision;
 
   void add(T item) {
     _list.add(item);
-    _list.truncate(maxLength);
+    final overflow = _list.length - maxLength;
+    if (overflow > 0) {
+      _list.removeRange(0, overflow);
+      _reindexKeys();
+    } else {
+      _indexKey(_list.length - 1, item);
+    }
     _snapshot = null;
   }
 
   void clear() {
     _list.clear();
+    _keyIndexes?.clear();
     _snapshot = null;
   }
 
   FixedList<T> append(T item) {
     add(item);
-    return FixedList._(maxLength, _list, _revision + 1);
+    return _next();
   }
 
   /// One generation bump for a batch, so a burst of logs/requests does not
@@ -50,8 +68,9 @@ class FixedList<T> {
       }
       _list.addAll(items);
     }
+    _reindexKeys();
     _snapshot = null;
-    return FixedList._(maxLength, _list, _revision + 1);
+    return _next();
   }
 
   FixedList<T> update(T Function(T item) update) {
@@ -69,7 +88,58 @@ class FixedList<T> {
       return this;
     }
     _snapshot = null;
-    return FixedList._(maxLength, _list, _revision + 1);
+    return _next();
+  }
+
+  FixedList<T> updateByKey<V>(
+    Map<Object?, V> values,
+    T Function(T item, V value) update,
+  ) {
+    final indexes = _keyIndexes;
+    if (indexes == null) {
+      throw StateError('updateByKey requires a FixedList key');
+    }
+    var changed = false;
+    values.forEach((key, value) {
+      final index = indexes[key];
+      if (index == null) {
+        return;
+      }
+      final current = _list[index];
+      final next = update(current, value);
+      if (identical(current, next)) {
+        return;
+      }
+      _list[index] = next;
+      changed = true;
+    });
+    if (!changed) {
+      return this;
+    }
+    _snapshot = null;
+    return _next();
+  }
+
+  FixedList<T> _next() {
+    return FixedList._(maxLength, _list, _revision + 1, keyOf, _keyIndexes);
+  }
+
+  void _indexKey(int index, T item) {
+    final key = keyOf?.call(item);
+    if (key != null) {
+      _keyIndexes?[key] = index;
+    }
+  }
+
+  void _reindexKeys() {
+    final indexes = _keyIndexes;
+    if (indexes == null) {
+      return;
+    }
+    indexes.clear();
+    for (var index = 0; index < _list.length; index++) {
+      _indexKey(index, _list[index]);
+    }
   }
 
   List<T> get list => _snapshot ??= List.unmodifiable(_list);
@@ -79,7 +149,7 @@ class FixedList<T> {
   T operator [](int index) => _list[index];
 
   FixedList<T> copyWith() {
-    return FixedList(maxLength, list: List.of(_list));
+    return FixedList(maxLength, list: List.of(_list), keyOf: keyOf);
   }
 
   @override
