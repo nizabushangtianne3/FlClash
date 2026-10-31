@@ -34,8 +34,46 @@ const (
 var (
 	probeSlots = make(slots, probeConcurrency)
 
-	pendingProbeRoutes sync.Map
+	pendingProbeRoutesMu sync.Mutex
+	pendingProbeRoutes   []*routedConn
 )
+
+func addPendingProbeRoute(conn *routedConn) {
+	pendingProbeRoutesMu.Lock()
+	pendingProbeRoutes = append(pendingProbeRoutes, conn)
+	pendingProbeRoutesMu.Unlock()
+}
+
+func takePendingProbeRoute(metadata *constant.Metadata) *routedConn {
+	pendingProbeRoutesMu.Lock()
+	defer pendingProbeRoutesMu.Unlock()
+	for index, pending := range pendingProbeRoutes {
+		if !sameProbeMetadata(pending.metadata, metadata) {
+			continue
+		}
+		pendingProbeRoutes = slices.Delete(pendingProbeRoutes, index, index+1)
+		return pending
+	}
+	return nil
+}
+
+func forgetPendingProbeRoute(conn *routedConn) {
+	pendingProbeRoutesMu.Lock()
+	defer pendingProbeRoutesMu.Unlock()
+	for index, pending := range pendingProbeRoutes {
+		if pending == conn {
+			pendingProbeRoutes = slices.Delete(pendingProbeRoutes, index, index+1)
+			return
+		}
+	}
+}
+
+func sameProbeMetadata(left, right *constant.Metadata) bool {
+	return left.NetWork == right.NetWork &&
+		left.Type == right.Type &&
+		left.SourceAddress() == right.SourceAddress() &&
+		left.RemoteAddress() == right.RemoteAddress()
+}
 
 type probeRoute struct {
 	chains      []string
@@ -89,7 +127,7 @@ func (d *probeDialer) dial(ctx context.Context, _ string, address string) (net.C
 	local, remote := N.Pipe()
 	attempt.Conn = local
 	attempt.metadata = metadata
-	pendingProbeRoutes.Store(metadata, attempt)
+	addPendingProbeRoute(attempt)
 	go tunnel.Tunnel.HandleTCPConn(remote, metadata)
 	d.remember(attempt)
 	return attempt, nil
@@ -203,7 +241,7 @@ type routedConn struct {
 }
 
 func (c *routedConn) Close() error {
-	pendingProbeRoutes.CompareAndDelete(c.metadata, c)
+	forgetPendingProbeRoute(c)
 	return c.Conn.Close()
 }
 
@@ -221,11 +259,11 @@ func (c *routedConn) settle(route *probeRoute) {
 
 func notifyProbeRoute(tracker statistic.Tracker) {
 	info := tracker.Info()
-	pending, ok := pendingProbeRoutes.LoadAndDelete(info.Metadata)
-	if !ok {
+	pending := takePendingProbeRoute(info.Metadata)
+	if pending == nil {
 		return
 	}
-	pending.(*routedConn).settle(&probeRoute{
+	pending.settle(&probeRoute{
 		chains:      append([]string(nil), info.Chain...),
 		rule:        info.Rule,
 		rulePayload: info.RulePayload,
