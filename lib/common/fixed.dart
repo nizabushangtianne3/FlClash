@@ -28,13 +28,14 @@ class FixedList<T> {
   int get revision => _revision;
 
   void add(T item) {
+    final oldLength = _list.length;
     _list.add(item);
-    final overflow = _list.length - maxLength;
+    final overflow = oldLength + 1 - maxLength;
     if (overflow > 0) {
+      _dropIndexedHead(overflow);
       _list.removeRange(0, overflow);
-      _reindexKeys();
     } else {
-      _indexKey(_list.length - 1, item);
+      _indexKey(oldLength, item);
     }
     _snapshot = null;
   }
@@ -61,14 +62,20 @@ class FixedList<T> {
       _list.clear();
       _list.addAll(items);
       _list.truncate(maxLength);
+      _reindexKeys();
     } else {
-      final overflow = _list.length + incomingLength - maxLength;
+      final oldLength = _list.length;
+      final overflow = oldLength + incomingLength - maxLength;
       if (overflow > 0) {
+        _dropIndexedHead(overflow);
         _list.removeRange(0, overflow);
       }
+      final firstIncomingIndex = _list.length;
       _list.addAll(items);
+      for (var index = firstIncomingIndex; index < _list.length; index++) {
+        _indexKey(index, _list[index]);
+      }
     }
-    _reindexKeys();
     _snapshot = null;
     return _next();
   }
@@ -122,6 +129,15 @@ class FixedList<T> {
 
   FixedList<T> _next() {
     return FixedList._(maxLength, _list, _revision + 1, keyOf, _keyIndexes);
+  }
+
+  void _dropIndexedHead(int dropped) {
+    final indexes = _keyIndexes;
+    if (indexes == null) {
+      return;
+    }
+    indexes.removeWhere((key, index) => index < dropped);
+    indexes.updateAll((key, index) => index - dropped);
   }
 
   void _indexKey(int index, T item) {

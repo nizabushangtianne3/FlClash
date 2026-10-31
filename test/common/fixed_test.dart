@@ -120,7 +120,7 @@ void main() {
     test('updateByKey follows keys across truncation', () {
       var list = FixedList<(String, int)>(3, keyOf: (item) => item.$1);
       list = list.appendAll([('a', 1), ('b', 2), ('c', 3)]);
-      list = list.append(('d', 4));
+      list = list.appendAll([('d', 4)]);
 
       expect(list.list, [('b', 2), ('c', 3), ('d', 4)]);
 
