@@ -2,6 +2,419 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "1.0.1",
+      "tag": "v1.0.1",
+      "date": "2026-10-31",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "7f57c78",
+              "scope": "core",
+              "text": "Update metadata pointer"
+            }
+          ]
+        },
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "dcdbe4d",
+              "scope": "proxy",
+              "text": "Reuse existing url test state"
+            },
+            {
+              "id": "b3f32d5",
+              "scope": "yaml",
+              "text": "Marshal ordered maps in one pass"
+            },
+            {
+              "id": "9ff3693",
+              "scope": "tuic",
+              "text": "Release completed fragment bags"
+            },
+            {
+              "id": "a10db91",
+              "scope": "tuic",
+              "text": "Bypass defragmenter for single fragments"
+            },
+            {
+              "id": "1db374f",
+              "scope": "core",
+              "text": "Cache process probe symbols"
+            },
+            {
+              "id": "e12a3d1",
+              "scope": "dns",
+              "text": "Cache dot client address"
+            },
+            {
+              "id": "6382b2d",
+              "scope": "dns",
+              "text": "Cache client address"
+            },
+            {
+              "id": "f670124",
+              "scope": "pool",
+              "text": "Reuse invalid buffer size error"
+            },
+            {
+              "id": "99a7f0d",
+              "scope": "trie",
+              "text": "Arena domain set keys"
+            },
+            {
+              "id": "13a1572",
+              "scope": "proxy",
+              "text": "Cache adapter id string"
+            },
+            {
+              "id": "099ded6",
+              "scope": "ssr",
+              "text": "Encode udp packets into pooled buffers"
+            },
+            {
+              "id": "dea7114",
+              "scope": "statistic",
+              "text": "Combine tracker chain clones"
+            },
+            {
+              "id": "cf071ad",
+              "scope": "hysteria",
+              "text": "Cache packet source address"
+            },
+            {
+              "id": "9e82d9f",
+              "scope": "statistic",
+              "text": "Return snapshot by value"
+            },
+            {
+              "id": "f5da737",
+              "scope": "fakeip",
+              "text": "Remove redundant memory store lock"
+            },
+            {
+              "id": "c1e72e8",
+              "scope": "fakeip",
+              "text": "Use intrusive lru entries"
+            },
+            {
+              "id": "c7b0d01",
+              "scope": "fakeip",
+              "text": "Combine allocation store writes"
+            },
+            {
+              "id": "5f9eb89",
+              "scope": "dns",
+              "text": "Combine fake ip answer allocations"
+            },
+            {
+              "id": "d66e8ec",
+              "scope": "trie",
+              "text": "Replace wildcard select lookup"
+            },
+            {
+              "id": "2256d5e",
+              "scope": "trie",
+              "text": "Cache domain set node starts"
+            },
+            {
+              "id": "1b2b35c",
+              "scope": "dns",
+              "text": "Embed cached address payloads"
+            },
+            {
+              "id": "33f4732",
+              "scope": "route",
+              "text": "Append provider api json directly"
+            },
+            {
+              "id": "4e393e3",
+              "scope": "route",
+              "text": "Append rules api json directly"
+            },
+            {
+              "id": "6fc6478",
+              "scope": "route",
+              "text": "Append proxy api json directly"
+            },
+            {
+              "id": "09d09a3",
+              "scope": "adapter",
+              "text": "Append proxy json directly"
+            },
+            {
+              "id": "5a2cde6",
+              "scope": "trie",
+              "text": "Reuse domain builder storage"
+            },
+            {
+              "id": "21f7d18",
+              "scope": "trie",
+              "text": "Iterate stored domains without maps"
+            },
+            {
+              "id": "e190cc1",
+              "scope": "trie",
+              "text": "Reverse trie domain keys directly"
+            },
+            {
+              "id": "85626b2",
+              "scope": "trie",
+              "text": "Build domain keys directly"
+            },
+            {
+              "id": "f14b72f",
+              "scope": "loopback",
+              "text": "Track connections with mutex maps"
+            },
+            {
+              "id": "0964b9b",
+              "scope": "statistic",
+              "text": "Prebuild tcp counter conn"
+            },
+            {
+              "id": "b329cf4",
+              "scope": "shadowquic",
+              "text": "Implement packet wait reader"
+            },
+            {
+              "id": "1201365",
+              "scope": "shadowquic",
+              "text": "Simplify association id cleanup"
+            },
+            {
+              "id": "dab7d31",
+              "scope": "sudoku",
+              "text": "Read uot into pooled buffers"
+            },
+            {
+              "id": "e1149a9",
+              "scope": "deadline",
+              "text": "Reuse pipe read buffer"
+            },
+            {
+              "id": "ebd6be0",
+              "scope": "hysteria",
+              "text": "Return structured packet address"
+            },
+            {
+              "id": "dba8018",
+              "scope": "vless",
+              "text": "Cache packet remote address"
+            },
+            {
+              "id": "c020e48",
+              "scope": "trusttunnel",
+              "text": "Reuse client packet header"
+            },
+            {
+              "id": "c1ce3af",
+              "scope": "trusttunnel",
+              "text": "Parse packet headers in place"
+            },
+            {
+              "id": "c15a25d",
+              "scope": "loadbalance",
+              "text": "Return strategy liveness"
+            },
+            {
+              "id": "81452c4",
+              "scope": "udp",
+              "text": "Use sender cancellation state"
+            },
+            {
+              "id": "1be1440",
+              "scope": "conn",
+              "text": "Inline initial peek buffer"
+            },
+            {
+              "id": "4f58e34",
+              "scope": "fallback",
+              "text": "Store selection deadline"
+            },
+            {
+              "id": "4d8ba78",
+              "scope": "dns",
+              "text": "Batch cached answer records"
+            },
+            {
+              "id": "41a352d",
+              "scope": "group",
+              "text": "Reuse provider version snapshots"
+            },
+            {
+              "id": "b743728",
+              "scope": "dns",
+              "text": "Copy cached answers in bulk"
+            },
+            {
+              "id": "6aae401",
+              "scope": "loadbalance",
+              "text": "Shard sticky session cache"
+            },
+            {
+              "id": "93372e5",
+              "scope": "loadbalance",
+              "text": "Shard etld hash cache"
+            },
+            {
+              "id": "669abcf",
+              "scope": "selector",
+              "text": "Cache selected proxy atomically"
+            },
+            {
+              "id": "8a9801d",
+              "scope": "fallback",
+              "text": "Fast forced selected proxy"
+            },
+            {
+              "id": "e08b8a5",
+              "scope": "urltest",
+              "text": "Fast forced selected proxy"
+            },
+            {
+              "id": "eb909f0",
+              "scope": "tunnel",
+              "text": "Presize udp mapping indexes"
+            },
+            {
+              "id": "991bad5",
+              "scope": "metadata",
+              "text": "Build source detail once"
+            },
+            {
+              "id": "ce9dacb",
+              "scope": "singledo",
+              "text": "Reuse singleflight state"
+            },
+            {
+              "id": "eb306dd",
+              "scope": "dns",
+              "text": "Cache combined ip families"
+            },
+            {
+              "id": "7326bcf",
+              "scope": "dns",
+              "text": "Skip failed ip parse for domains"
+            },
+            {
+              "id": "b84fa8d",
+              "scope": "dns",
+              "text": "Share cached ip answers"
+            },
+            {
+              "id": "bda6fae",
+              "scope": "metadata",
+              "text": "Reduce source address allocations"
+            },
+            {
+              "id": "f9b4c6b",
+              "scope": "metadata",
+              "text": "Build remote address once"
+            },
+            {
+              "id": "60fb27b",
+              "scope": "group",
+              "text": "Hand encode group views"
+            },
+            {
+              "id": "d529019",
+              "scope": "connections",
+              "text": "Bucket speed ranks"
+            },
+            {
+              "id": "83fd68c",
+              "scope": "connections",
+              "text": "Cache speed sort keys"
+            },
+            {
+              "id": "8604290",
+              "scope": "proxies",
+              "text": "Cache resolved states"
+            },
+            {
+              "id": "28c3cb2",
+              "scope": "proxies",
+              "text": "Pack delay sort states"
+            },
+            {
+              "id": "1a9cb87",
+              "scope": "statistic",
+              "text": "Embed tracker metadata"
+            },
+            {
+              "id": "b94489b",
+              "scope": "requests",
+              "text": "Maintain sliding key indexes"
+            },
+            {
+              "id": "bb6cf3b",
+              "scope": "requests",
+              "text": "Index traffic updates"
+            },
+            {
+              "id": "38fe299",
+              "scope": "app",
+              "text": "Hand off buffered events"
+            },
+            {
+              "id": "48fbfdb",
+              "scope": "app",
+              "text": "Update request traffic in place"
+            },
+            {
+              "id": "5c5bf2f",
+              "scope": "app",
+              "text": "Trim fixed lists without transient growth"
+            },
+            {
+              "id": "457f1fb",
+              "scope": "app",
+              "text": "Select tray proxies in one pass"
+            },
+            {
+              "id": "ea2d4e9",
+              "scope": "app",
+              "text": "Merge connection deltas in place"
+            },
+            {
+              "id": "88c015a",
+              "scope": "app",
+              "text": "Reuse typed connection payloads"
+            },
+            {
+              "id": "fda8d56",
+              "scope": "app",
+              "text": "Batch connection traffic updates"
+            },
+            {
+              "id": "1f6285e",
+              "scope": "app",
+              "text": "Compare connections by revision"
+            },
+            {
+              "id": "50f0553",
+              "scope": "app",
+              "text": "Keep typed core event maps"
+            },
+            {
+              "id": "06d47c9",
+              "scope": "app",
+              "text": "Batch bounded list appends"
+            },
+            {
+              "id": "7a1ee4f",
+              "scope": "app",
+              "text": "Update requests without map copies"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.0",
       "tag": "v1.0.0",
       "date": "2026-10-30",
