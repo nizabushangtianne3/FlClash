@@ -30,6 +30,7 @@ List<Group> computeSort({
       groups: groups,
       groupsByName: groupsByName,
       selectedMap: selectedMap,
+      cache: realStateCache,
     );
   }
 
@@ -227,6 +228,7 @@ List<Group> computeHideTimeout({
         groups: allGroups,
         groupsByName: groupsByName,
         selectedMap: selectedMap,
+        cache: realStates,
       );
       if (_unprobeableProxyTypes.contains(proxyTypes[state.proxyName])) {
         return true;
@@ -241,43 +243,52 @@ List<Group> computeHideTimeout({
   }).toList();
 }
 
-SelectedProxyState getRealSelectedProxyState(
-  SelectedProxyState state, {
-  required List<Group> groups,
-  Map<String, Group>? groupsByName,
-  required Map<String, String> selectedMap,
-}) {
-  if (state.proxyName.isEmpty) return state;
-  final groupIndex = groupsByName ?? _indexGroups(groups);
-  final group = groupIndex[state.proxyName];
-  final newState = state.copyWith(group: true);
-  if (group == null) return newState;
-  final currentSelectedName = group.getCurrentSelectedName(
-    selectedMap[newState.proxyName] ?? '',
-  );
-  if (currentSelectedName.isEmpty) {
-    return newState;
-  }
-  return getRealSelectedProxyState(
-    newState.copyWith(proxyName: currentSelectedName, testUrl: group.testUrl),
-    groups: groups,
-    groupsByName: groupIndex,
-    selectedMap: selectedMap,
-  );
-}
-
 SelectedProxyState computeRealSelectedProxyState(
   String proxyName, {
   required List<Group> groups,
   Map<String, Group>? groupsByName,
   required Map<String, String> selectedMap,
+  Map<String, SelectedProxyState>? cache,
 }) {
-  return getRealSelectedProxyState(
+  return _resolveRealSelectedProxyState(
     SelectedProxyState(proxyName: proxyName),
+    cache ??= {},
     groups: groups,
     groupsByName: groupsByName,
     selectedMap: selectedMap,
   );
+}
+
+SelectedProxyState _resolveRealSelectedProxyState(
+  SelectedProxyState state,
+  Map<String, SelectedProxyState> cache, {
+  required List<Group> groups,
+  Map<String, Group>? groupsByName,
+  required Map<String, String> selectedMap,
+}) {
+  if (state.proxyName.isEmpty) return state;
+  final cached = cache[state.proxyName];
+  if (cached != null) return cached;
+  final groupIndex = groupsByName ?? _indexGroups(groups);
+  final group = groupIndex[state.proxyName];
+  final newState = state.copyWith(group: true);
+  if (group == null) {
+    return cache[state.proxyName] = newState;
+  }
+  final currentSelectedName = group.getCurrentSelectedName(
+    selectedMap[newState.proxyName] ?? '',
+  );
+  if (currentSelectedName.isEmpty) {
+    return cache[state.proxyName] = newState;
+  }
+  final resolved = _resolveRealSelectedProxyState(
+    newState.copyWith(proxyName: currentSelectedName, testUrl: group.testUrl),
+    cache,
+    groups: groups,
+    groupsByName: groupIndex,
+    selectedMap: selectedMap,
+  );
+  return cache[state.proxyName] = resolved;
 }
 
 Map<String, Group> _indexGroups(List<Group> groups) {
