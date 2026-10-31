@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
@@ -22,7 +24,6 @@ List<Group> computeSort({
 
   final groupsByName = groupsByNameFor(groups);
   final realStateCache = <String, SelectedProxyState>{};
-  final delayStateCache = <String, DelayState>{};
   SelectedProxyState realStateFor(String proxyName) {
     return realStateCache[proxyName] ??= computeRealSelectedProxyState(
       proxyName,
@@ -42,28 +43,39 @@ List<Group> computeSort({
     if (delayMap.isEmpty) {
       return proxies;
     }
-    final delayStates = <DelayState>[];
-    for (final proxy in proxies) {
-      final realState = realStateFor(proxy.name);
+    final count = proxies.length;
+    final delays = Int64List(count);
+    for (var index = 0; index < count; index++) {
+      final realState = realStateFor(proxies[index].name);
       final stateTestUrl = realState.testUrl.takeFirstValid([testUrl]);
-      final cacheKey = delayTestKey(stateTestUrl, realState.proxyName);
-      delayStates.add(
-        delayStateCache[cacheKey] ??= computeProxyDelayState(
-          proxyName: proxy.name,
-          testUrl: testUrl,
-          groups: groups,
-          selectedMap: selectedMap,
-          delayMap: delayMap,
-          groupsByName: groupsByName,
-          realState: realState,
-        ),
-      );
+      delays[index] = delayMap[stateTestUrl]?[realState.proxyName] ?? 0;
     }
+
+    int compareDelayStates(int left, int right) {
+      final leftDelay = delays[left];
+      final rightDelay = delays[right];
+      final leftPriority = leftDelay > 0
+          ? 0
+          : leftDelay < 0
+          ? 1
+          : 2;
+      final rightPriority = rightDelay > 0
+          ? 0
+          : rightDelay < 0
+          ? 1
+          : 2;
+      if (leftPriority != rightPriority) {
+        return leftPriority.compareTo(rightPriority);
+      }
+      if (leftDelay != rightDelay) {
+        return leftDelay.compareTo(rightDelay);
+      }
+      return left.compareTo(right);
+    }
+
     var ordered = true;
-    for (var index = 1; index < proxies.length; index++) {
-      final previous = delayStates[index - 1];
-      final current = delayStates[index];
-      if (previous.compareTo(current) > 0) {
+    for (var index = 1; index < count; index++) {
+      if (compareDelayStates(index - 1, index) > 0) {
         ordered = false;
         break;
       }
@@ -72,11 +84,8 @@ List<Group> computeSort({
       return proxies;
     }
     // Ties keep their configured position instead of reshuffling each batch.
-    final order = List<int>.generate(proxies.length, (index) => index)
-      ..sort((a, b) {
-        final compared = delayStates[a].compareTo(delayStates[b]);
-        return compared != 0 ? compared : a.compareTo(b);
-      });
+    final order = List<int>.generate(count, (index) => index)
+      ..sort(compareDelayStates);
     return [for (final index in order) proxies[index]];
   }
 
@@ -281,27 +290,4 @@ Map<String, Group> _indexGroups(List<Group> groups) {
 
 String delayTestKey(String testUrl, String proxyName) {
   return '$testUrl\u0000$proxyName';
-}
-
-DelayState computeProxyDelayState({
-  required String proxyName,
-  required String testUrl,
-  required List<Group> groups,
-  required Map<String, String> selectedMap,
-  required DelayMap delayMap,
-  Map<String, Group>? groupsByName,
-  SelectedProxyState? realState,
-}) {
-  final state =
-      realState ??
-      computeRealSelectedProxyState(
-        proxyName,
-        groups: groups,
-        groupsByName: groupsByName,
-        selectedMap: selectedMap,
-      );
-  final currentDelayMap =
-      delayMap[state.testUrl.takeFirstValid([testUrl])] ?? {};
-  final delay = currentDelayMap[state.proxyName];
-  return DelayState(delay: delay ?? 0, group: state.group);
 }

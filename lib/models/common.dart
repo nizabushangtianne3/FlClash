@@ -1057,32 +1057,6 @@ bool _isHttpUrl(String value) {
 }
 
 @freezed
-abstract class DelayState with _$DelayState {
-  const factory DelayState({required int delay, required bool group}) =
-      _DelayState;
-}
-
-extension DelayStateExt on DelayState {
-  int get priority {
-    if (delay > 0) return 0;
-    if (delay < 0) return 1;
-    return 2;
-  }
-
-  int compareTo(DelayState other) {
-    if (priority != other.priority) {
-      return priority.compareTo(other.priority);
-    }
-    if (delay != other.delay) {
-      return delay.compareTo(other.delay);
-    }
-    if (group && !other.group) return -1;
-    if (!group && other.group) return 1;
-    return 0;
-  }
-}
-
-@freezed
 abstract class UpdatingMessage with _$UpdatingMessage {
   const factory UpdatingMessage({
     required String label,
