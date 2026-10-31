@@ -10,9 +10,11 @@ void main() {
 
   test('an exited child process is not alive', () async {
     final process = await Process.start(
-      Platform.isWindows ? 'cmd' : 'sh',
-      Platform.isWindows ? ['/c', 'exit 0'] : ['-c', 'exit 0'],
+      Platform.isWindows ? 'ping' : 'sleep',
+      Platform.isWindows ? ['-n', '2', '127.0.0.1'] : ['2'],
     );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    process.kill();
     await process.exitCode;
 
     expect(await isProcessAlive(process.pid), isFalse);

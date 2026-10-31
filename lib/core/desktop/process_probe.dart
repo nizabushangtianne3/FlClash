@@ -36,40 +36,43 @@ const _processQueryLimitedInformation = 0x1000;
 const _errorInvalidParameter = 87;
 const _stillActive = 259;
 
+typedef _OpenProcessNative = Pointer<Void> Function(Uint32, Int32, Uint32);
+typedef _OpenProcessDart = Pointer<Void> Function(int, int, int);
+typedef _GetLastErrorNative = Uint32 Function();
+typedef _GetLastErrorDart = int Function();
+typedef _GetExitCodeProcessNative =
+    Int32 Function(Pointer<Void>, Pointer<Uint32>);
+typedef _GetExitCodeProcessDart = int Function(Pointer<Void>, Pointer<Uint32>);
+typedef _CloseHandleNative = Int32 Function(Pointer<Void>);
+typedef _CloseHandleDart = int Function(Pointer<Void>);
+
+final _kernel32 = DynamicLibrary.open('kernel32.dll');
+final _openProcess = _kernel32
+    .lookupFunction<_OpenProcessNative, _OpenProcessDart>('OpenProcess');
+final _getLastError = _kernel32
+    .lookupFunction<_GetLastErrorNative, _GetLastErrorDart>('GetLastError');
+final _getExitCodeProcess = _kernel32
+    .lookupFunction<_GetExitCodeProcessNative, _GetExitCodeProcessDart>(
+      'GetExitCodeProcess',
+    );
+final _closeHandle = _kernel32
+    .lookupFunction<_CloseHandleNative, _CloseHandleDart>('CloseHandle');
+
 // A Helper-spawned Core belongs to SYSTEM; OpenProcess fails with
 // ERROR_INVALID_PARAMETER only when no such process exists.
 bool _isWindowsProcessAlive(int pid) {
-  final kernel32 = DynamicLibrary.open('kernel32.dll');
-  final openProcess = kernel32
-      .lookupFunction<
-        Pointer<Void> Function(Uint32, Int32, Uint32),
-        Pointer<Void> Function(int, int, int)
-      >('OpenProcess');
-  final getLastError = kernel32
-      .lookupFunction<Uint32 Function(), int Function()>('GetLastError');
-  final getExitCodeProcess = kernel32
-      .lookupFunction<
-        Int32 Function(Pointer<Void>, Pointer<Uint32>),
-        int Function(Pointer<Void>, Pointer<Uint32>)
-      >('GetExitCodeProcess');
-  final closeHandle = kernel32
-      .lookupFunction<
-        Int32 Function(Pointer<Void>),
-        int Function(Pointer<Void>)
-      >('CloseHandle');
-
-  final handle = openProcess(_processQueryLimitedInformation, 0, pid);
+  final handle = _openProcess(_processQueryLimitedInformation, 0, pid);
   if (handle == nullptr) {
-    return getLastError() != _errorInvalidParameter;
+    return _getLastError() != _errorInvalidParameter;
   }
   final exitCode = calloc<Uint32>();
   try {
-    if (getExitCodeProcess(handle, exitCode) == 0) {
+    if (_getExitCodeProcess(handle, exitCode) == 0) {
       return true;
     }
     return exitCode.value == _stillActive;
   } finally {
     calloc.free(exitCode);
-    closeHandle(handle);
+    _closeHandle(handle);
   }
 }
