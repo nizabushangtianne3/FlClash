@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:fl_clash/models/models.dart';
 
@@ -28,7 +29,7 @@ class TrackerSpeedRanker {
   static const _minSampleGap = Duration(milliseconds: 500);
   static const _smoothing = 0.5;
 
-  var _samples = <String, _SpeedSample>{};
+  final _samples = <String, _SpeedSample>{};
   var _positions = const <String, int>{};
 
   List<TrackerInfo> rank(List<TrackerInfo> trackerInfos, DateTime now) {
@@ -42,23 +43,24 @@ class TrackerSpeedRanker {
       count,
       (index) => _sample(trackerInfos[index], now),
     );
-    _samples = {
-      for (var index = 0; index < count; index++)
-        trackerInfos[index].id: samples[index],
-    };
+    final sampleMap = _samples..clear();
+    for (var index = 0; index < count; index++) {
+      sampleMap[trackerInfos[index].id] = samples[index];
+    }
 
     // All idle: sort by traffic once, then keep the resulting order stable.
     var anyActive = false;
-    for (final sample in samples) {
+    final traffic = Int64List(count);
+    final positions = Int64List(count);
+    for (var index = 0; index < count; index++) {
+      final trackerInfo = trackerInfos[index];
+      final sample = samples[index];
+      traffic[index] = trackerInfo.upload + trackerInfo.download;
+      positions[index] = _positions[trackerInfo.id] ?? count;
       if (sample.rankSpeed >= 1) {
         anyActive = true;
-        break;
       }
     }
-    final traffic = [
-      for (final trackerInfo in trackerInfos)
-        trackerInfo.upload + trackerInfo.download,
-    ];
     final order = List<int>.generate(count, (index) => index);
     if (!anyActive) {
       order.sort((a, b) {
@@ -73,20 +75,18 @@ class TrackerSpeedRanker {
         return trackerInfos[a].id.compareTo(trackerInfos[b].id);
       });
     } else {
-      final buckets = [
-        for (final sample in samples)
-          sample.rankSpeed < 1 ? 0 : (log(sample.rankSpeed) / ln2).floor() + 1,
-      ];
-      final positions = _positions;
+      final buckets = Int64List(count);
+      for (var index = 0; index < count; index++) {
+        final rankSpeed = samples[index].rankSpeed;
+        buckets[index] = rankSpeed < 1 ? 0 : (log(rankSpeed) / ln2).floor() + 1;
+      }
       order.sort((a, b) {
         final bucket = buckets[b].compareTo(buckets[a]);
         if (bucket != 0) {
           return bucket;
         }
         if (buckets[a] > 0) {
-          final position = (positions[trackerInfos[a].id] ?? count).compareTo(
-            positions[trackerInfos[b].id] ?? count,
-          );
+          final position = positions[a].compareTo(positions[b]);
           if (position != 0) {
             return position;
           }
