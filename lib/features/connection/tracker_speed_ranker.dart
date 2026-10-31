@@ -61,9 +61,115 @@ class TrackerSpeedRanker {
         anyActive = true;
       }
     }
-    final order = List<int>.generate(count, (index) => index);
     if (!anyActive) {
-      order.sort((a, b) {
+      final order = List<int>.generate(count, (index) => index)
+        ..sort((a, b) {
+          final trafficCompare = traffic[b].compareTo(traffic[a]);
+          if (trafficCompare != 0) {
+            return trafficCompare;
+          }
+          final start = trackerInfos[b].start.compareTo(trackerInfos[a].start);
+          if (start != 0) {
+            return start;
+          }
+          return trackerInfos[a].id.compareTo(trackerInfos[b].id);
+        });
+      return _ranked(trackerInfos, samples, order, count);
+    }
+
+    final buckets = Int64List(count);
+    var maxBucket = 0;
+    for (var index = 0; index < count; index++) {
+      final rankSpeed = samples[index].rankSpeed;
+      buckets[index] = rankSpeed < 1 ? 0 : (log(rankSpeed) / ln2).floor() + 1;
+      if (buckets[index] > maxBucket) {
+        maxBucket = buckets[index];
+      }
+    }
+
+    // Counting-sort current rows by their previous rank. Rows are unique in the
+    // common case; only equal positions (mostly new rows) need the exact
+    // traffic/start/id tie-break.
+    final positionCounts = Int64List(count + 1);
+    for (var index = 0; index < count; index++) {
+      positionCounts[positions[index]]++;
+    }
+    final positionStarts = Int64List(count + 3);
+    for (var position = 0; position <= count; position++) {
+      positionStarts[position + 1] =
+          positionStarts[position] + positionCounts[position];
+    }
+    final positionOrder = List<int>.filled(count, -1, growable: false);
+    final positionCursors = Int64List(count + 1);
+    for (var index = 0; index < count; index++) {
+      final position = positions[index];
+      positionOrder[positionStarts[position] + positionCursors[position]++] =
+          index;
+    }
+    for (var position = 0; position <= count; position++) {
+      final start = positionStarts[position];
+      final end = start + positionCounts[position];
+      if (end - start < 2) {
+        continue;
+      }
+      final collision = positionOrder.sublist(start, end)
+        ..sort((a, b) {
+          final trafficCompare = traffic[b].compareTo(traffic[a]);
+          if (trafficCompare != 0) {
+            return trafficCompare;
+          }
+          final startCompare = trackerInfos[b].start.compareTo(
+            trackerInfos[a].start,
+          );
+          return startCompare != 0
+              ? startCompare
+              : trackerInfos[a].id.compareTo(trackerInfos[b].id);
+        });
+      for (var index = 0; index < collision.length; index++) {
+        positionOrder[start + index] = collision[index];
+      }
+    }
+
+    final bucketHeads = Int64List(maxBucket + 1);
+    final bucketTails = Int64List(maxBucket + 1);
+    final nextIndices = Int64List(count);
+    for (var index = 0; index < maxBucket + 1; index++) {
+      bucketHeads[index] = -1;
+    }
+    for (var index = 0; index < count; index++) {
+      nextIndices[index] = -1;
+    }
+    for (final index in positionOrder) {
+      final bucket = buckets[index];
+      if (bucketHeads[bucket] < 0) {
+        bucketHeads[bucket] = index;
+      } else {
+        nextIndices[bucketTails[bucket]] = index;
+      }
+      bucketTails[bucket] = index;
+    }
+
+    final order = List<int>.filled(count, -1, growable: false);
+    var cursor = 0;
+    for (var bucket = maxBucket; bucket >= 0; bucket--) {
+      var source = bucketHeads[bucket];
+      if (source < 0) {
+        continue;
+      }
+      if (bucket > 0) {
+        while (source >= 0) {
+          order[cursor++] = source;
+          source = nextIndices[source];
+        }
+        continue;
+      }
+      final idle = List<int>.generate(count - cursor, (index) => index);
+      var idleCursor = 0;
+      while (source >= 0) {
+        idle[idleCursor++] = source;
+        source = nextIndices[source];
+      }
+      idle.sort((a, b) {
         final trafficCompare = traffic[b].compareTo(traffic[a]);
         if (trafficCompare != 0) {
           return trafficCompare;
@@ -74,34 +180,20 @@ class TrackerSpeedRanker {
         }
         return trackerInfos[a].id.compareTo(trackerInfos[b].id);
       });
-    } else {
-      final buckets = Int64List(count);
-      for (var index = 0; index < count; index++) {
-        final rankSpeed = samples[index].rankSpeed;
-        buckets[index] = rankSpeed < 1 ? 0 : (log(rankSpeed) / ln2).floor() + 1;
+      for (final index in idle) {
+        order[cursor++] = index;
       }
-      order.sort((a, b) {
-        final bucket = buckets[b].compareTo(buckets[a]);
-        if (bucket != 0) {
-          return bucket;
-        }
-        if (buckets[a] > 0) {
-          final position = positions[a].compareTo(positions[b]);
-          if (position != 0) {
-            return position;
-          }
-        }
-        final trafficCompare = traffic[b].compareTo(traffic[a]);
-        if (trafficCompare != 0) {
-          return trafficCompare;
-        }
-        final start = trackerInfos[b].start.compareTo(trackerInfos[a].start);
-        return start != 0
-            ? start
-            : trackerInfos[a].id.compareTo(trackerInfos[b].id);
-      });
     }
 
+    return _ranked(trackerInfos, samples, order, count);
+  }
+
+  List<TrackerInfo> _ranked(
+    List<TrackerInfo> trackerInfos,
+    List<_SpeedSample> samples,
+    List<int> order,
+    int count,
+  ) {
     final ranked = List<TrackerInfo>.generate(count, (index) {
       final source = order[index];
       final trackerInfo = trackerInfos[source];
