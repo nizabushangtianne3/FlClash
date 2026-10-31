@@ -215,6 +215,8 @@ func (f *fakeProxyProvider) RegisterHealthCheckTask(string, utils.IntRanges[uint
 }
 func (f *fakeProxyProvider) HealthCheckURL() string { return "" }
 
+func (f *fakeProxyProvider) AppendJSON(dst []byte) []byte { return dst }
+
 type fakeRuleProvider struct {
 	name    string
 	vehicle cp.VehicleType
@@ -231,6 +233,8 @@ func (f *fakeRuleProvider) Match(*constant.Metadata, constant.RuleMatchHelper) b
 	return false
 }
 func (f *fakeRuleProvider) Strategy() any { return nil }
+
+func (f *fakeRuleProvider) AppendJSON(dst []byte) []byte { return dst }
 
 // The unit tests never apply a config, so the tunnel starts empty and restoring
 // it to empty is restoring what was there.
