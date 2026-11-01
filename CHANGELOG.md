@@ -1,9 +1,10 @@
 # Changelog
 
-## v1.0.1 (2026-10-31)
+## v1.0.1 (2026-11-01)
 
 **Bug Fixes**
 
+- **core** Pool deadline pipe buffers safely (260d119)
 - **core** Update metadata pointer (7f57c78)
 
 **Performance**

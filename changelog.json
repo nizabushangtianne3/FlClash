@@ -4,12 +4,17 @@
     {
       "version": "1.0.1",
       "tag": "v1.0.1",
-      "date": "2026-10-31",
+      "date": "2026-11-01",
       "prerelease": false,
       "groups": [
         {
           "type": "fix",
           "entries": [
+            {
+              "id": "260d119",
+              "scope": "core",
+              "text": "Pool deadline pipe buffers safely"
+            },
             {
               "id": "7f57c78",
               "scope": "core",
