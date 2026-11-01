@@ -11,6 +11,11 @@
           "type": "fix",
           "entries": [
             {
+              "id": "2c5a433",
+              "scope": "core",
+              "text": "Reserve all downstream write headroom"
+            },
+            {
               "id": "2a9ebe2",
               "scope": "core",
               "text": "Fix android vless vision disconnect"
