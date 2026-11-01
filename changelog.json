@@ -11,6 +11,11 @@
           "type": "fix",
           "entries": [
             {
+              "id": "2a9ebe2",
+              "scope": "core",
+              "text": "Fix android vless vision disconnect"
+            },
+            {
               "id": "260d119",
               "scope": "core",
               "text": "Pool deadline pipe buffers safely"

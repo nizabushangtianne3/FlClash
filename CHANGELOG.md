@@ -4,6 +4,7 @@
 
 **Bug Fixes**
 
+- **core** Fix android vless vision disconnect (2a9ebe2)
 - **core** Pool deadline pipe buffers safely (260d119)
 - **core** Update metadata pointer (7f57c78)
 
