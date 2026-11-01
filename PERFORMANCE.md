@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-01
-- FlClash main：`dcdbe4d1`
-- Clash.Meta main：`17fdd1034`
+- FlClash main：`9ddb2e24`
+- Clash.Meta main：`6d2ba3827`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -83,6 +83,16 @@
 |---|---|---|---|
 | pool invalid-size error 静态化 | `054a0a27a` | `f6701244` | Mekya forward 16B / 1 alloc → 0B / 0 allocs |
 | OrderedMap YAML 一次编码 | `f0e4e3251` | `b3f32d57` | 108.38µs / 200.54KiB / 647 allocs → 37.41µs / 41.12KiB / 164 allocs |
+
+### 连接稳定性与内存安全修复
+
+| 修复 | core 提交 | 结果 |
+|---|---|---|
+| deadline pipe 读缓冲安全池化 | `c990a8cba` | 复用缓冲时保留所有权边界，避免读缓冲被提前释放或跨生命周期误用 |
+| VLESS Vision 写缓冲 front headroom | `4add9417c` | 修复 32KB pooled buffer（`start=0`）进入 `ApplyPadding` 后 `ExtendHeader(2)` panic 导致的安卓 VPN 断连 |
+| YAML any round-trip fuzz oracle | `6d2ba3827` | 按 YAML 标量语义比较 `any` 值，避免把 YAML 规范化后的等价数值误判为回归 |
+
+安卓 v1.0.1 崩溃证据来自 tombstone 与 Go panic 栈：`buf.(*Buffer).ExtendHeader` → `vision.ApplyPadding` → `vision.(*Conn).WriteBuffer` → `tcpTracker.WriteBuffer` → `bufio.copyWaitWithPool`。根因是池化源缓冲只有 32768 容量、`start=0`，旧 `ReshapeBuffer` 在短数据或切分尾块时仍复用该缓冲，没有为 Vision 21 字节头预留空间。现在每个切分块都写入带 headroom 的目标缓冲，源缓冲在复制完成后释放；这保留读缓冲池化优化，但保证 Vision 拥有写入头。
 
 ### 父仓库 / 桌面路径
 
