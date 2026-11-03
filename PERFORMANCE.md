@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-04
-- FlClash main：`3be4cae8`（最后一个 core 指针提交）
-- Clash.Meta main：`7af0a7f9d`
+- FlClash main：`16a9146d`（最后一个 core 指针提交）
+- Clash.Meta main：`94db7668a`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -204,7 +204,7 @@ go vet . ./cmd/...
 
 对应 focused race、paired benchstat 和 Flutter focused tests 已在各自改动轮次执行。文档本身不引入运行时行为，无需重新跑完整测试。
 
-外部 V2Ray 互操作支持 `MIHOMO_V2RAY_INTEROP_BIN` 复用已构建的版本化二进制；本机使用 `D:\Codex\tools\v2ray-5.51.2\bin\v2ray.exe`，`TestInboundVMess_MKCP_V2RayInterop` 6 个子用例全绿。
+外部 V2Ray 互操作支持 `MIHOMO_V2RAY_INTEROP_BIN` 复用已构建的版本化二进制；本机使用 `D:\Codex\tools\v2ray-5.51.2\bin\v2ray.exe`。`TestInboundVMess_MKCP_V2RayInterop` 现覆盖默认、seed 和全部 5 种 header，双向共 14 个子用例；普通与 `-race` 全绿。未知 header 现在启动/拨号即报错，不再静默回退 none。
 
 ## 5. 后续优化切入点
 
