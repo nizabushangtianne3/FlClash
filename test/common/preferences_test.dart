@@ -124,6 +124,38 @@ void main() {
     );
   });
 
+  group('delay map', () {
+    test('round-trips a stored map', () async {
+      const delayMap = {
+        'https://a.test': {'hk': 42, 'us': null},
+        'https://b.test': {'jp': 120},
+      };
+
+      expect(await preferences.getDelayMap(), isNull);
+      await preferences.saveDelayMap(delayMap);
+      expect(await preferences.getDelayMap(), delayMap);
+      expect(store.getString(delayMapKey), json.encode(delayMap));
+    });
+
+    test('returns null for malformed JSON', () async {
+      await store.setString(delayMapKey, '{oops');
+      expect(await preferences.getDelayMap(), isNull);
+    });
+
+    test('returns null for a non-map payload', () async {
+      await store.setString(delayMapKey, '[]');
+      expect(await preferences.getDelayMap(), isNull);
+    });
+
+    test('clears the stored map', () async {
+      await preferences.saveDelayMap({
+        'https://a.test': {'hk': 42},
+      });
+      await preferences.clearDelayMap();
+      expect(await preferences.getDelayMap(), isNull);
+    });
+  });
+
   test('clearPreferences empties every stored key', () async {
     await preferences.setVersion(9);
     await preferences.saveConfig(const Config(themeProps: defaultThemeProps));

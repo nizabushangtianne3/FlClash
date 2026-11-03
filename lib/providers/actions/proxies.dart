@@ -80,6 +80,7 @@ class ProxiesAction extends _$ProxiesAction {
   void invalidateDelayTests() {
     cancelDelayTests();
     ref.read(delayDataSourceProvider.notifier).value = {};
+    unawaited(preferences.clearDelayMap());
   }
 
   void resetSelectionState() {
@@ -101,6 +102,7 @@ class ProxiesAction extends _$ProxiesAction {
       final delays = _bufferedDelays.values;
       _bufferedDelays = {};
       ref.read(delayDataSourceProvider.notifier).setDelays(delays);
+      unawaited(preferences.saveDelayMap(ref.read(delayDataSourceProvider)));
     }
     if (_bufferedStarts.isNotEmpty || _bufferedFinishes.isNotEmpty) {
       final started = _bufferedStarts;

@@ -21,6 +21,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:mocktail/mocktail.dart';
 import 'package:riverpod/riverpod.dart';
 
+import '../helpers/preferences.dart';
 import '../helpers/test_profiles.dart';
 
 class MockCoreHandlerInterface extends Mock implements CoreHandlerInterface {}
@@ -97,7 +98,10 @@ void main() {
     await AppLocalizations.load(const Locale('en'));
   });
 
-  setUp(() => reset(core));
+  setUp(() async {
+    reset(core);
+    await mockPreferences();
+  });
 
   ProviderContainer buildContainer({
     Profile? profile,

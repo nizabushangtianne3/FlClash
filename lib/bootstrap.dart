@@ -119,6 +119,7 @@ class Bootstrap {
     Future<PackageInfo> packageInfoFuture,
     Size? viewSize,
   ) async {
+    final delayMapFuture = preferences.getDelayMap();
     await _claimDataDirectory();
     globalState.packageInfo = await packageInfoFuture;
     var config = initialConfig;
@@ -134,12 +135,14 @@ class Bootstrap {
       config = config.copyWith(patchClashConfig: patchClashConfig);
       await preferences.saveConfig(config);
     }
+    final restoredDelayMap = await delayMapFuture;
     final appState = AppState(
       brightness: WidgetsBinding.instance.platformDispatcher.platformBrightness,
       version: version,
       viewSize: viewSize ?? Size.zero,
       requests: FixedList(maxRequestsLength, keyOf: (request) => request.id),
       logs: FixedList(maxLogsLength),
+      delayMap: restoredDelayMap ?? const {},
       traffics: FixedList(trafficSampleLength),
       totalTraffic: const Traffic(),
       systemUiOverlayStyle: const SystemUiOverlayStyle(),

@@ -176,6 +176,44 @@ class Preferences {
     await sharedPreferencesIns?.remove(systemDnsRecordKey);
   }
 
+  Future<DelayMap?> getDelayMap() async {
+    try {
+      final preferences = await _store.value;
+      final raw = preferences?.getString(delayMapKey);
+      if (raw == null) return null;
+      final decoded = json.decode(raw);
+      if (decoded is! Map) return null;
+      final restored = <String, Map<String, int?>>{};
+      for (final entry in decoded.entries) {
+        final url = entry.key;
+        final values = entry.value;
+        if (values is! Map) continue;
+        restored[url] = {
+          for (final item in values.entries)
+            if (item.value == null || item.value is int)
+              item.key: item.value as int?,
+        };
+      }
+      return restored;
+    } catch (error) {
+      commonPrint.log(
+        'getDelayMap error ${error.toString()}',
+        logLevel: LogLevel.warning,
+      );
+      return null;
+    }
+  }
+
+  Future<void> saveDelayMap(DelayMap delayMap) async {
+    final preferences = await _store.value;
+    await preferences?.setString(delayMapKey, json.encode(delayMap));
+  }
+
+  Future<void> clearDelayMap() async {
+    final preferences = await _store.value;
+    await preferences?.remove(delayMapKey);
+  }
+
   Future<BootRecord?> getBootRecord() async {
     try {
       final sharedPreferencesIns = await _store.value;
