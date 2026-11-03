@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-03
-- FlClash main：`59494517`（最后一个 core 指针提交）
+- FlClash main：`3a884f8f`（当前 main，包含最新 core 指针与账本记录）
 - Clash.Meta main：`9bf09809f`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -38,15 +38,15 @@
 | DNS UDP packed query buffer 复用 | `4d93a3c08` | `dc4cef77` | 本地 UDP exchange 632B/18 allocs → 600B/17 allocs；时间在噪声内 |
 | SS/Snell obfs decoder 共享 | `2ca2ee6c4` | `59494517` | 800 节点解析 19.12ms/5.016Mi/92.33k → 16.48ms/4.992Mi/91.53k |
 | 代理解析 options 直传指针 | `22d145c28` | `1e25b3f4` | 800 节点解析 4.992Mi/91.53k → 4.955Mi/90.74k；时间在噪声内 |
-| 延迟历史单次拷贝 | `ee9804ad0` | 本轮指针提交 | 10 行 history 400ns/640B/2 allocs → 221ns/320B/1 alloc；extra 1.044µs/1104B/4 → 868ns/784B/3 |
-| 关闭连接免中间 tracker 切片 | 本轮 wrapper 提交 | -（仅 wrapper） | 关闭/切网不再分配整表 tracker 切片 |
-| 延迟历史有界写入单锁完成 | `19a1b546f` | 本轮指针提交 | 满 10 行记录 67.85ns → 48.68ns，分配保持 0 |
-| Queue ring 拷贝分段化 | `7df5436c4` | 本轮指针提交 | 10 行 Copy 178.5ns → 104.2ns，内存/分配不变 |
-| 代理解析 UUID 内联存储 | `87525b66c` | 本轮指针提交 | 800 节点解析 4.955Mi/90.74k → 4.918Mi/89.94k；时间在噪声内 |
-| Queue ring 遍历分段化 | `3085e89ef` | 本轮指针提交 | 10 行 Range 87.09ns → 27.48ns，分配保持 0 |
-| DNS 缓存写入原地过滤 | `5352ae3f1` | 本轮指针提交 | 典型缓存写入 419.8ns/440B/9 → 388.4ns/424B/8 |
-| API JSON 池保留换行容量 | `8a69e7c7f` | 本轮指针提交 | 避免池化响应每次追加 newline 触发整文档扩容 |
-| Provider JSON 预设容量 | `9bf09809f` | 本轮指针提交 | 8×64 provider 响应 profile 从稳态扩容转为 warm-up |
+| 延迟历史单次拷贝 | `ee9804ad0` | `1dfb7bc6` | 10 行 history 400ns/640B/2 allocs → 221ns/320B/1 alloc；extra 1.044µs/1104B/4 → 868ns/784B/3 |
+| 关闭连接免中间 tracker 切片 | -（仅 wrapper） | `4f002821` | 关闭/切网不再分配整表 tracker 切片 |
+| 延迟历史有界写入单锁完成 | `19a1b546f` | `ab93682a` | 满 10 行记录 67.85ns → 48.68ns，分配保持 0 |
+| Queue ring 拷贝分段化 | `7df5436c4` | `b8cee4e6` | 10 行 Copy 178.5ns → 104.2ns，内存/分配不变 |
+| 代理解析 UUID 内联存储 | `87525b66c` | `2c71ce52` | 800 节点解析 4.955Mi/90.74k → 4.918Mi/89.94k；时间在噪声内 |
+| Queue ring 遍历分段化 | `3085e89ef` | `129be484` | 10 行 Range 87.09ns → 27.48ns，分配保持 0 |
+| DNS 缓存写入原地过滤 | `5352ae3f1` | `b6cfebac` | 典型缓存写入 419.8ns/440B/9 → 388.4ns/424B/8 |
+| API JSON 池保留换行容量 | `8a69e7c7f` | `d1c478d7` | 避免池化响应每次追加 newline 触发整文档扩容 |
+| Provider JSON 预设容量 | `9bf09809f` | `4778ba93` | 8×64 provider 响应 profile 从稳态扩容转为 warm-up |
 
 合计：连接表一次全量同步从 1.60ms/594KB/3525 allocs 降到 0.18ms/476KB/517 allocs。
 
