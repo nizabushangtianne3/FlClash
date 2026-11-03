@@ -4,7 +4,7 @@
 
 - 最近核对日期：2026-11-03
 - FlClash main：`2dccf18e`（最后一个 core 指针提交）
-- Clash.Meta main：`ef26c3053`
+- Clash.Meta main：`4d93a3c08`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地九项优化；审计中确认过但**未**改动的位置见本节末尾。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地十项优化；审计中确认过但**未**改动的位置见本节末尾。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -35,6 +35,7 @@
 | URLTest writer/reader 进池并在交换结束后重置 | `91ecd8972` | `886bde94` | 稳定 pipe 交换 9.33µs/7.93KiB/39 allocs → 5.42µs/3.30KiB/35 allocs |
 | DNS UDP query/read 缓冲进池并直接匹配 ID | `cf7405067` | `c9009c7e` | 本地 UDP exchange 21.87µs/4728B/19 allocs → 20.55µs/632B/18 allocs |
 | TUIC v5 四分片内联存储 | `ef26c3053` | `2dccf18e` | 分片接收 1.155µs/288B/2 allocs → 1.131µs/288B/1 alloc |
+| DNS UDP packed query buffer 复用 | `4d93a3c08` | 本轮指针提交 | 本地 UDP exchange 632B/18 allocs → 600B/17 allocs；时间在噪声内 |
 
 合计：连接表一次全量同步从 1.60ms/594KB/3525 allocs 降到 0.18ms/476KB/517 allocs。
 
