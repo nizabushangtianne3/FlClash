@@ -4,7 +4,7 @@
 
 - 最近核对日期：2026-11-03
 - FlClash main：本轮指针提交
-- Clash.Meta main：`91ecd8972`
+- Clash.Meta main：`cf7405067`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地七项优化；审计中确认过但**未**改动的位置见本节末尾。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地八项优化；审计中确认过但**未**改动的位置见本节末尾。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -33,6 +33,7 @@
 | 连接答案自己写响应帧（`frameWriter`），不再让 json writer 二次拷贝 | -（仅 wrapper） | `e0a257ca` | 连接全量同步（500 行）1.25ms → 0.18ms、分配 517 → 517；增量轮询 6 → 2 allocs |
 | 每个代理映射复用 immutable proxy decoder | `12e1ec6b9` | `16c1740b` | 800 节点解析分配 93.15k → 92.34k，内存 5.041Mi → 5.016Mi；时间在噪声内 |
 | URLTest writer/reader 进池并在交换结束后重置 | `91ecd8972` | 本文件所在提交 | 稳定 pipe 交换 9.33µs/7.93KiB/39 allocs → 5.42µs/3.30KiB/35 allocs |
+| DNS UDP query/read 缓冲进池并直接匹配 ID | `cf7405067` | 本文件所在提交 | 本地 UDP exchange 21.87µs/4728B/19 allocs → 20.55µs/632B/18 allocs |
 
 合计：连接表一次全量同步从 1.60ms/594KB/3525 allocs 降到 0.18ms/476KB/517 allocs。
 
@@ -154,12 +155,10 @@ go vet . ./cmd/...
 
 ## 5. 后续优化切入点
 
-### P1：DNS UDP 交换路径
+### P1：DNS UDP response parsing
 
-- 现状：`BenchmarkClientExchangeUDP` 约 22 allocs/op。
-- profile 显示主要分配来自 `miekg/dns` 每次读取分配 4096B、消息解析、socket syscall；wrapper 自身另有 `D.Conn` 和 `context.AfterFunc`。
-- 方向：评估自实现基础 UDP/TCP DNS exchange，用池化读缓冲替换 `Conn.ReadMsgHeader`。
-- 风险：必须完整覆盖 EDNS0、context deadline、ID 匹配、TCP length prefix、截断后 TCP retry 和错误语义；不建议直接池化解析结果。
+- 池化 wire 缓冲已落地，`BenchmarkClientExchangeUDP` 现在为 18 allocs / 632B。
+- 剩余分配主要来自 DNS 消息和 RR 解析对象；不要池化已交给调用方的解析结果，除非能证明完整所有权边界。
 
 ### P2：TUIC v5 fragmented `packetBag`
 
