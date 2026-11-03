@@ -4,7 +4,7 @@
 
 - 最近核对日期：2026-11-04
 - FlClash main：`a110341a`（最后一个 core 指针提交）
-- Clash.Meta main：`04d09567d`
+- Clash.Meta main：`2f003e32c`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
