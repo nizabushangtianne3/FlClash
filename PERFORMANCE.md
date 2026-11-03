@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-04
-- FlClash main：`e00bbe88`（最后一个 core 指针提交）
-- Clash.Meta main：`48d94d41a`
+- FlClash main：`f06d563b`（最后一个 core 指针提交）
+- Clash.Meta main：`94572bcaa`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地四十七项优化；审计中确认过但**未**改动的位置见本节末尾。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地四十八项优化；审计中确认过但**未**改动的位置见本节末尾。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -73,6 +73,7 @@
 | TProxy packet 原生 adapter 直通 | `305a43e43` | `459ee5fb` | wrapped 23.15ns/64B/1 alloc → native 1.285ns/0B/0 allocs；时间 -94.45%，allocs -100% |
 | Shadowsocks packet 原生 adapter 直通 | `89679eaa8` | `e8d66cfc` | wrapped 26.56ns/64B/1 alloc → native 2.129ns/0B/0 allocs；时间 -91.99%，allocs -100% |
 | Snell packet 原生 adapter 直通 | `48d94d41a` | `e00bbe88` | wrapped 26.00ns/64B/1 alloc → native 1.285ns/0B/0 allocs；时间 -95.06%，allocs -100% |
+| Mieru packet 原生 adapter 直通 | `94572bcaa` | `f06d563b` | wrapped 24.39ns/64B/1 alloc → native 2.192ns/0B/0 allocs；时间 -91.01%，allocs -100% |
 
 合计：连接表一次全量同步从 1.60ms/594KB/3525 allocs 降到 0.18ms/476KB/517 allocs。
 
