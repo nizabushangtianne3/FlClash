@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-04
-- FlClash main：`3f5ce42f`（最后一个 core 指针提交）
-- Clash.Meta main：`5de9d6a8f`
+- FlClash main：`57fb0edd`（最后一个 core 指针提交）
+- Clash.Meta main：`6b4820fbd`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 持续重构轮次，账本当前共 52 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 持续重构轮次，账本当前共 53 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -125,6 +125,12 @@
 | DomainSet starts 缓存 | `665fc1ace` | `2256d5e0` | 查询减少重复计算 |
 | wildcard select lookup 重写 | `467945e3d` | `d66e8ecc` | 降低通配匹配成本 |
 | arena 化 DomainSet keys | `0b92f5951` | `99a7f0d5` | BuilderReuse 分配 18226 → 214；Build builder 耗时约 -32.51% |
+
+### 规则匹配
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| RuleWrapper 原子加法返回值复用 | `20e969ef4` | `689b9fa0` | Hit 19.36ns → 9.093ns（-53.03%）；Miss 13.775ns → 8.795ns（-36.15%）；两边 p=0.000，仍为 0B/0 allocs |
 
 ### Route / JSON 输出
 
