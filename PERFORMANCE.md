@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-04
-- FlClash main：`41a763b4`（最后一个 core 指针提交）
-- Clash.Meta main：`4e05598fd`
+- FlClash main：`94f63690`（最后一个 core 指针提交）
+- Clash.Meta main：`41320de4d`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地四十三项优化；审计中确认过但**未**改动的位置见本节末尾。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地四十四项优化；审计中确认过但**未**改动的位置见本节末尾。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -69,6 +69,7 @@
 | Sing UDP wrapper 共享写状态指针 | `39bda80df` | `6252742f` | 100 包流 13.75µs/56.47KiB/104 allocs → 11.77µs/47.10KiB/104 allocs；时间 -14.38%，内存 -16.60% |
 | Sing packet 原生 adapter 直通 | `f1955366c` | `9ccf787c` | 既有 flow wrapped 114.8ns/128B/2 allocs → native 40.8ns/0B/0 allocs；时间 -64.46%，allocs -100% |
 | Tunnel packet 原生 adapter 直通 | `4e05598fd` | `41a763b4` | wrapped 24.34ns/64B/1 alloc → native 1.292ns/0B/0 allocs；时间 -94.69%，allocs -100% |
+| Trojan packet 原生 adapter 直通 | `41320de4d` | `94f63690` | wrapped 27.88ns/64B/1 alloc → native 2.142ns/0B/0 allocs；时间 -92.32%，allocs -100% |
 
 合计：连接表一次全量同步从 1.60ms/594KB/3525 allocs 降到 0.18ms/476KB/517 allocs。
 
