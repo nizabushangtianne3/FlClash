@@ -217,7 +217,16 @@ var methodHandlers = map[CoreMethod]methodHandler{
 	getTotalTrafficMethod:          withArguments(handleGetTotalTraffic),
 	getTrafficStatsMethod:          withArguments(handleGetTrafficStats),
 	resetTrafficMethod:             acknowledged(handleResetTraffic),
-	getConnectionsMethod:           withArguments(handleGetConnections),
+	// The delta answers through its own encoder: the json writer would
+	// re-format the document the encoder handed it, and the copy it makes of
+	// the answer is what a page open waits for.
+	getConnectionsMethod: withFallible(func(query ConnectionsQuery) (json.RawMessage, error) {
+		data, err := handleGetConnections(query).MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		return json.RawMessage(data), nil
+	}),
 	closeConnectionsMethod:         withoutArguments(handleCloseConnections),
 	resetConnectionsMethod:         withoutArguments(handleResetConnections),
 	clearDnsCacheMethod:            acknowledged(handleClearDnsCache),

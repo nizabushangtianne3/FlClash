@@ -67,6 +67,54 @@ func TestConnectionDeltaAnswersWhatMoved(t *testing.T) {
 	require.Equal(t, 1, removed.Count)
 }
 
+// The host reads the answer as a delta map: the rows it has not been sent,
+// the ids that left and the total. The reflection writer used to produce that
+// document, so the keys and the row shape are the contract this test keeps.
+func TestConnectionDeltaAnswersWhatTheHostReads(t *testing.T) {
+	first := newConnectionDeltaTracker(t, &C.Metadata{NetWork: C.TCP, Host: "first.example.com"})
+	defer func() { _ = first.Close() }()
+	second := newConnectionDeltaTracker(t, &C.Metadata{NetWork: C.TCP, Host: "second.example.com"})
+	defer func() { _ = second.Close() }()
+
+	delta := handleGetConnections(ConnectionsQuery{Resync: true})
+	data, err := delta.MarshalJSON()
+	require.NoError(t, err)
+
+	var document struct {
+		Added   []map[string]any `json:"added"`
+		Removed []string         `json:"removed"`
+		Count   int              `json:"count"`
+	}
+	require.NoError(t, json.Unmarshal(data, &document))
+	require.Len(t, document.Added, 2)
+	require.Empty(t, document.Removed)
+	require.Equal(t, 2, document.Count)
+
+	hosts := make([]string, 0, len(document.Added))
+	for _, row := range document.Added {
+		metadata, ok := row["metadata"].(map[string]any)
+		require.True(t, ok, "a row carries its metadata: %v", row)
+		require.Equal(t, "tcp", metadata["network"])
+		hosts = append(hosts, metadata["host"].(string))
+		for _, key := range []string{"id", "start", "upload", "download", "chains", "rule", "rulePayload"} {
+			require.Contains(t, row, key)
+		}
+	}
+	require.ElementsMatch(t, []string{"first.example.com", "second.example.com"}, hosts)
+
+	_ = first.Close()
+	gone := handleGetConnections(ConnectionsQuery{})
+	require.Equal(t, []string{first.Info().UUID.String()}, gone.Removed)
+
+	// One answer, one buffer: the hand written encoder allocates nothing per
+	// field the reflection writer handed a fresh slice for.
+	allocations := testing.AllocsPerRun(20, func() {
+		data, err = delta.MarshalJSON()
+		require.NoError(t, err)
+	})
+	require.LessOrEqual(t, allocations, float64(2))
+}
+
 // A resync answers the whole table, which is what the host used to be sent on
 // every poll.
 func BenchmarkGetConnectionsFull(b *testing.B) {
@@ -82,12 +130,22 @@ func BenchmarkGetConnectionsFull(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := json.Marshal(handleGetConnections(ConnectionsQuery{Resync: true})); err != nil {
+				if _, err := answerConnections(ConnectionsQuery{Resync: true}); err != nil {
 					b.Fatal(err)
 				}
 			}
 		})
 	}
+}
+
+// answerConnections is what the getConnections method costs the answer: the
+// table encoded once, framed the way the transport reads it.
+func answerConnections(query ConnectionsQuery) ([]byte, error) {
+	data, err := handleGetConnections(query).MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(MethodResponse{ID: "benchmark", Result: json.RawMessage(data)})
 }
 
 func benchmarkConnectionTrackers(b *testing.B, count int) []statistic.Tracker {
@@ -127,7 +185,7 @@ func BenchmarkGetConnectionsDelta(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := json.Marshal(handleGetConnections(ConnectionsQuery{})); err != nil {
+				if _, err := answerConnections(ConnectionsQuery{}); err != nil {
 					b.Fatal(err)
 				}
 			}

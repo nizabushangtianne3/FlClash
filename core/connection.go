@@ -2,10 +2,12 @@ package core
 
 import (
 	"net/netip"
+	"strconv"
 	"slices"
 	"sync"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/metacubex/mihomo/common/jsonutil"
 	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/tunnel/statistic"
@@ -48,6 +50,73 @@ type ConnectionDelta struct {
 	Added   []*statistic.TrackerInfo `json:"added"`
 	Removed []string                 `json:"removed"`
 	Count   int                      `json:"count"`
+}
+
+// MarshalJSON implements json.Marshaler.
+//
+// Reflection called a marshaler for the uuid, the addresses and the enums of
+// every answered row, and each handed back a fresh slice, so the one answer a
+// page open gets cost three thousand allocations. The rows now go out the way
+// the Core's own connection table encoder writes them, straight into one
+// buffer. The field set and their escaping stay pinned by
+// TestConnectionDeltaAnswersWhatTheHostReads.
+func (d *ConnectionDelta) MarshalJSON() ([]byte, error) {
+	// One buffer for the whole answer. The row scaffold is counted once and
+	// the long fields on top of it, so appending a row grows nothing; a longer
+	// escape than any here only costs one reallocation.
+	size := 96 + len(d.Removed)*40
+	for _, info := range d.Added {
+		if info == nil {
+			size += 4
+			continue
+		}
+		size += rowAnswerSize(info)
+	}
+	buf := make([]byte, 0, size)
+	buf = append(buf, `{"added":[`...)
+	for i, info := range d.Added {
+		if i > 0 {
+			buf = append(buf, ',')
+		}
+		if info == nil {
+			buf = append(buf, 'n', 'u', 'l', 'l')
+			continue
+		}
+		buf = info.AppendJSON(buf)
+	}
+	buf = append(buf, `],"removed":[`...)
+	for i, id := range d.Removed {
+		if i > 0 {
+			buf = append(buf, ',')
+		}
+		buf = jsonutil.AppendString(buf, id)
+	}
+	buf = append(buf, `],"count":`...)
+	buf = strconv.AppendInt(buf, int64(d.Count), 10)
+	return append(buf, '}'), nil
+}
+
+// rowAnswerSize reports the bytes one row takes in the answer: the scaffold of
+// its fixed fields, plus the fields a subscription can make long.
+func rowAnswerSize(info *statistic.TrackerInfo) int {
+	metadata := info.Metadata
+	size := 700 + len(metadata.Host) + len(metadata.Process) + len(metadata.ProcessPath) +
+		len(metadata.SrcIPASN) + len(metadata.DstIPASN) + len(metadata.InName) +
+		len(metadata.InUser) + len(metadata.RematchName) + len(metadata.SpecialProxy) +
+		len(metadata.SpecialRules) + len(metadata.RemoteDst) + len(metadata.SniffHost)
+	for _, geo := range metadata.SrcGeoIP {
+		size += len(geo) + 4
+	}
+	for _, geo := range metadata.DstGeoIP {
+		size += len(geo) + 4
+	}
+	for _, chain := range info.Chain {
+		size += len(chain) + 4
+	}
+	for _, chain := range info.ProviderChain {
+		size += len(chain) + 4
+	}
+	return size + len(info.Rule) + len(info.RulePayload)
 }
 
 type connectionRow struct {
