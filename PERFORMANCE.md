@@ -4,7 +4,7 @@
 
 - 最近核对日期：2026-11-03
 - FlClash main：`90eb2b47`（最后一个 core 指针提交）
-- Clash.Meta main：`f2a4a6259`
+- Clash.Meta main：`2b1a81024`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -184,8 +184,8 @@ go vet . ./cmd/...
 
 ### P5：Windows socket benchmark 稳定性
 
-- `BenchmarkProxyURLTestHTTP` 会偶发本地源端口与 httptest 监听端口冲突。
-- 可为 benchmark 增加确定性监听端口、SO 前置检查或独立 fake transport，避免同一进程多组复跑失败。
+- 已解决：`BenchmarkProxyURLTestHTTP` 改为进程内 pipe HTTP server，避开 Windows 临时端口分配冲突。
+- 旧实现 count=10 内复现多次 `connectex: Only one usage...`；pipe 版 count=20 全绿。
 
 ## 6. 后续会话推荐流程
 
