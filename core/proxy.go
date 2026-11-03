@@ -207,7 +207,7 @@ func handleValidateProxies(mappings []map[string]any) []string {
 			probe = maps.Clone(mapping)
 			probe["name"] = name + validationNameSuffix
 		}
-		proxy, err := adapter.ParseProxy(probe)
+		proxy, err := adapter.ParseProxy(probe, nil)
 		if err != nil {
 			results[i] = strings.ReplaceAll(err.Error(), validationNameSuffix, "")
 			continue
