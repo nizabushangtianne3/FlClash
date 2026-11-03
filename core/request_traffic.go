@@ -21,6 +21,7 @@ type RequestTraffic struct {
 }
 
 type watchedRequest struct {
+	id       string
 	tracker  statistic.Tracker
 	upload   int64
 	download int64
@@ -46,6 +47,7 @@ func (w *requestTrafficWatch) add(tracker statistic.Tracker) (start bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.requests[tracker] = &watchedRequest{
+		id:       tracker.ID(),
 		tracker:  tracker,
 		upload:   info.UploadTotal.Load(),
 		download: info.DownloadTotal.Load(),
@@ -72,7 +74,7 @@ func (w *requestTrafficWatch) collect(queue func([]RequestTraffic) (queued bool)
 		changedRequests []*watchedRequest
 		closing         []*watchedRequest
 	)
-	for tracker, request := range w.requests {
+	for _, request := range w.requests {
 		if request.closedReports > 0 || !request.fresh && !request.alive {
 			request.closedReports++
 			closing = append(closing, request)
@@ -82,7 +84,7 @@ func (w *requestTrafficWatch) collect(queue func([]RequestTraffic) (queued bool)
 		info := request.tracker.Info()
 		upload, download := info.UploadTotal.Load(), info.DownloadTotal.Load()
 		if upload != request.upload || download != request.download {
-			changed = append(changed, RequestTraffic{Id: tracker.ID(), Upload: upload, Download: download})
+			changed = append(changed, RequestTraffic{Id: request.id, Upload: upload, Download: download})
 			changedRequests = append(changedRequests, request)
 		}
 	}
