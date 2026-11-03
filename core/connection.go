@@ -2,8 +2,8 @@ package core
 
 import (
 	"net/netip"
-	"strconv"
 	"slices"
+	"strconv"
 	"sync"
 
 	"github.com/gofrs/uuid/v5"
@@ -227,26 +227,15 @@ func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 	return delta
 }
 
-func collectTrackers() []statistic.Tracker {
-	var trackers []statistic.Tracker
-	statistic.DefaultManager.Range(func(c statistic.Tracker) bool {
-		trackers = append(trackers, c)
+func closeAllTrackers() {
+	statistic.DefaultManager.Range(func(tracker statistic.Tracker) bool {
+		_ = tracker.Close()
 		return true
 	})
-	return trackers
-}
-
-func closeTrackers(trackers []statistic.Tracker) {
-	for _, c := range trackers {
-		_ = c.Close()
-	}
 }
 
 func handleCloseConnections() bool {
-	trackers := collectTrackers()
-	safeGo("closeConnections", func() {
-		closeTrackers(trackers)
-	})
+	safeGo("closeConnections", closeAllTrackers)
 	return true
 }
 
@@ -265,13 +254,13 @@ func handleClearDnsCache() {
 
 // A connection that went out over a network the device has left hangs until
 // TCP gives up on it, and so do the DNS clients' pooled connections.
-func resetNetwork(trackers []statistic.Tracker, resetConnections func()) {
-	closeTrackers(trackers)
+func resetNetwork(resetConnections func()) {
+	closeAllTrackers()
 	resetConnections()
 }
 
 func handleResetNetwork() {
-	resetNetwork(collectTrackers(), func() {
+	resetNetwork(func() {
 		resolver.ResetConnection()
 		handleClearDnsCache()
 	})

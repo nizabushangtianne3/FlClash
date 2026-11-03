@@ -263,7 +263,9 @@ func TestResetNetworkClosesConnectionsBeforeResettingPools(t *testing.T) {
 		id:    "network-change-connection",
 		order: order,
 	}
-	resetNetwork([]statistic.Tracker{tracker}, func() {
+	statistic.DefaultManager.Join(tracker)
+	t.Cleanup(func() { statistic.DefaultManager.Leave(tracker) })
+	resetNetwork(func() {
 		order <- "reset"
 	})
 
