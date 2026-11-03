@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-04
-- FlClash main：`39cedefc`（最后一个 core 指针提交）
-- Clash.Meta main：`cb604feef`
+- FlClash main：`536d2de5`（最后一个 core 指针提交）
+- Clash.Meta main：`2a47382c4`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 持续重构轮次，账本当前共 56 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 持续重构轮次，账本当前共 57 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -147,6 +147,7 @@
 | rules API 直接 append | `69830bac2` | `4e393e37` | 降低规则 API 成本 |
 | provider API 直接 append | `64ac59b04` | `33f47323` | 降低 provider API 成本 |
 | adapter ID 字符串缓存 | `eb0a1cea2` | `13a15729` | Providers API 分配 530 → 18；内存约 -14.44% |
+| Proxy 空 extra map 跳过 | `735c420c7` | `536d2de5` | Proxy JSON 144.80ns → 94.92ns（-34.44%，p=0.000）；8×64 Providers API 129.5µs → 103.8µs（-19.85%，p=0.000）；内存/分配无回退 |
 | JSON 零时间戳直接追加 | `5de9d6a8f` | `3f5ce42f` | `AppendTime/zero` 32.33ns → 3.957ns（-87.76%，p=0.000）；value 路径无显著变化，内存/分配保持 0 |
 | JSON 纯 ASCII 快路径 | `5d234cb4d` | `6232f71d` | 32B ASCII 47.53ns → 16.58ns（-65.12%）；256B ASCII 296.9ns → 111.7ns（-62.37%）；两边 p=0.000，仍 0B/0 allocs；转义/Unicode 无显著回退 |
 | JSON safe string length 快路径 | `d34b92754` | `037d9236` | 32B ASCII 53.98ns → 17.32ns（-67.91%）；256B ASCII 382.9ns → 122.5ns（-68.01%）；两边 p=0.000，仍 0B/0 allocs；AppendString 四类路径无显著回退 |
