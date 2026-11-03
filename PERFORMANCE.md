@@ -182,6 +182,7 @@
 | URLTest 端到端 benchmark 的多进程同端口复跑 | Windows 会偶发客户端源端口与 httptest 监听端口冲突；该场景应使用确定性 state benchmark 或稳定测试端口方案。 |
 | packetSender closed/active 合成单原子状态 | CAS 版 ready +0.88%、full +24.30%、closed +10.16%；Add 高位版 closed +296.60%。两者均撤销，保留原 closed/active 分离实现。 |
 | UDP retry 改接口 action | `400.7ns/272B/4 allocs → 428.4ns/296B/5 allocs`；时间回退约 7%、多 1 alloc，已撤销。 |
+| Sing packet 合并 flow state | 100 包流内存 -18.52%，但单包 allocs 4 → 5，时间在噪声内；撤销以保留单包路径。 |
 
 ## 4. 当前验证矩阵
 
