@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.0.2 (2026-11-04)
+
+**Bug Fixes**
+
+- **proxies** Persist delay results (31b2063)
+- **core** Reset mkcp pooled close options (89e7e23)
+
+**Performance**
+
+- **core** Close trackers without staging a slice (4f00282)
+- **core** Pass proxy options directly (62da924)
+- **core** Share the immutable obfs decoder (5949451)
+- **core** Reuse the packed DNS UDP buffer (dc4cef7)
+- **core** Inline common TUIC v5 fragments (2dccf18)
+- **core** Use pooled DNS UDP wire buffers (c9009c7)
+- **core** Pool URL-test buffered streams (886bde9)
+- **core** Share the immutable proxy decoder (16c1740)
+- **core** Cache a watched request's id and sync the submodule (f35c80a)
+- **core** Send the connections answer as its own frame (e0a257c)
+
 ## v1.0.1 (2026-11-01)
 
 **Bug Fixes**

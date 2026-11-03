@@ -2,6 +2,84 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "1.0.2",
+      "tag": "v1.0.2",
+      "date": "2026-11-04",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "31b2063",
+              "scope": "proxies",
+              "text": "Persist delay results"
+            },
+            {
+              "id": "89e7e23",
+              "scope": "core",
+              "text": "Reset mkcp pooled close options"
+            }
+          ]
+        },
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "4f00282",
+              "scope": "core",
+              "text": "Close trackers without staging a slice"
+            },
+            {
+              "id": "62da924",
+              "scope": "core",
+              "text": "Pass proxy options directly"
+            },
+            {
+              "id": "5949451",
+              "scope": "core",
+              "text": "Share the immutable obfs decoder"
+            },
+            {
+              "id": "dc4cef7",
+              "scope": "core",
+              "text": "Reuse the packed DNS UDP buffer"
+            },
+            {
+              "id": "2dccf18",
+              "scope": "core",
+              "text": "Inline common TUIC v5 fragments"
+            },
+            {
+              "id": "c9009c7",
+              "scope": "core",
+              "text": "Use pooled DNS UDP wire buffers"
+            },
+            {
+              "id": "886bde9",
+              "scope": "core",
+              "text": "Pool URL-test buffered streams"
+            },
+            {
+              "id": "16c1740",
+              "scope": "core",
+              "text": "Share the immutable proxy decoder"
+            },
+            {
+              "id": "f35c80a",
+              "scope": "core",
+              "text": "Cache a watched request's id and sync the submodule"
+            },
+            {
+              "id": "e0a257c",
+              "scope": "core",
+              "text": "Send the connections answer as its own frame"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.1",
       "tag": "v1.0.1",
       "date": "2026-11-01",
