@@ -4,7 +4,7 @@
 
 - 最近核对日期：2026-11-03
 - FlClash main：本轮指针提交
-- Clash.Meta main：`12e1ec6b9`
+- Clash.Meta main：`91ecd8972`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地六项优化；审计中确认过但**未**改动的位置见本节末尾。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地七项优化；审计中确认过但**未**改动的位置见本节末尾。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -31,7 +31,8 @@
 | 组文档写入前精确计算容量 + `jsonutil.StringLen` | `8cf7ce119` | `b0ad8b48` | 代理列表接口（200 组×20）：分配 1237 → 421，内存 223KB → 105KB，`AllocsPerRun == 1` 被测试钉住 |
 | `getConnections` 答案走 per-row 手写编码器（导出 `TrackerInfo.AppendJSON`） | `5ceac07ed` | `750317db` | 连接全量同步（500 行）分配 3516 → 517，内存 594KB → 476KB |
 | 连接答案自己写响应帧（`frameWriter`），不再让 json writer 二次拷贝 | -（仅 wrapper） | `e0a257ca` | 连接全量同步（500 行）1.25ms → 0.18ms、分配 517 → 517；增量轮询 6 → 2 allocs |
-| 每个代理映射复用 immutable proxy decoder | `12e1ec6b9` | 同一父指针提交 | 800 节点解析分配 93.15k → 92.34k，内存 5.041Mi → 5.016Mi；时间在噪声内 |
+| 每个代理映射复用 immutable proxy decoder | `12e1ec6b9` | `16c1740b` | 800 节点解析分配 93.15k → 92.34k，内存 5.041Mi → 5.016Mi；时间在噪声内 |
+| URLTest writer/reader 进池并在交换结束后重置 | `91ecd8972` | 本文件所在提交 | 稳定 pipe 交换 9.33µs/7.93KiB/39 allocs → 5.42µs/3.30KiB/35 allocs |
 
 合计：连接表一次全量同步从 1.60ms/594KB/3525 allocs 降到 0.18ms/476KB/517 allocs。
 
@@ -164,11 +165,6 @@ go vet . ./cmd/...
 
 - 已让 completed bag 立即离开 map。
 - 可继续评估 `packetBag` 池化，但 `Feed` 有并发重复分片语义；必须证明旧 bag 不会被新消息复用，且 `Drop/reset` 不影响仍在飞的数据所有权。
-
-### P3：URLTest I/O 缓冲
-
-- `newURLTestExchange` 每次创建 512B writer 和 4096B reader。
-- 可评估 `sync.Pool`，但必须处理 HTTP body 还引用 reader、TLS close、unified-delay 第二次请求和 defer 顺序。
 
 ### P4：UDP `packetSender` 首包
 
