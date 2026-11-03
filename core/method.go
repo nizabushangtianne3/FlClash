@@ -76,7 +76,18 @@ func handleMethodCall(call *MethodCall) (data []byte) {
 	if err != nil {
 		return encodeResponse(MethodResponse{ID: call.ID, Error: asMethodError(err)})
 	}
+	if writer, ok := result.(frameWriter); ok {
+		return spillResponse(call.ID, writer.frameFor(call.ID))
+	}
 	return spillResponse(call.ID, encodeResponse(MethodResponse{ID: call.ID, Result: result}))
+}
+
+// frameWriter is a result that writes its own response envelope. The writer
+// marshals an envelope around the result and then reformats the document the
+// result just built, which for the connections answer is a second copy of the
+// whole table on every page open.
+type frameWriter interface {
+	frameFor(id string) []byte
 }
 
 func encodeResponse(response MethodResponse) []byte {
@@ -217,16 +228,7 @@ var methodHandlers = map[CoreMethod]methodHandler{
 	getTotalTrafficMethod:          withArguments(handleGetTotalTraffic),
 	getTrafficStatsMethod:          withArguments(handleGetTrafficStats),
 	resetTrafficMethod:             acknowledged(handleResetTraffic),
-	// The delta answers through its own encoder: the json writer would
-	// re-format the document the encoder handed it, and the copy it makes of
-	// the answer is what a page open waits for.
-	getConnectionsMethod: withFallible(func(query ConnectionsQuery) (json.RawMessage, error) {
-		data, err := handleGetConnections(query).MarshalJSON()
-		if err != nil {
-			return nil, err
-		}
-		return json.RawMessage(data), nil
-	}),
+	getConnectionsMethod:           withArguments(handleGetConnections),
 	closeConnectionsMethod:         withoutArguments(handleCloseConnections),
 	resetConnectionsMethod:         withoutArguments(handleResetConnections),
 	clearDnsCacheMethod:            acknowledged(handleClearDnsCache),

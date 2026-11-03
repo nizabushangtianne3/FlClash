@@ -77,15 +77,25 @@ func TestConnectionDeltaAnswersWhatTheHostReads(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	delta := handleGetConnections(ConnectionsQuery{Resync: true})
-	data, err := delta.MarshalJSON()
-	require.NoError(t, err)
 
-	var document struct {
+	// The answer reaches the host as its own frame, so the envelope and the
+	// row shape are both what this decodes.
+	var frame struct {
+		ID     string `json:"id"`
+		Result struct {
+			Added   []map[string]any `json:"added"`
+			Removed []string         `json:"removed"`
+			Count   int              `json:"count"`
+		} `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal(delta.frameFor("call-1"), &frame))
+	require.Equal(t, "call-1", frame.ID)
+
+	document := struct {
 		Added   []map[string]any `json:"added"`
 		Removed []string         `json:"removed"`
 		Count   int              `json:"count"`
-	}
-	require.NoError(t, json.Unmarshal(data, &document))
+	}{frame.Result.Added, frame.Result.Removed, frame.Result.Count}
 	require.Len(t, document.Added, 2)
 	require.Empty(t, document.Removed)
 	require.Equal(t, 2, document.Count)
@@ -109,8 +119,9 @@ func TestConnectionDeltaAnswersWhatTheHostReads(t *testing.T) {
 	// One answer, one buffer: the hand written encoder allocates nothing per
 	// field the reflection writer handed a fresh slice for.
 	allocations := testing.AllocsPerRun(20, func() {
-		data, err = delta.MarshalJSON()
-		require.NoError(t, err)
+		if data := delta.frameFor("call-1"); len(data) == 0 {
+			t.Fatal("empty answer")
+		}
 	})
 	require.LessOrEqual(t, allocations, float64(2))
 }
@@ -130,22 +141,16 @@ func BenchmarkGetConnectionsFull(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := answerConnections(ConnectionsQuery{Resync: true}); err != nil {
-					b.Fatal(err)
-				}
+				_ = answerConnections(ConnectionsQuery{Resync: true})
 			}
 		})
 	}
 }
 
 // answerConnections is what the getConnections method costs the answer: the
-// table encoded once, framed the way the transport reads it.
-func answerConnections(query ConnectionsQuery) ([]byte, error) {
-	data, err := handleGetConnections(query).MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(MethodResponse{ID: "benchmark", Result: json.RawMessage(data)})
+// table encoded once, in the frame the transport reads.
+func answerConnections(query ConnectionsQuery) []byte {
+	return handleGetConnections(query).frameFor("benchmark")
 }
 
 func benchmarkConnectionTrackers(b *testing.B, count int) []statistic.Tracker {
@@ -185,9 +190,7 @@ func BenchmarkGetConnectionsDelta(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := answerConnections(ConnectionsQuery{}); err != nil {
-					b.Fatal(err)
-				}
+				_ = answerConnections(ConnectionsQuery{})
 			}
 		})
 	}

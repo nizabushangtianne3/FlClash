@@ -61,9 +61,13 @@ type ConnectionDelta struct {
 // buffer. The field set and their escaping stay pinned by
 // TestConnectionDeltaAnswersWhatTheHostReads.
 func (d *ConnectionDelta) MarshalJSON() ([]byte, error) {
-	// One buffer for the whole answer. The row scaffold is counted once and
-	// the long fields on top of it, so appending a row grows nothing; a longer
-	// escape than any here only costs one reallocation.
+	return d.appendJSON(make([]byte, 0, d.answerSize())), nil
+}
+
+// answerSize counts the bytes the answer takes: the row scaffold once and the
+// long fields on top of it, so appending a row grows nothing; a longer escape
+// than any here costs one reallocation.
+func (d *ConnectionDelta) answerSize() int {
 	size := 96 + len(d.Removed)*40
 	for _, info := range d.Added {
 		if info == nil {
@@ -72,8 +76,11 @@ func (d *ConnectionDelta) MarshalJSON() ([]byte, error) {
 		}
 		size += rowAnswerSize(info)
 	}
-	buf := make([]byte, 0, size)
-	buf = append(buf, `{"added":[`...)
+	return size
+}
+
+func (d *ConnectionDelta) appendJSON(dst []byte) []byte {
+	buf := append(dst, `{"added":[`...)
 	for i, info := range d.Added {
 		if i > 0 {
 			buf = append(buf, ',')
@@ -93,7 +100,20 @@ func (d *ConnectionDelta) MarshalJSON() ([]byte, error) {
 	}
 	buf = append(buf, `],"count":`...)
 	buf = strconv.AppendInt(buf, int64(d.Count), 10)
-	return append(buf, '}'), nil
+	return append(buf, '}')
+}
+
+// frameFor writes the response envelope around the answer, so the one buffer
+// that holds the table is also the frame the transport sends. The json writer
+// would build the envelope around the answer and then copy the whole document
+// a second time on its way out.
+func (d *ConnectionDelta) frameFor(id string) []byte {
+	buf := make([]byte, 0, d.answerSize()+len(id)+24)
+	buf = append(buf, `{"id":`...)
+	buf = jsonutil.AppendString(buf, id)
+	buf = append(buf, `,"result":`...)
+	buf = d.appendJSON(buf)
+	return append(buf, '}')
 }
 
 // rowAnswerSize reports the bytes one row takes in the answer: the scaffold of
