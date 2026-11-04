@@ -397,7 +397,7 @@ class DelayDataSource extends _$DelayDataSource with AutoDisposeNotifierMixin {
     final snapshot = <String, Map<String, int?>>{};
     for (final entry in delayMap.entries) {
       if (changedUrls.contains(entry.key)) {
-        snapshot[entry.key] = Map<String, int?>.unmodifiable(entry.value);
+        snapshot[entry.key] = UnmodifiableMapView(entry.value);
         delayMap[entry.key] = Map<String, int?>.of(entry.value);
       } else {
         snapshot[entry.key] = entry.value;
