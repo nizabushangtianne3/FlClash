@@ -251,6 +251,12 @@ dart run tool/test.dart   # exit 0
 - 常见 A/AAAA 简单回复已走单 slab 快速解析，`BenchmarkClientExchangeUDP` 为 12 allocs / 624B。
 - 复杂回复仍回退完整 miekg parser；不要池化已交给调用方的解析结果。
 
+### P2：本地 DNS 服务端回包全链（新基线，未动）
+
+- `BenchmarkServeMsgCacheHitWithPack`（本轮新增）测得缓存命中查询全链（查询 Unpack → ServeMsg → EDNS 回显 → reply Pack）：**1.29µs / 952B / 15 allocs**。
+- 剖析：~9 allocs 在 miekg 服务端内部的查询解析（`Msg.Unpack` → `unpackRRslice`/`UnpackDomainName`），~4 在 `SetReply`+`Pack`，1 在我方缓存拷贝（已是单 slab）。
+- 要消除查询解析成本必须绕过 miekg 的 UDP serve 循环自管超时/TCP 回退/EDNS/空闲清理；现实 qps 下每查询 ~1.3µs 不构成瓶颈，重构风险大于收益，留基准为将来重估起点。
+
 ### P4：UDP `packetSender` 首包
 
 - `AddMapping`、origin/dial slab、队列容量、tracker 快照和 write-back slab 已完成；剩余成本主要来自 outbound dial/context 生命周期。
