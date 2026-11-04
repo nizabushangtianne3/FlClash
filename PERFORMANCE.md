@@ -248,8 +248,9 @@ dart run tool/test.dart   # exit 0
 
 ### P1：DNS UDP response parsing
 
-- 常见 A/AAAA 简单回复已走单 slab 快速解析，`BenchmarkClientExchangeUDP` 为 12 allocs / 624B。
-- 复杂回复仍回退完整 miekg parser；不要池化已交给调用方的解析结果。
+- 常见 A/AAAA 简单回复已走单 slab 快速解析，`BenchmarkClientExchangeUDP` 为 11 allocs / 739B（端到端，含 UDP I/O）。
+- 负回复（NXDOMAIN/NODATA+SOA）实测基线（2026-11-05，shaped 基准 `BenchmarkClientExchangeUDPNXDOMAIN/NODATA`）：端到端 ~21.8–22.3µs / 21 allocs，走完整 miekg 解析。
+- **扩展实验已否决**（2026-11-05）：实现零答案+authority 解码快速路径后 paired n=7，时间 -2%（噪声内），allocs 21→19（-9.52%），B/op **+5.71%** 回退。结构性原因：交换由 UDP I/O 主导，解析占比小；且 authority 必须解码进消息（`minimalTTLSections` 用 Ns 计算 msg 缓存负 TTL，丢弃会破坏负缓存语义），SOA 解码的 slab+字符串分配抵消了收益。shaped 基准基建已保留（`startShapedUDPDNSServer`），TSIG/OPT-带选项回退的测试结论同样保留在实验分支历史中。不要池化已交给调用方的解析结果。
 
 ### P2：本地 DNS 服务端回包全链（新基线，未动）
 
