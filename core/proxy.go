@@ -1,10 +1,10 @@
 package core
 
 import (
-	"encoding/json"
 	"errors"
 	"maps"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -12,6 +12,7 @@ import (
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
 	"github.com/metacubex/mihomo/adapter/provider"
 	"github.com/metacubex/mihomo/common/convert"
+	"github.com/metacubex/mihomo/common/jsonutil"
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
@@ -82,7 +83,7 @@ func proxyGroupNames(
 	return names
 }
 
-func handleGetProxies() ProxiesData {
+func handleGetProxies() *proxiesAnswer {
 	proxies := tunnel.AllProxies()
 
 	names := proxyGroupNames(config.GetProxyNameList(), func(name string) (constant.AdapterType, bool) {
@@ -93,40 +94,111 @@ func handleGetProxies() ProxiesData {
 		return p.Type(), true
 	})
 
-	views := make(map[string]any, len(proxies))
-	for name, proxy := range proxies {
-		views[name] = proxyView(proxy)
-	}
-	return ProxiesData{All: names, Proxies: views}
+	return &proxiesAnswer{proxies: proxies, names: names}
 }
 
-// A group document carries its own name, so it reaches the host exactly as it
-// was encoded; decoding it to stamp the name back on cost more than every group
-// marshal together. The built-in GLOBAL is the one document that needs an edit.
-func proxyView(proxy constant.Proxy) any {
-	node := nodeView{
-		Name:         proxy.Name(),
-		Type:         proxy.Type().String(),
-		ProviderName: proxy.ProxyInfo().ProviderName,
+// The host re-reads the whole proxy table whenever the proxies page opens or a
+// selection changes. Building it as a map[string]any view cost one boxed value
+// per node plus a fresh buffer per group before the envelope marshal copied
+// everything again; the answer now goes out the way the connections table does,
+// encoded once into the frame the transport reads.
+type proxiesAnswer struct {
+	proxies map[string]constant.Proxy
+	names   []string
+}
+
+// frameFor implements frameWriter.
+func (a *proxiesAnswer) frameFor(id string) []byte {
+	buf := make([]byte, 0, a.answerSize()+len(id)+32)
+	buf = append(buf, `{"id":`...)
+	buf = jsonutil.AppendString(buf, id)
+	buf = append(buf, `,"result":`...)
+	buf = a.appendJSON(buf)
+	return append(buf, '}')
+}
+
+func (a *proxiesAnswer) answerSize() int {
+	size := 64 + len(a.names)*24
+	for name, proxy := range a.proxies {
+		size += len(name) + 32
+		if isProxyGroupType(proxy.Type()) {
+			size += 320
+		}
 	}
+	return size
+}
+
+func (a *proxiesAnswer) appendJSON(dst []byte) []byte {
+	names := make([]string, 0, len(a.proxies))
+	for name := range a.proxies {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	buf := append(dst, `{"proxies":{`...)
+	for i, name := range names {
+		if i > 0 {
+			buf = append(buf, ',')
+		}
+		buf = jsonutil.AppendString(buf, name)
+		buf = append(buf, ':')
+		buf = appendProxyView(buf, a.proxies[name])
+	}
+	buf = append(buf, `},"all":[`...)
+	for i, name := range a.names {
+		if i > 0 {
+			buf = append(buf, ',')
+		}
+		buf = jsonutil.AppendString(buf, name)
+	}
+	return append(buf, `]}`...)
+}
+
+// A group document carries its own name, so it reaches the host exactly as its
+// AppendJSON writes it; the built-in GLOBAL is the one document that needs an
+// edit, spliced in place instead of a decode/marshal round trip.
+func appendProxyView(dst []byte, proxy constant.Proxy) []byte {
 	if !isProxyGroupType(proxy.Type()) {
-		return node
+		return appendNodeView(dst, proxy)
 	}
-	data, err := proxy.Adapter().MarshalJSON()
-	if err != nil {
-		log.Warnln("[APP] encode group %s: %v", node.Name, err)
-		return node
+
+	appender, ok := proxy.Adapter().(interface{ AppendJSON([]byte) []byte })
+	if !ok {
+		data, err := proxy.Adapter().MarshalJSON()
+		if err != nil {
+			log.Warnln("[APP] encode group %s: %v", proxy.Name(), err)
+			return appendNodeView(dst, proxy)
+		}
+		dst = append(dst, data...)
+	} else {
+		dst = appender.AppendJSON(dst)
 	}
-	if !isBuiltInGlobal(proxy) {
-		return json.RawMessage(data)
+	if isBuiltInGlobal(proxy) {
+		return appendGlobalHidden(dst)
 	}
-	view := map[string]any{}
-	if err := json.Unmarshal(data, &view); err != nil {
-		log.Warnln("[APP] encode group %s: %v", node.Name, err)
-		return node
+	return dst
+}
+
+func appendNodeView(dst []byte, proxy constant.Proxy) []byte {
+	dst = append(dst, `{"name":`...)
+	dst = jsonutil.AppendString(dst, proxy.Name())
+	dst = append(dst, `,"type":`...)
+	dst = jsonutil.AppendString(dst, proxy.Type().String())
+	if provider := proxy.ProxyInfo().ProviderName; provider != "" {
+		dst = append(dst, `,"provider-name":`...)
+		dst = jsonutil.AppendString(dst, provider)
 	}
-	view["hidden"] = true
-	return view
+	return append(dst, '}')
+}
+
+// JSON object key order is not semantic, so hidden joins at the end rather
+// than the alphabetical slot a map round trip gave it.
+func appendGlobalHidden(dst []byte) []byte {
+	dst = dst[:len(dst)-1]
+	if len(dst) > 0 && dst[len(dst)-1] != '{' {
+		dst = append(dst, ',')
+	}
+	return append(dst, `"hidden":true}`...)
 }
 
 // mihomo builds its own GLOBAL over the reserved provider, which no configured

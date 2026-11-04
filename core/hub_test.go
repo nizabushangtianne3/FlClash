@@ -1074,17 +1074,17 @@ func TestHandleGetProxiesSeesAProviderUpdate(t *testing.T) {
 	provider := newCachingProvider("subscription", "node-a")
 	withTunnelProviders(t, map[string]cp.ProxyProvider{"subscription": provider}, nil)
 
-	if _, exist := handleGetProxies().Proxies["node-a"]; !exist {
+	if _, exist := handleGetProxies().proxies["node-a"]; !exist {
 		t.Fatal("the handler did not report the installed proxy")
 	}
 
 	provider.setProxies("node-b")
 
 	data := handleGetProxies()
-	if _, exist := data.Proxies["node-b"]; !exist {
+	if _, exist := data.proxies["node-b"]; !exist {
 		t.Error("the handler kept serving the pre-refresh proxy list")
 	}
-	if _, exist := data.Proxies["node-a"]; exist {
+	if _, exist := data.proxies["node-a"]; exist {
 		t.Error("a proxy the refresh removed is still reported")
 	}
 }
@@ -1092,12 +1092,8 @@ func TestHandleGetProxiesSeesAProviderUpdate(t *testing.T) {
 func TestProxyViewKeepsWhatTheHostReads(t *testing.T) {
 	encode := func(proxy constant.Proxy) map[string]any {
 		t.Helper()
-		data, err := json.Marshal(proxyView(proxy))
-		if err != nil {
-			t.Fatalf("marshal %s: %v", proxy.Name(), err)
-		}
 		view := map[string]any{}
-		if err := json.Unmarshal(data, &view); err != nil {
+		if err := json.Unmarshal(appendProxyView(nil, proxy), &view); err != nil {
 			t.Fatalf("unmarshal %s: %v", proxy.Name(), err)
 		}
 		return view
@@ -1165,12 +1161,8 @@ func TestProxyViewHidesOnlyTheBuiltInGlobal(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewSelector: %v", err)
 		}
-		data, err := json.Marshal(proxyView(adapter.NewProxy(selector)))
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
 		view := map[string]any{}
-		if err := json.Unmarshal(data, &view); err != nil {
+		if err := json.Unmarshal(appendProxyView(nil, adapter.NewProxy(selector)), &view); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
 		return view["hidden"]

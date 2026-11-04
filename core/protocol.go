@@ -261,17 +261,6 @@ type ExternalProvider struct {
 	SubscriptionInfo *provider.SubscriptionInfo `json:"subscription-info"`
 }
 
-type ProxiesData struct {
-	Proxies map[string]any `json:"proxies"`
-	All     []string       `json:"all"`
-}
-
-type nodeView struct {
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	ProviderName string `json:"provider-name,omitempty"`
-}
-
 type GeoUpdateStatus struct {
 	Type     string `json:"type"`
 	Updating bool   `json:"updating"`
