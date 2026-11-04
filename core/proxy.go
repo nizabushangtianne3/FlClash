@@ -120,14 +120,7 @@ func (a *proxiesAnswer) frameFor(id string) []byte {
 }
 
 func (a *proxiesAnswer) answerSize() int {
-	size := 64 + len(a.names)*24
-	for name, proxy := range a.proxies {
-		size += len(name) + 32
-		if isProxyGroupType(proxy.Type()) {
-			size += 320
-		}
-	}
-	return size
+	return 64 + len(a.names)*24 + cachedProxiesSnapshot(a.proxies).sizeBase
 }
 
 func (a *proxiesAnswer) appendJSON(dst []byte) []byte {
@@ -216,6 +209,9 @@ type sortedProxyNameCache struct {
 	snapshot  any
 	names     []string
 	nodeViews [][]byte
+	// sizeBase is the proxies-map share of the answer size estimate: one
+	// name-length term per proxy plus the group scaffold, precomputed once.
+	sizeBase int
 }
 
 func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCache {
@@ -224,8 +220,13 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 		return cache
 	}
 	names := make([]string, 0, len(proxies))
-	for name := range proxies {
+	sizeBase := 0
+	for name, proxy := range proxies {
 		names = append(names, name)
+		sizeBase += len(name) + 32
+		if isProxyGroupType(proxy.Type()) {
+			sizeBase += 320
+		}
 	}
 	slices.Sort(names)
 	nodeViews := make([][]byte, len(names))
@@ -236,7 +237,7 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 		}
 		nodeViews[i] = appendNodeView(nil, proxy)
 	}
-	cache := &sortedProxyNameCache{snapshot: proxies, names: names, nodeViews: nodeViews}
+	cache := &sortedProxyNameCache{snapshot: proxies, names: names, nodeViews: nodeViews, sizeBase: sizeBase}
 	sortedProxyNames.Store(cache)
 	return cache
 }
