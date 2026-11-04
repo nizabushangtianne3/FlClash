@@ -89,6 +89,9 @@
 | 800 节点 profile 单次解析 6.6ms/51K allocs | wrapper `UnmarshalProfileDocument` | 成本 99% 在 yaml v3 解析本身（`parser.node/resolve/read`）；digest 缓存已覆盖重复读，冷解析无法再降 |
 | host 传 digest 给 Core 省一次 sha256 | `MergeProfileBaseCached` 375µs 中 sha256 占 28% | 信任宿主 digest 会让 Core 在宿主重写文件后返回过期文档；正确性风险大于 100µs |
 | Dart 侧入口（事件分发、连接 provider、仪表盘表格、代理列表） | 代码走查 + `dart analyze --fatal-warnings` 无问题 | 已过多轮优化（增量 delta、revision 相等、节流重绘、固定行高列表）；无实测热点可改 |
+| DNS UDP 客户端交换剩余 ~10 allocs | `BenchmarkClientExchangeUDP` memprofile：miekg 打包 ~2、`net` sockaddr ~3、基准内测试服务器侧 ~4、快速路径 slab 1 | 剩余成本在 miekg 编码与 `net` 层；基准数字含测试服务器自身分配，客户端可削减的仅剩 miekg 打包，收益不抵复杂度 |
+| TCP 每连接建立 ~114 allocs | `BenchmarkTCPConnSetupDirect` memprofile：`net` 拨号内部 ~38、stdlib `AfterFunc` 中断器 ~18、sing bufio 读等待器 ~5、`NewTCPTracker` 2（隔离基准钉住） | 拨号内部与 stdlib 连接中断不可绕过；`AfterFunc` 闭包换来 ctx 取消即断连的语义，账本 P4 附带项维持"收益小"结论 |
+| 组文档每答案重编码（getProxies 主要剩余成本，200 组 ~200µs） | `BenchmarkHandleGetProxies` 296µs 中 Selector/URLTest `AppendJSON` 占大头 | 组 JSON 随选中项、延迟历史、provider 版本变化；无可靠的失效钩子，缓存会发出过期的 `now`/history 破坏选中显示，正确性风险大于收益 |
 
 
 ### 2026-11-04 持续重构轮次
