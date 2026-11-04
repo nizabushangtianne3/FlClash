@@ -99,6 +99,7 @@
 | 延迟快照视图发布 | -（仅 wrapper） | `fa0b02af` | 1000 URL×1000 节点、100 URL 批量变更：3 轮均值 7559.8µs → 1739.6µs（-77.0%）；快照不可变与批量状态 focused/full Flutter 测试通过 |
 | UDP 映射原始目的直传 | `b7a2b0c8b` | `7ebc0bf4` | `BenchmarkNewUDPFlowMetadata` paired n=7：156.2ns ±2% → 141.1ns ±4%（-9.67%），内存 896B → 480B（-46.43%），allocs 保持 1；focused race、core 全量测试、wrapper/Android arm64 vet 通过 |
 | 代理解列表直写响应帧 | -（仅 wrapper） | `4d4283a5` | 200 组×20 成员端到端（旧路径含 `json.Marshal` 信封）461.3µs/224KB/1015 allocs → 206.4µs/187KB/5 allocs（时间 -55.3%，allocs -99.5%）；20 组 50.1µs/113 → 18.8µs/5；`ProxiesData`/`nodeView` 删除，答案形状由 `TestProxiesAnswerAnswersWhatTheHostReads` 钉住，GLOBAL hidden 键移至对象末尾（JSON 语义等价），Dart 契约无变化；wrapper 全量测试 + vet 通过 |
+| 连接行快照跨 resync 复用 | -（仅 wrapper） | `28754060` | `BenchmarkGetConnectionsFull` paired n=7：500 行 166.1µs/463KiB/512 allocs → 133.5µs/369KiB/12 allocs（时间 -19.60%，内存 -20.25%，allocs -97.66%，p=0.001）；100 行 41.87µs/110 → 31.46µs/10；delta 轮询 2 allocs 不变；resync 答案字节级等价（死行静默清理，Removed 保持空），`TestConnectionDeltaAnswersWhatMoved` 新增连续 resync 复用与 stale 重建断言；wrapper 全量测试、focused race、vet 通过 |
 
 ### 稳定统计与统计链路
 
