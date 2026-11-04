@@ -1093,7 +1093,7 @@ func TestProxyViewKeepsWhatTheHostReads(t *testing.T) {
 	encode := func(proxy constant.Proxy) map[string]any {
 		t.Helper()
 		view := map[string]any{}
-		if err := json.Unmarshal(appendProxyView(nil, proxy), &view); err != nil {
+		if err := json.Unmarshal(appendProxyView(nil, nil, proxy), &view); err != nil {
 			t.Fatalf("unmarshal %s: %v", proxy.Name(), err)
 		}
 		return view
@@ -1162,7 +1162,7 @@ func TestProxyViewHidesOnlyTheBuiltInGlobal(t *testing.T) {
 			t.Fatalf("NewSelector: %v", err)
 		}
 		view := map[string]any{}
-		if err := json.Unmarshal(appendProxyView(nil, adapter.NewProxy(selector)), &view); err != nil {
+		if err := json.Unmarshal(appendProxyView(nil, nil, adapter.NewProxy(selector)), &view); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
 		return view["hidden"]

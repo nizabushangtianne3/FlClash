@@ -138,7 +138,7 @@ func (a *proxiesAnswer) appendJSON(dst []byte) []byte {
 			// rides the same identity cache as the sorted names.
 			buf = append(buf, view...)
 		} else {
-			buf = appendProxyView(buf, a.proxies[name])
+			buf = appendProxyView(buf, snapshot, a.proxies[name])
 		}
 	}
 	buf = append(buf, `},"all":[`...)
@@ -154,11 +154,18 @@ func (a *proxiesAnswer) appendJSON(dst []byte) []byte {
 // A group document carries its own name, so it reaches the host exactly as its
 // AppendJSON writes it; the built-in GLOBAL is the one document that needs an
 // edit, spliced in place instead of a decode/marshal round trip.
-func appendProxyView(dst []byte, proxy constant.Proxy) []byte {
+func appendProxyView(dst []byte, snapshot *sortedProxyNameCache, proxy constant.Proxy) []byte {
 	if !isProxyGroupType(proxy.Type()) {
 		return appendNodeView(dst, proxy)
 	}
 
+	cached := proxy.Type() == constant.Selector
+	if cached {
+		if doc, ok := cachedSelectorDoc(snapshot, proxy); ok {
+			return append(dst, doc...)
+		}
+	}
+	start := len(dst)
 	appender, ok := proxy.Adapter().(interface{ AppendJSON([]byte) []byte })
 	if !ok {
 		data, err := proxy.Adapter().MarshalJSON()
@@ -171,7 +178,10 @@ func appendProxyView(dst []byte, proxy constant.Proxy) []byte {
 		dst = appender.AppendJSON(dst)
 	}
 	if isBuiltInGlobal(proxy) {
-		return appendGlobalHidden(dst)
+		dst = appendGlobalHidden(dst)
+	}
+	if cached {
+		storeSelectorDoc(snapshot, proxy, slices.Clone(dst[start:]))
 	}
 	return dst
 }
@@ -202,7 +212,7 @@ func appendGlobalHidden(dst []byte) []byte {
 // when the snapshot is rebuilt, so the answer's static parts ride on that
 // identity: the sorted name list and, per node, the pre-encoded node view (a
 // node's name, type and provider never change while the snapshot lives; group
-// documents do, so they stay nil here and encode live).
+// documents are cached separately, below).
 var sortedProxyNames atomic.Pointer[sortedProxyNameCache]
 
 type sortedProxyNameCache struct {
@@ -240,6 +250,87 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 	cache := &sortedProxyNameCache{snapshot: proxies, names: names, nodeViews: nodeViews, sizeBase: sizeBase}
 	sortedProxyNames.Store(cache)
 	return cache
+}
+
+// A Selector document's mutable fields are its selection and its member list:
+// the selection is Now(), the members ride provider versions, and every other
+// field is fixed at construction. The cache therefore keys on exactly those
+// two, so a re-selection or a provider reload re-encodes while the steady
+// state copies bytes. URLTest, Fallback and LoadBalance re-elect or rotate on
+// their own clock and always encode live.
+type selectorDocEntry struct {
+	now      string
+	versions []uint32
+	doc      []byte
+}
+
+var (
+	selectorDocsMu       sync.Mutex
+	selectorDocsSnapshot *sortedProxyNameCache
+	selectorDocs         = map[constant.Proxy]*selectorDocEntry{}
+)
+
+func selectorDocVersions(group outboundgroup.ProxyGroup) []uint32 {
+	providers := group.Providers()
+	versions := make([]uint32, 0, len(providers))
+	for _, pd := range providers {
+		versions = append(versions, pd.Version())
+	}
+	return versions
+}
+
+func cachedSelectorDoc(snapshot *sortedProxyNameCache, proxy constant.Proxy) ([]byte, bool) {
+	group, ok := adapterAs[outboundgroup.ProxyGroup](proxy)
+	if !ok {
+		return nil, false
+	}
+	now := group.Now()
+
+	selectorDocsMu.Lock()
+	defer selectorDocsMu.Unlock()
+	if selectorDocsSnapshot != snapshot {
+		selectorDocsSnapshot = snapshot
+		clear(selectorDocs)
+		return nil, false
+	}
+	entry, exist := selectorDocs[proxy]
+	if !exist || entry.now != now || !selectorDocVersionsMatch(group, entry.versions) {
+		return nil, false
+	}
+	return entry.doc, true
+}
+
+// selectorDocVersionsMatch compares without building a slice, so a cache hit
+// allocates nothing.
+func selectorDocVersionsMatch(group outboundgroup.ProxyGroup, versions []uint32) bool {
+	providers := group.Providers()
+	if len(providers) != len(versions) {
+		return false
+	}
+	for i, pd := range providers {
+		if pd.Version() != versions[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func storeSelectorDoc(snapshot *sortedProxyNameCache, proxy constant.Proxy, doc []byte) {
+	group, ok := adapterAs[outboundgroup.ProxyGroup](proxy)
+	if !ok {
+		return
+	}
+	selectorDocsMu.Lock()
+	defer selectorDocsMu.Unlock()
+	if selectorDocsSnapshot != snapshot {
+		selectorDocsSnapshot = snapshot
+		clear(selectorDocs)
+	}
+	selectorDocs[proxy] = &selectorDocEntry{
+		now:      group.Now(),
+		versions: selectorDocVersions(group),
+		doc:      doc,
+	}
 }
 
 // mihomo builds its own GLOBAL over the reserved provider, which no configured
