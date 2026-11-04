@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-04
-- FlClash main：`7ebc0bf4`（v1.0.2 后性能提交）
-- Clash.Meta main：`b7a2b0c8b`
+- 最近核对日期：2026-11-05
+- FlClash main：`65ba30c9`
+- Clash.Meta main：`5c215995c`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 持续重构轮次，账本当前共 61 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04/11-05 持续重构轮次，账本当前共 62 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -108,7 +108,7 @@
 | 节点视图随快照缓存 | -（仅 wrapper） | c980109a | `BenchmarkHandleGetProxies` paired n=7：200 组+1000 节点 296.0µs → 236.0µs（**-20.27%**，p=0.001），allocs 5、内存持平；纯组场景噪声内（无节点可缓存）。CPU 剖析定位节点视图逐答案重编码占帧内 CPU ~40%（`isJSONSafeASCII` 15.7% + 接口分发），节点三字段（name/type/provider）在快照存续期恒定，预编码字节与排序名单共用同一身份缓存，组文档仍每次实时编码；缓存换算 ~80KB 常驻（1000 节点 × ~60B），快照变更即重建；wrapper 全量测试 + vet 通过 |
 | 答案尺寸预计算 | -（仅 wrapper） | a251ab40 | 同基准叠加 paired n=7：千节点 236.0µs → 195.1µs（**-17.33%**，p=0.001），allocs/内存持平；纯组场景 -2.5%（噪声内）。answerSize 原每答案随机序遍历整张代理表（1200 项 map + 每项 Type() 接口分发），尺寸基数（名字长度和 + 组脚手架）改在快照缓存重建时一次算好；wrapper 全量测试 + vet 通过 |
 | Selector 组文档缓存 | -（仅 wrapper） | e429715f | `BenchmarkHandleGetProxies` paired n=7：200 组 169.9µs → 86.6µs（**-48.99%**，p=0.001），千节点 195.1µs → 107.6µs（**-44.83%**，p=0.001），allocs/内存持平；本路径会话累计 461.3µs → 107.6µs（-76.7%）。缓存键完备性论证：history 已于先前轮次移出组文档，Selector 可变字段仅 now（选中）与 all（成员=provider 版本），testUrl/hidden/icon 构造期恒定，键=（Now，版本元组）即完备；GLOBAL hidden 拼接后整体入缓存；URLTest/Fallback/LoadBalance 自主改选/轮换，始终实时编码；键以代理实例为标识（同名字 GLOBAL 不串档），快照身份变更即清空；命中路径零分配（版本比较不建切片）；wrapper 全量测试 + vet 通过 |
-| 组文档缓存扩展至全部组类型 | -（仅 wrapper）+ 子模块 `SelectedName` 导出（`5c215995c`） | 见本轮 | 缓存扩展到 URLTest/Fallback/LoadBalance：键=（now，fixed）——子模块补导出 `URLTest.SelectedName`/`Fallback.SelectedName`（fixed 钉选与 now 是两个独立可变源，提交 `5c215995c`）；LoadBalance 文档不含 now，静态键安全；Relay 已被上游移除不在面内。`/loadbalance` 基准变体 ~78µs（与 Selector 持平），race×2、双模式全量套件、vet 通过 |
+| 组文档缓存扩展至全部组类型 | `5c215995c` | `65ba30c9` | `BenchmarkHandleGetProxies` paired n=7（新增 urltest/fallback/loadbalance 场景，无 kind 后缀的 Selector 场景名不变保持跨轮配对）：200 组 urltest 153.2µs ±5% → 69.9µs ±1%（**-54.42%**），千节点 urltest 188.1µs ±2% → 98.7µs ±2%（**-47.55%**），fallback 171.3µs ±3% → 79.2µs ±3%（**-53.75%**），loadbalance 154.3µs ±3% → 66.1µs ±10%（**-57.20%**），各 p=0.001，urltest allocs -1（命中路径免 `MarshalJSON` 缓冲）；Selector 既有场景 p=0.21–0.90 噪声内。键完备性：URLTest/Fallback 文档可变字段=（now=自主改选，fixed=用户钉选，all=provider 版本），fixed 与 now 独立可变（钉选节点死亡时 now 走最快而 fixed 保留，故两值都必须入键），LoadBalance 文档不含选择字段仅版本入键，其余字段构造期恒定——推翻本表上一行「URLTest/Fallback/LoadBalance 始终实时编码」的保守结论；键仍以代理实例为标识、快照身份变更即清空；子模块为 URLTest/Fallback 导出 `SelectedName()`（`5c215995c`）；`TestGroupDocsAnswerWhatTheirGroupsChange` 钉住四种 kind 的稳态答案字节等价、钉选（Set→fixed/now）与订阅刷新（provider 版本→all）到达下一答案、answered now==live Now()、每答案 AllocsPerRun≤4；CGO 启用/禁用两种构建下 wrapper 全量测试、focused race、`go vet .`、子模块 outboundgroup 测试+vet、core 全量 `go test ./...`（104 包）+`go vet ./...`、adapter 包 Android arm64 vet 全部通过 |
 
 ### 稳定统计与统计链路
 
