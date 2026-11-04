@@ -2,8 +2,13 @@ package core
 
 import (
 	"encoding/json"
+	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/metacubex/mihomo/common/jsonutil"
+	"github.com/metacubex/mihomo/log"
+	"github.com/metacubex/mihomo/tunnel/statistic"
 )
 
 const (
@@ -218,19 +223,171 @@ func runMessageBatcher(
 	flush()
 }
 
-type messageBatchCall struct {
-	Method    CoreMethod `json:"method"`
-	Arguments []Message  `json:"arguments"`
+// The batch is written the way the connections table is: one hand encoder, no
+// reflection between the queues and the frame. The wire bytes are pinned by
+// TestMessageBatchMatchesReflection.
+func encodeMessageBatch(messages []Message) []byte {
+	buf := make([]byte, 0, encodedBatchSize(messages)+96)
+	buf = append(buf, `{"method":`...)
+	buf = jsonutil.AppendString(buf, string(messageMethod))
+	buf = append(buf, `,"arguments":[`...)
+	for i, message := range messages {
+		if i > 0 {
+			buf = append(buf, ',')
+		}
+		buf = appendMessageJSON(buf, message)
+	}
+	return append(buf, ']', '}')
 }
 
 func sendMessageBatch(messages []Message) {
-	data, err := json.Marshal(messageBatchCall{
-		Method:    messageMethod,
-		Arguments: messages,
-	})
-	if err != nil {
-		logError("Message batch marshal error: %v", err)
-		return
+	deliverEvent(encodeMessageBatch(messages))
+}
+
+func encodedBatchSize(messages []Message) int {
+	size := 16 * len(messages)
+	for _, message := range messages {
+		switch message.Data.(type) {
+		case statistic.Tracker:
+			size += 640
+		case DnsQuery:
+			size += 256
+		default:
+			size += 128
+		}
 	}
-	deliverEvent(data)
+	return size
+}
+
+// appendMessageJSON writes one {"type":...,"data":...} envelope. Every case
+// completes its payload; the shared tail closes the envelope, so a case that
+// returns early would clip it.
+func appendMessageJSON(dst []byte, message Message) []byte {
+	dst = append(dst, `{"type":`...)
+	dst = jsonutil.AppendString(dst, string(message.Type))
+	dst = append(dst, `,"data":`...)
+	switch payload := message.Data.(type) {
+	case nil:
+		dst = append(dst, "null"...)
+	case log.Event:
+		// mihomo's log.Event carries no json tags and its level marshals
+		// through MarshalText, so the capitalized and lowercase names are
+		// both the wire contract.
+		dst = append(dst, `{"LogLevel":`...)
+		dst = jsonutil.AppendString(dst, payload.LogLevel.String())
+		dst = append(dst, `,"Payload":`...)
+		dst = jsonutil.AppendString(dst, payload.Payload)
+		dst = append(dst, '}')
+	case statistic.Tracker:
+		if payload == nil {
+			dst = append(dst, "null"...)
+		} else {
+			dst = payload.Info().AppendJSON(dst)
+		}
+	case DnsQuery:
+		dst = appendDnsQueryJSON(dst, payload)
+	case []RequestTraffic:
+		dst = append(dst, '[')
+		for i, traffic := range payload {
+			if i > 0 {
+				dst = append(dst, ',')
+			}
+			dst = appendRequestTrafficJSON(dst, traffic)
+		}
+		dst = append(dst, ']')
+	case *Delay:
+		if payload == nil {
+			dst = append(dst, "null"...)
+		} else {
+			dst = append(dst, `{"url":`...)
+			dst = jsonutil.AppendString(dst, payload.Url)
+			dst = append(dst, `,"name":`...)
+			dst = jsonutil.AppendString(dst, payload.Name)
+			dst = append(dst, `,"value":`...)
+			dst = strconv.AppendInt(dst, int64(payload.Value), 10)
+			dst = append(dst, '}')
+		}
+	case string:
+		dst = jsonutil.AppendString(dst, payload)
+	case GeoUpdateStatus:
+		dst = append(dst, `{"type":`...)
+		dst = jsonutil.AppendString(dst, payload.Type)
+		dst = append(dst, `,"updating":`...)
+		dst = strconv.AppendBool(dst, payload.Updating)
+		if payload.Skipped {
+			dst = append(dst, `,"skipped":true`...)
+		}
+		if payload.Error != "" {
+			dst = append(dst, `,"error":`...)
+			dst = jsonutil.AppendString(dst, payload.Error)
+		}
+		dst = append(dst, '}')
+	case RouteState:
+		dst = append(dst, `{"core-epoch":`...)
+		dst = strconv.AppendUint(dst, payload.CoreEpoch, 10)
+		dst = append(dst, `,"route-version":`...)
+		dst = strconv.AppendUint(dst, payload.RouteVersion, 10)
+		dst = append(dst, '}')
+	default:
+		data, err := json.Marshal(message.Data)
+		if err != nil {
+			logError("Message payload marshal error: %v", err)
+			dst = append(dst, "null"...)
+		} else {
+			dst = append(dst, data...)
+		}
+	}
+	return append(dst, '}')
+}
+
+func appendDnsQueryJSON(dst []byte, query DnsQuery) []byte {
+	dst = append(dst, `{"domain":`...)
+	dst = jsonutil.AppendString(dst, query.Domain)
+	dst = append(dst, `,"type":`...)
+	dst = jsonutil.AppendString(dst, query.Type)
+	dst = append(dst, `,"initiator":`...)
+	dst = jsonutil.AppendString(dst, query.Initiator)
+	if query.Upstream != "" {
+		dst = append(dst, `,"upstream":`...)
+		dst = jsonutil.AppendString(dst, query.Upstream)
+	}
+	if query.Cached {
+		dst = append(dst, `,"cached":true`...)
+	}
+	dst = append(dst, `,"answers":`...)
+	if query.Answers == nil {
+		dst = append(dst, "null"...)
+	} else {
+		dst = append(dst, '[')
+		for i, answer := range query.Answers {
+			if i > 0 {
+				dst = append(dst, ',')
+			}
+			dst = jsonutil.AppendString(dst, answer)
+		}
+		dst = append(dst, ']')
+	}
+	if query.Rcode != "" {
+		dst = append(dst, `,"rcode":`...)
+		dst = jsonutil.AppendString(dst, query.Rcode)
+	}
+	if query.Error != "" {
+		dst = append(dst, `,"error":`...)
+		dst = jsonutil.AppendString(dst, query.Error)
+	}
+	dst = append(dst, `,"delay":`...)
+	dst = strconv.AppendInt(dst, query.Delay, 10)
+	dst = append(dst, `,"time":`...)
+	dst = jsonutil.AppendTime(dst, query.Time)
+	return append(dst, '}')
+}
+
+func appendRequestTrafficJSON(dst []byte, traffic RequestTraffic) []byte {
+	dst = append(dst, `{"id":`...)
+	dst = jsonutil.AppendString(dst, traffic.Id)
+	dst = append(dst, `,"upload":`...)
+	dst = strconv.AppendInt(dst, traffic.Upload, 10)
+	dst = append(dst, `,"download":`...)
+	dst = strconv.AppendInt(dst, traffic.Download, 10)
+	return append(dst, '}')
 }

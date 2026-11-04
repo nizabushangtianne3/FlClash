@@ -1,10 +1,22 @@
 package core
 
 import (
+	"bytes"
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
+
+	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/log"
 )
+
+// messageBatchCall is the wire contract the hand encoder must reproduce; the
+// reflection writer that used to produce it lives only in these tests.
+type messageBatchCall struct {
+	Method    CoreMethod `json:"method"`
+	Arguments []Message  `json:"arguments"`
+}
 
 type batchCollector struct {
 	mu      sync.Mutex
@@ -299,5 +311,62 @@ func TestRunMessageBatcherDrainsBulkAfterPriorityCloses(t *testing.T) {
 		if message.Type != RequestMessage || message.Data != i {
 			t.Errorf("message %d = {%s %v}, want {request %d}", i, message.Type, message.Data, i)
 		}
+	}
+}
+
+// The batch encoder replaced the reflection writer, so the exact wire bytes it
+// produces are pinned against that writer for every payload type the queues
+// carry: an escaped log line, a full connection row, both DNS shapes, and the
+// rare state messages.
+func TestMessageBatchMatchesReflection(t *testing.T) {
+	tracker := newConnectionDeltaTracker(t, &C.Metadata{NetWork: C.TCP, Host: "first.example.com"})
+	time0 := time.Unix(1730000000, 123456789).UTC()
+
+	messages := []Message{
+		{Type: LogMessage, Data: log.Event{LogLevel: log.INFO, Payload: "[TCP] connected <ok> \u2028next"}},
+		{Type: LogMessage, Data: log.Event{LogLevel: log.DEBUG, Payload: `a"b\c`}},
+		{Type: RequestMessage, Data: tracker},
+		{Type: DnsMessage, Data: DnsQuery{
+			Domain: "www.example.com", Type: "A", Initiator: "192.168.1.2",
+			Upstream: "8.8.8.8", Answers: []string{"1.2.3.4", "5.6.7.8"},
+			Delay: 21, Time: time0,
+		}},
+		{Type: DnsMessage, Data: DnsQuery{
+			Domain: "cached.example.com", Type: "AAAA", Initiator: "192.168.1.3",
+			Answers: []string{}, Cached: true, Delay: 0, Time: time0,
+		}},
+		{Type: RequestTrafficMessage, Data: []RequestTraffic{
+			{Id: "01000000-0000-4000-8000-000000000000", Upload: 1024, Download: 4096},
+			{Id: "02000000-0000-4000-8000-000000000000", Upload: 1, Download: 2},
+		}},
+		{Type: DelayMessage, Data: &Delay{Url: "https://www.gstatic.com/generate_204", Name: "node", Value: 321}},
+		{Type: LoadedMessage, Data: "subscription-provider"},
+		{Type: DialerLoopMessage, Data: "proxy-name"},
+		{Type: GeoUpdateMessage, Data: GeoUpdateStatus{Type: "geoip", Updating: false, Skipped: true}},
+		{Type: GeoUpdateMessage, Data: GeoUpdateStatus{Type: "geosite", Updating: true, Error: "timeout"}},
+		{Type: RouteChangedMessage, Data: RouteState{CoreEpoch: 7, RouteVersion: 42}},
+		{Type: "unknown", Data: map[string]any{"reason": "fallback", "n": 3}},
+		{Type: "empty"},
+	}
+
+	want, err := json.Marshal(messageBatchCall{Method: messageMethod, Arguments: messages})
+	if err != nil {
+		t.Fatalf("reflection marshal: %v", err)
+	}
+	got := encodeMessageBatch(messages)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("direct batch diverges from the wire contract:\n got: %s\nwant: %s", got, want)
+	}
+
+	// The alloc bound covers the hand-encoded types; the reflection fallback
+	// for a payload the queues do not carry today stays out of it.
+	direct := append(messages[:12:12], Message{})
+	allocations := testing.AllocsPerRun(20, func() {
+		if data := encodeMessageBatch(direct); len(data) == 0 {
+			t.Fatal("empty batch")
+		}
+	})
+	if allocations > 4 {
+		t.Errorf("batch of %d messages allocated %d times, want at most a few buffer sizes", len(direct), int(allocations))
 	}
 }
