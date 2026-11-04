@@ -30,8 +30,8 @@ func benchmarkBatchMessages(b *testing.B, count int) []Message {
 				Delay: 21, Time: time.Unix(1730000000, 0),
 			}})
 		case 7:
-			messages = append(messages, Message{Type: RequestTrafficMessage, Data: RequestTraffic{
-				Id: "01000000-0000-4000-8000-000000000000", Upload: 1024, Download: 4096,
+			messages = append(messages, Message{Type: RequestTrafficMessage, Data: []RequestTraffic{
+				{Id: "01000000-0000-4000-8000-000000000000", Upload: 1024, Download: 4096},
 			}})
 		}
 	}
