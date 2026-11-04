@@ -48,6 +48,16 @@ func TestProxiesAnswerAnswersWhatTheHostReads(t *testing.T) {
 
 	require.Equal(t, []string{"group-1"}, frame.Result.All)
 
+	// The sorted name list is cached on the tunnel snapshot's identity, so a
+	// table that changes identity answers with the new members, not the cached
+	// list of the snapshot it replaced.
+	proxies["member-b"] = namedProxy("member-b")
+	tunnel.UpdateProxies(proxies, nil)
+	frame.Result.Proxies = nil
+	require.NoError(t, json.Unmarshal(handleGetProxies().frameFor("call-2"), &frame))
+	require.Contains(t, frame.Result.Proxies, "member-b",
+		"the answer carries the snapshot it was built from, not a stale name list")
+
 	// One answer, one buffer: the hand written encoder costs a slice of names,
 	// the answer itself, and little else.
 	allocations := testing.AllocsPerRun(20, func() {

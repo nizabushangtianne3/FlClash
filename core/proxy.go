@@ -4,9 +4,11 @@ import (
 	"errors"
 	"maps"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
@@ -129,11 +131,7 @@ func (a *proxiesAnswer) answerSize() int {
 }
 
 func (a *proxiesAnswer) appendJSON(dst []byte) []byte {
-	names := make([]string, 0, len(a.proxies))
-	for name := range a.proxies {
-		names = append(names, name)
-	}
-	slices.Sort(names)
+	names := cachedSortedProxyNames(a.proxies)
 
 	buf := append(dst, `{"proxies":{`...)
 	for i, name := range names {
@@ -199,6 +197,30 @@ func appendGlobalHidden(dst []byte) []byte {
 		dst = append(dst, ',')
 	}
 	return append(dst, `"hidden":true}`...)
+}
+
+// The proxy table is a tunnel-held snapshot whose map identity changes exactly
+// when the snapshot is rebuilt, so the sorted name list rides on that identity
+// instead of being sorted on every answer.
+var sortedProxyNames atomic.Pointer[sortedProxyNameCache]
+
+type sortedProxyNameCache struct {
+	snapshot any
+	names    []string
+}
+
+func cachedSortedProxyNames(proxies map[string]constant.Proxy) []string {
+	if cache := sortedProxyNames.Load(); cache != nil &&
+		reflect.ValueOf(cache.snapshot).Pointer() == reflect.ValueOf(proxies).Pointer() {
+		return cache.names
+	}
+	names := make([]string, 0, len(proxies))
+	for name := range proxies {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	sortedProxyNames.Store(&sortedProxyNameCache{snapshot: proxies, names: names})
+	return names
 }
 
 // mihomo builds its own GLOBAL over the reserved provider, which no configured
