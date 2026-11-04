@@ -280,6 +280,7 @@ dart run tool/test.dart   # exit 0
 
 - `AddMapping`、origin/dial slab、队列容量、tracker 快照和 write-back slab 已完成；剩余成本主要来自 outbound dial/context 生命周期。
 - 可审查是否有安全的一级 fast path；不要池化 sender，避免 Close/active 状态跨流复用。
+- 2026-11-05 审计收口：首包剩余成本为 outbound `ListenPacketContext`（协议内部分配+网络）+ 每 flow 一个 `Process` goroutine（调度器属性）+ `context.WithTimeout`（stdlib）。逐包路径已 43ns/0 allocs（见测量记录）；"一级 fast path" 只能跳过拨号或复用 sender 生命周期，两者都改语义。维持不做。
 
 ### P5：Windows socket benchmark 稳定性
 
