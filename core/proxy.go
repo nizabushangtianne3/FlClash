@@ -131,16 +131,22 @@ func (a *proxiesAnswer) answerSize() int {
 }
 
 func (a *proxiesAnswer) appendJSON(dst []byte) []byte {
-	names := cachedSortedProxyNames(a.proxies)
+	snapshot := cachedProxiesSnapshot(a.proxies)
 
 	buf := append(dst, `{"proxies":{`...)
-	for i, name := range names {
+	for i, name := range snapshot.names {
 		if i > 0 {
 			buf = append(buf, ',')
 		}
 		buf = jsonutil.AppendString(buf, name)
 		buf = append(buf, ':')
-		buf = appendProxyView(buf, a.proxies[name])
+		if view := snapshot.nodeViews[i]; view != nil {
+			// Node fields never change while the snapshot lives, so the view
+			// rides the same identity cache as the sorted names.
+			buf = append(buf, view...)
+		} else {
+			buf = appendProxyView(buf, a.proxies[name])
+		}
 	}
 	buf = append(buf, `},"all":[`...)
 	for i, name := range a.names {
@@ -200,27 +206,39 @@ func appendGlobalHidden(dst []byte) []byte {
 }
 
 // The proxy table is a tunnel-held snapshot whose map identity changes exactly
-// when the snapshot is rebuilt, so the sorted name list rides on that identity
-// instead of being sorted on every answer.
+// when the snapshot is rebuilt, so the answer's static parts ride on that
+// identity: the sorted name list and, per node, the pre-encoded node view (a
+// node's name, type and provider never change while the snapshot lives; group
+// documents do, so they stay nil here and encode live).
 var sortedProxyNames atomic.Pointer[sortedProxyNameCache]
 
 type sortedProxyNameCache struct {
-	snapshot any
-	names    []string
+	snapshot  any
+	names     []string
+	nodeViews [][]byte
 }
 
-func cachedSortedProxyNames(proxies map[string]constant.Proxy) []string {
+func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCache {
 	if cache := sortedProxyNames.Load(); cache != nil &&
 		reflect.ValueOf(cache.snapshot).Pointer() == reflect.ValueOf(proxies).Pointer() {
-		return cache.names
+		return cache
 	}
 	names := make([]string, 0, len(proxies))
 	for name := range proxies {
 		names = append(names, name)
 	}
 	slices.Sort(names)
-	sortedProxyNames.Store(&sortedProxyNameCache{snapshot: proxies, names: names})
-	return names
+	nodeViews := make([][]byte, len(names))
+	for i, name := range names {
+		proxy := proxies[name]
+		if isProxyGroupType(proxy.Type()) {
+			continue
+		}
+		nodeViews[i] = appendNodeView(nil, proxy)
+	}
+	cache := &sortedProxyNameCache{snapshot: proxies, names: names, nodeViews: nodeViews}
+	sortedProxyNames.Store(cache)
+	return cache
 }
 
 // mihomo builds its own GLOBAL over the reserved provider, which no configured
