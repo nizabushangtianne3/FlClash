@@ -119,6 +119,10 @@
 | Dart getProxies 接收路径（UI isolate 解码 → compute 构建） | 新增 `test/models/groups_receive_benchmark_test.dart`（JIT，i9-9900）：132KB 帧（200 组×20+1000 节点）帧解码 874–1282µs，`ProxiesData.fromJson`+`buildGroups` ~370–570µs，compute 往返 ~3–516µs，全链 ~1.8–2.2ms | 全链在 UI isolate 规则约 8ms 预算内；把帧解码融合进构建 isolate 最多省 ~0.5ms，却要改 RPC 契约并深拷贝解码图回传；不动 |
 | Dart getConnections resync 接收路径 | 同基准：244KB 帧（500 行）解码+`connectionDeltaOf` ~3.1ms（JIT，全程 UI isolate） | 页面打开一次性成本，AOT 估 ~1.5–2ms；`withResultModel` 挪进 isolate 的入拷贝≈所省；超 1000 行时用 profile build 重估后再议 |
 | wrapper `all` 数组与名字追加 span 缓存 | `BenchmarkHandleGetProxies` CPU 剖析（组文档缓存后）：`AppendString`+mapaccess ≈ 11% ≈ ~11µs/答案 | 残余成本 GC/memcpy 主导（`scanObject` 19%、`memmove` 7%、`appendProxyView` 13%——即缓存文档的拷贝本身）；span 缓存上限 ~11µs，不抵第二层失效逻辑；不动——其键 span 部分随后按上表落地（`8bceffff`），`all` 数组仍在（配置名单身份独立于快照） |
+| wrapper `all` 数组独立 span 缓存 | `all` 仅含组名（典型 200 个，节点不在其中），预编码每答案省 ~2–3µs，对 66–97µs 的场景落在 ±2–11% 噪声带内；缓存键需（配置名单身份，快照身份）双重核验 | 投影收益低于本轮基准噪声分辨力，不值得新增第二层身份缓存；维持实时追加 |
+| 规则匹配 plain 段线性扫描 | `BenchmarkMatchPlainRulesBeforeIndexedHit` 重测（2026-11-05）：plain=5000 37.1–38.0µs/匹配、0 allocs，与账本 2026-11-03 记录的 ~40µs 一致；索引路径 44–162ns/0 allocs（exact/suffix/IP 各基准） | 生产 profile 的 plain 规则通常几十条（每条 ~7.4ns），病态 5000 条属极端配置；按判别键建桶要重写首条命中语义，维持原拒绝结论 |
+| 隧道 UDP 每包路径 | `BenchmarkHandleUDPConnExistingFlow` ~43ns/0 allocs、`BenchmarkPacketSenderSend/ready` ~48ns/0 allocs、flow key ~3ns（2026-11-05 重测） | 前续轮次已把每包路径压到纳秒级零分配，无可再削的分配或拷贝；P4 剩余仅首包 outbound dial 生命周期 |
+| Rust IPC 帧层与 outbox | 代码走查：`frame::read` 单次精确长度读取+单次分配，outbox 突发合并单写（`drain_into` 256KB 上限），事件批量已在 Go 侧合并成帧 | 拷贝最小形状，无单帧重复拷贝或多余分配可削；不做基准（控制面帧不构成热点） |
 
 ### 稳定统计与统计链路
 
