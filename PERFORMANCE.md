@@ -222,17 +222,25 @@
 
 ## 4. 当前验证矩阵
 
-最近一轮收尾时以下验证通过：
+2026-11-04 本轮性能工作收尾时以下验证全部通过：
 
 ```powershell
+# core 子模块（Clash.Meta）全量：104 包 ok，exit 0
 go test ./... -count=1 -p=1
 go vet ./...
-go mod tidy
-go test ./...
-go vet . ./cmd/...
+
+# wrapper（父仓库 core/）全量套件：每轮改动后全绿，exit 0
+go test . -count=1
+go vet .
+# batcher/连接 focused race（CGO_ENABLED=1）
+go test -race . -run 'TestRunMessageBatcher|TestMessageBatch|TestConnectionDelta|TestResetNetwork'
+
+# Dart 全量（含 protocol_contract_test.dart，setup 构建钩子需 go 在 PATH）
+# PUB_CACHE=D:\Codex\tools\pub-cache-task
+dart run tool/test.dart   # exit 0
 ```
 
-对应 focused race、paired benchstat 和 Flutter focused tests 已在各自改动轮次执行。文档本身不引入运行时行为，无需重新跑完整测试。
+对应 paired benchstat（均 n=7）已在各自改动轮次执行；本轮五项优化的基准数据见第 2 节各行。
 
 外部 V2Ray 互操作支持 `MIHOMO_V2RAY_INTEROP_BIN` 复用已构建的版本化二进制；本机使用 `D:\Codex\tools\v2ray-5.51.2\bin\v2ray.exe`。`TestInboundVMess_MKCP_V2RayInterop` 现覆盖默认、seed 和全部 5 种 header，双向共 14 个子用例；普通与 `-race` 全绿。未知 header 现在启动/拨号即报错，不再静默回退 none。
 
