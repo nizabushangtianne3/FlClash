@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-05
-- FlClash main：`65ba30c9`
+- FlClash main：`8bceffff`
 - Clash.Meta main：`5c215995c`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04/11-05 持续重构轮次，账本当前共 62 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04/11-05 持续重构轮次，账本当前共 63 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -110,13 +110,15 @@
 | Selector 组文档缓存 | -（仅 wrapper） | e429715f | `BenchmarkHandleGetProxies` paired n=7：200 组 169.9µs → 86.6µs（**-48.99%**，p=0.001），千节点 195.1µs → 107.6µs（**-44.83%**，p=0.001），allocs/内存持平；本路径会话累计 461.3µs → 107.6µs（-76.7%）。缓存键完备性论证：history 已于先前轮次移出组文档，Selector 可变字段仅 now（选中）与 all（成员=provider 版本），testUrl/hidden/icon 构造期恒定，键=（Now，版本元组）即完备；GLOBAL hidden 拼接后整体入缓存；URLTest/Fallback/LoadBalance 自主改选/轮换，始终实时编码；键以代理实例为标识（同名字 GLOBAL 不串档），快照身份变更即清空；命中路径零分配（版本比较不建切片）；wrapper 全量测试 + vet 通过 |
 | 组文档缓存扩展至全部组类型 | `5c215995c` | `65ba30c9` | `BenchmarkHandleGetProxies` paired n=7（新增 urltest/fallback/loadbalance 场景，无 kind 后缀的 Selector 场景名不变保持跨轮配对）：200 组 urltest 153.2µs ±5% → 69.9µs ±1%（**-54.42%**），千节点 urltest 188.1µs ±2% → 98.7µs ±2%（**-47.55%**），fallback 171.3µs ±3% → 79.2µs ±3%（**-53.75%**），loadbalance 154.3µs ±3% → 66.1µs ±10%（**-57.20%**），各 p=0.001，urltest allocs -1（命中路径免 `MarshalJSON` 缓冲）；Selector 既有场景 p=0.21–0.90 噪声内。键完备性：URLTest/Fallback 文档可变字段=（now=自主改选，fixed=用户钉选，all=provider 版本），fixed 与 now 独立可变（钉选节点死亡时 now 走最快而 fixed 保留，故两值都必须入键），LoadBalance 文档不含选择字段仅版本入键，其余字段构造期恒定——推翻本表上一行「URLTest/Fallback/LoadBalance 始终实时编码」的保守结论；键仍以代理实例为标识、快照身份变更即清空；子模块为 URLTest/Fallback 导出 `SelectedName()`（`5c215995c`）；`TestGroupDocsAnswerWhatTheirGroupsChange` 钉住四种 kind 的稳态答案字节等价、钉选（Set→fixed/now）与订阅刷新（provider 版本→all）到达下一答案、answered now==live Now()、每答案 AllocsPerRun≤4；CGO 启用/禁用两种构建下 wrapper 全量测试、focused race、`go vet .`、子模块 outboundgroup 测试+vet、core 全量 `go test ./...`（104 包）+`go vet ./...`、adapter 包 Android arm64 vet 全部通过 |
 
+| 代理解表键 span 缓存 | -（仅 wrapper） | `8bceffff` | `BenchmarkHandleGetProxies` paired n=7（对 `65ba30c9` 状态）：千节点 103.1µs ±8% → 97.1µs ±7%（**-5.83%**，p=0.017），千节点 urltest 98.7µs ±2% → 93.8µs ±2%（**-4.87%**，p=0.001），allocs/内存持平；纯组场景噪声内（键 span 数量少）。快照缓存重建时预编码每个 `"name":` 键 span（分隔符与转义一次完成，长度取自 `jsonutil.StringLen`），答案循环退化为对 span 与节点视图的 memcopy；收益随节点数增长，与测量记录中"名字追加 span 缓存上限 ~11µs"的预估相符；CGO 两种构建下 wrapper 全量测试 + vet 通过 |
+
 ### 2026-11-05 测量记录（审计后刻意未动）
 
 | 位置 | 测量 | 结论 |
 |---|---|---|
 | Dart getProxies 接收路径（UI isolate 解码 → compute 构建） | 新增 `test/models/groups_receive_benchmark_test.dart`（JIT，i9-9900）：132KB 帧（200 组×20+1000 节点）帧解码 874–1282µs，`ProxiesData.fromJson`+`buildGroups` ~370–570µs，compute 往返 ~3–516µs，全链 ~1.8–2.2ms | 全链在 UI isolate 规则约 8ms 预算内；把帧解码融合进构建 isolate 最多省 ~0.5ms，却要改 RPC 契约并深拷贝解码图回传；不动 |
 | Dart getConnections resync 接收路径 | 同基准：244KB 帧（500 行）解码+`connectionDeltaOf` ~3.1ms（JIT，全程 UI isolate） | 页面打开一次性成本，AOT 估 ~1.5–2ms；`withResultModel` 挪进 isolate 的入拷贝≈所省；超 1000 行时用 profile build 重估后再议 |
-| wrapper `all` 数组与名字追加 span 缓存 | `BenchmarkHandleGetProxies` CPU 剖析（组文档缓存后）：`AppendString`+mapaccess ≈ 11% ≈ ~11µs/答案 | 残余成本 GC/memcpy 主导（`scanObject` 19%、`memmove` 7%、`appendProxyView` 13%——即缓存文档的拷贝本身）；span 缓存上限 ~11µs，不抵第二层失效逻辑；不动 |
+| wrapper `all` 数组与名字追加 span 缓存 | `BenchmarkHandleGetProxies` CPU 剖析（组文档缓存后）：`AppendString`+mapaccess ≈ 11% ≈ ~11µs/答案 | 残余成本 GC/memcpy 主导（`scanObject` 19%、`memmove` 7%、`appendProxyView` 13%——即缓存文档的拷贝本身）；span 缓存上限 ~11µs，不抵第二层失效逻辑；不动——其键 span 部分随后按上表落地（`8bceffff`），`all` 数组仍在（配置名单身份独立于快照） |
 
 ### 稳定统计与统计链路
 
