@@ -198,9 +198,6 @@ func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 	defer connectionRows.mu.Unlock()
 
 	connectionRows.generation++
-	if query.Resync {
-		clear(connectionRows.rows)
-	}
 
 	delta := &ConnectionDelta{}
 	statistic.DefaultManager.Range(func(tracker statistic.Tracker) bool {
@@ -213,6 +210,10 @@ func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 		} else if row.stale(info) {
 			*row = *newConnectionRow(info)
 			delta.Added = append(delta.Added, info)
+		} else if query.Resync {
+			// A resync answers every row again; its field snapshot rides along
+			// unchanged, so only stale rows pay for a rebuild.
+			delta.Added = append(delta.Added, info)
 		}
 		row.generation = connectionRows.generation
 		delta.Count++
@@ -220,7 +221,11 @@ func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 	})
 	for id, row := range connectionRows.rows {
 		if row.generation != connectionRows.generation {
-			delta.Removed = append(delta.Removed, id.String())
+			// A resync rebuilds the host's table from Added alone, so rows that
+			// died unseen are dropped from the cache without a Removed entry.
+			if !query.Resync {
+				delta.Removed = append(delta.Removed, id.String())
+			}
 			delete(connectionRows.rows, id)
 		}
 	}

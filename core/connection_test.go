@@ -61,6 +61,26 @@ func TestConnectionDeltaAnswersWhatMoved(t *testing.T) {
 	require.Empty(t, handleGetConnections(ConnectionsQuery{}).Added,
 		"a row answered as changed is not answered twice")
 
+	// A resync answers the whole table again, but the field snapshots it keeps
+	// per row stay valid, so only a row whose metadata moved pays for a rebuild.
+	allocations := testing.AllocsPerRun(20, func() {
+		resynced := handleGetConnections(ConnectionsQuery{Resync: true})
+		if len(resynced.Added) != 2 || resynced.Count != 2 {
+			t.Fatal("a resync answers every live row")
+		}
+	})
+	require.LessOrEqual(t, allocations, float64(8))
+
+	first.Info().Metadata.Process = "wget"
+	resynced := handleGetConnections(ConnectionsQuery{Resync: true})
+	require.Len(t, resynced.Added, 2, "a resync re-sends every live row")
+	for _, row := range resynced.Added {
+		if row.UUID == first.Info().UUID {
+			require.Equal(t, "wget", row.Metadata.Process,
+				"a row whose metadata moved is re-sent with the new fields")
+		}
+	}
+
 	_ = first.Close()
 	removed := handleGetConnections(ConnectionsQuery{})
 	require.Equal(t, []string{first.Info().UUID.String()}, removed.Removed)
