@@ -127,18 +127,14 @@ func (a *proxiesAnswer) appendJSON(dst []byte) []byte {
 	snapshot := cachedProxiesSnapshot(a.proxies)
 
 	buf := append(dst, `{"proxies":{`...)
-	for i, name := range snapshot.names {
-		if i > 0 {
-			buf = append(buf, ',')
-		}
-		buf = jsonutil.AppendString(buf, name)
-		buf = append(buf, ':')
+	for i := range snapshot.names {
+		buf = append(buf, snapshot.keySpans[i]...)
 		if view := snapshot.nodeViews[i]; view != nil {
 			// Node fields never change while the snapshot lives, so the view
 			// rides the same identity cache as the sorted names.
 			buf = append(buf, view...)
 		} else {
-			buf = appendProxyView(buf, snapshot, a.proxies[name])
+			buf = appendProxyView(buf, snapshot, a.proxies[snapshot.names[i]])
 		}
 	}
 	buf = append(buf, `},"all":[`...)
@@ -227,8 +223,12 @@ func appendGlobalHidden(dst []byte) []byte {
 var sortedProxyNames atomic.Pointer[sortedProxyNameCache]
 
 type sortedProxyNameCache struct {
-	snapshot  any
-	names     []string
+	snapshot any
+	names    []string
+	// keySpans are the `"name":` members of the proxies object, separators
+	// included, precomputed once per snapshot so an answer only memcopies
+	// them; the escaped length comes from jsonutil.StringLen.
+	keySpans  [][]byte
 	nodeViews [][]byte
 	// sizeBase is the proxies-map share of the answer size estimate: one
 	// name-length term per proxy plus the group scaffold, precomputed once.
@@ -250,15 +250,27 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 		}
 	}
 	slices.Sort(names)
+	keySpans := make([][]byte, len(names))
 	nodeViews := make([][]byte, len(names))
 	for i, name := range names {
-		proxy := proxies[name]
-		if isProxyGroupType(proxy.Type()) {
+		span := make([]byte, 0, jsonutil.StringLen(name)+4)
+		if i > 0 {
+			span = append(span, ',')
+		}
+		span = jsonutil.AppendString(span, name)
+		keySpans[i] = append(span, ':')
+		if isProxyGroupType(proxies[name].Type()) {
 			continue
 		}
-		nodeViews[i] = appendNodeView(nil, proxy)
+		nodeViews[i] = appendNodeView(nil, proxies[name])
 	}
-	cache := &sortedProxyNameCache{snapshot: proxies, names: names, nodeViews: nodeViews, sizeBase: sizeBase}
+	cache := &sortedProxyNameCache{
+		snapshot:  proxies,
+		names:     names,
+		keySpans:  keySpans,
+		nodeViews: nodeViews,
+		sizeBase:  sizeBase,
+	}
 	sortedProxyNames.Store(cache)
 	return cache
 }
