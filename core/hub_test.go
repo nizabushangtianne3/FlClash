@@ -44,6 +44,14 @@ func namedProxy(name string) constant.Proxy {
 // selection paths under test run against mihomo's own group rather than a stub
 // that could agree with a wrong assumption.
 func selectorGroup(t testing.TB, name string, members ...string) constant.Proxy {
+	return proxyGroup(t, name, "", members...)
+}
+
+// proxyGroup builds the group kind a scenario names over a compatible
+// provider; an empty kind is a Selector. The empty health-check url leaves the
+// check interval at zero, so nothing schedules itself and no test reaches the
+// network.
+func proxyGroup(t testing.TB, name, kind string, members ...string) constant.Proxy {
 	t.Helper()
 
 	proxies := make([]constant.Proxy, 0, len(members))
@@ -51,24 +59,38 @@ func selectorGroup(t testing.TB, name string, members ...string) constant.Proxy 
 		proxies = append(proxies, namedProxy(member))
 	}
 
-	// An empty url leaves the check interval at zero, so nothing schedules
-	// itself and no test reaches the network.
 	health := provider.NewHealthCheck(proxies, "", 0, 0, true, nil)
 	pd, err := provider.NewCompatibleProvider(name+"-provider", proxies, health)
 	if err != nil {
 		t.Fatalf("NewCompatibleProvider: %v", err)
 	}
+	return proxyGroupOver(t, name, kind, []cp.ProxyProvider{pd})
+}
 
-	group, err := outboundgroup.NewSelector(
-		outboundgroup.GroupCommonOption{Name: name},
-		outboundgroup.SelectorOption{},
-		// A group document reports its empty fallback, so the group has to be
-		// built the way the parser builds one.
-		namedProxy("COMPATIBLE"),
-		[]cp.ProxyProvider{pd},
-	)
+func proxyGroupOver(t testing.TB, name, kind string, providers []cp.ProxyProvider) constant.Proxy {
+	t.Helper()
+
+	common := outboundgroup.GroupCommonOption{Name: name}
+	// A group document reports its empty fallback, so the group has to be
+	// built the way the parser builds one.
+	emptyFallback := namedProxy("COMPATIBLE")
+	var group outboundgroup.ProxyGroup
+	var err error
+	switch kind {
+	case "", "selector":
+		kind = "selector"
+		group, err = outboundgroup.NewSelector(common, outboundgroup.SelectorOption{}, emptyFallback, providers)
+	case "urltest":
+		group, err = outboundgroup.NewURLTest(common, outboundgroup.URLTestOption{}, emptyFallback, providers)
+	case "fallback":
+		group, err = outboundgroup.NewFallback(common, outboundgroup.FallbackOption{}, emptyFallback, providers)
+	case "loadbalance":
+		group, err = outboundgroup.NewLoadBalance(common, outboundgroup.LoadBalanceOption{}, emptyFallback, providers)
+	default:
+		t.Fatalf("unknown group kind %q", kind)
+	}
 	if err != nil {
-		t.Fatalf("NewSelector: %v", err)
+		t.Fatalf("New%s: %v", kind, err)
 	}
 	return adapter.NewProxy(group)
 }

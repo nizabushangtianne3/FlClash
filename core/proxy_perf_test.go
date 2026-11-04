@@ -12,18 +12,29 @@ import (
 // The host re-reads the whole proxy table when a selection changes, and every
 // group view travels with it, so this is what one of those round trips costs.
 // The nodes=1000 case stands in for a large subscription, where the table is
-// mostly leaf nodes rather than groups.
+// mostly leaf nodes rather than groups. The kind suffixes cover the group
+// types a real profile mixes in; the kindless cases stay Selector so their
+// names and numbers keep pairing across rounds.
 func BenchmarkHandleGetProxies(b *testing.B) {
 	for _, tc := range []struct {
 		groups int
 		member int
 		nodes  int
+		kind   string
 	}{
 		{groups: 20, member: 20},
 		{groups: 200, member: 20},
 		{groups: 200, member: 20, nodes: 1000},
+		{groups: 200, member: 20, kind: "urltest"},
+		{groups: 200, member: 20, nodes: 1000, kind: "urltest"},
+		{groups: 200, member: 20, kind: "fallback"},
+		{groups: 200, member: 20, kind: "loadbalance"},
 	} {
-		b.Run(fmt.Sprintf("groups=%d/members=%d/nodes=%d", tc.groups, tc.member, tc.nodes), func(b *testing.B) {
+		name := fmt.Sprintf("groups=%d/members=%d/nodes=%d", tc.groups, tc.member, tc.nodes)
+		if tc.kind != "" {
+			name += "/" + tc.kind
+		}
+		b.Run(name, func(b *testing.B) {
 			members := make([]string, tc.member)
 			for index := range members {
 				members[index] = fmt.Sprintf("member-%03d", index)
@@ -34,7 +45,7 @@ func BenchmarkHandleGetProxies(b *testing.B) {
 			for index := range tc.groups {
 				name := fmt.Sprintf("group-%03d", index)
 				names = append(names, name)
-				proxies[name] = selectorGroup(b, name, members...)
+				proxies[name] = proxyGroup(b, name, tc.kind, members...)
 			}
 			for index := range tc.nodes {
 				name := fmt.Sprintf("node-%04d", index)

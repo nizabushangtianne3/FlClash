@@ -159,9 +159,9 @@ func appendProxyView(dst []byte, snapshot *sortedProxyNameCache, proxy constant.
 		return appendNodeView(dst, proxy)
 	}
 
-	cached := proxy.Type() == constant.Selector
+	cached := isCacheableGroupDoc(proxy.Type())
 	if cached {
-		if doc, ok := cachedSelectorDoc(snapshot, proxy); ok {
+		if doc, ok := cachedGroupDoc(snapshot, proxy); ok {
 			return append(dst, doc...)
 		}
 	}
@@ -181,9 +181,20 @@ func appendProxyView(dst []byte, snapshot *sortedProxyNameCache, proxy constant.
 		dst = appendGlobalHidden(dst)
 	}
 	if cached {
-		storeSelectorDoc(snapshot, proxy, slices.Clone(dst[start:]))
+		storeGroupDoc(snapshot, proxy, slices.Clone(dst[start:]))
 	}
 	return dst
+}
+
+// A document the cache keys on values the answer reads anyway; a Relay's
+// MarshalJSON stays on the live path.
+func isCacheableGroupDoc(adapterType constant.AdapterType) bool {
+	switch adapterType {
+	case constant.Selector, constant.URLTest, constant.Fallback, constant.LoadBalance:
+		return true
+	default:
+		return false
+	}
 }
 
 func appendNodeView(dst []byte, proxy constant.Proxy) []byte {
@@ -252,25 +263,74 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 	return cache
 }
 
-// A Selector document's mutable fields are its selection and its member list:
-// the selection is Now(), the members ride provider versions, and every other
-// field is fixed at construction. The cache therefore keys on exactly those
-// two, so a re-selection or a provider reload re-encodes while the steady
-// state copies bytes. URLTest, Fallback and LoadBalance re-elect or rotate on
-// their own clock and always encode live.
-type selectorDocEntry struct {
-	now      string
+// A group document's mutable fields are the selection the answer reads and its
+// member list. Selector exposes its selection as Now; URLTest and Fallback add
+// a pinned selection (their fixed field) that moves independently of their
+// live re-election, and a LoadBalance document has no selection field at all.
+// Every other field is fixed at construction, so keying the cache on exactly
+// those values keeps a re-selection, a re-election or a provider reload a
+// cache miss while the steady state copies bytes.
+type groupDocKey struct {
+	now   string
+	fixed string
+}
+
+type groupDocEntry struct {
+	key      groupDocKey
 	versions []uint32
 	doc      []byte
 }
 
 var (
-	selectorDocsMu       sync.Mutex
-	selectorDocsSnapshot *sortedProxyNameCache
-	selectorDocs         = map[constant.Proxy]*selectorDocEntry{}
+	groupDocsMu       sync.Mutex
+	groupDocsSnapshot *sortedProxyNameCache
+	groupDocs         = map[constant.Proxy]*groupDocEntry{}
 )
 
-func selectorDocVersions(group outboundgroup.ProxyGroup) []uint32 {
+// groupDocKeyOf reads the values the live encode would write. The bool is
+// false for the kinds the cache does not cover.
+func groupDocKeyOf(proxy constant.Proxy, group outboundgroup.ProxyGroup) (groupDocKey, bool) {
+	switch proxy.Type() {
+	case constant.Selector:
+		return groupDocKey{now: group.Now()}, true
+	case constant.URLTest, constant.Fallback:
+		selected, ok := proxy.Adapter().(interface{ SelectedName() string })
+		if !ok {
+			return groupDocKey{}, false
+		}
+		return groupDocKey{now: group.Now(), fixed: selected.SelectedName()}, true
+	case constant.LoadBalance:
+		return groupDocKey{}, true
+	default:
+		return groupDocKey{}, false
+	}
+}
+
+func cachedGroupDoc(snapshot *sortedProxyNameCache, proxy constant.Proxy) ([]byte, bool) {
+	group, ok := adapterAs[outboundgroup.ProxyGroup](proxy)
+	if !ok {
+		return nil, false
+	}
+	key, ok := groupDocKeyOf(proxy, group)
+	if !ok {
+		return nil, false
+	}
+
+	groupDocsMu.Lock()
+	defer groupDocsMu.Unlock()
+	if groupDocsSnapshot != snapshot {
+		groupDocsSnapshot = snapshot
+		clear(groupDocs)
+		return nil, false
+	}
+	entry, exist := groupDocs[proxy]
+	if !exist || entry.key != key || !groupDocVersionsMatch(group, entry.versions) {
+		return nil, false
+	}
+	return entry.doc, true
+}
+
+func groupDocVersions(group outboundgroup.ProxyGroup) []uint32 {
 	providers := group.Providers()
 	versions := make([]uint32, 0, len(providers))
 	for _, pd := range providers {
@@ -279,30 +339,9 @@ func selectorDocVersions(group outboundgroup.ProxyGroup) []uint32 {
 	return versions
 }
 
-func cachedSelectorDoc(snapshot *sortedProxyNameCache, proxy constant.Proxy) ([]byte, bool) {
-	group, ok := adapterAs[outboundgroup.ProxyGroup](proxy)
-	if !ok {
-		return nil, false
-	}
-	now := group.Now()
-
-	selectorDocsMu.Lock()
-	defer selectorDocsMu.Unlock()
-	if selectorDocsSnapshot != snapshot {
-		selectorDocsSnapshot = snapshot
-		clear(selectorDocs)
-		return nil, false
-	}
-	entry, exist := selectorDocs[proxy]
-	if !exist || entry.now != now || !selectorDocVersionsMatch(group, entry.versions) {
-		return nil, false
-	}
-	return entry.doc, true
-}
-
-// selectorDocVersionsMatch compares without building a slice, so a cache hit
+// groupDocVersionsMatch compares without building a slice, so a cache hit
 // allocates nothing.
-func selectorDocVersionsMatch(group outboundgroup.ProxyGroup, versions []uint32) bool {
+func groupDocVersionsMatch(group outboundgroup.ProxyGroup, versions []uint32) bool {
 	providers := group.Providers()
 	if len(providers) != len(versions) {
 		return false
@@ -315,20 +354,24 @@ func selectorDocVersionsMatch(group outboundgroup.ProxyGroup, versions []uint32)
 	return true
 }
 
-func storeSelectorDoc(snapshot *sortedProxyNameCache, proxy constant.Proxy, doc []byte) {
+func storeGroupDoc(snapshot *sortedProxyNameCache, proxy constant.Proxy, doc []byte) {
 	group, ok := adapterAs[outboundgroup.ProxyGroup](proxy)
 	if !ok {
 		return
 	}
-	selectorDocsMu.Lock()
-	defer selectorDocsMu.Unlock()
-	if selectorDocsSnapshot != snapshot {
-		selectorDocsSnapshot = snapshot
-		clear(selectorDocs)
+	key, ok := groupDocKeyOf(proxy, group)
+	if !ok {
+		return
 	}
-	selectorDocs[proxy] = &selectorDocEntry{
-		now:      group.Now(),
-		versions: selectorDocVersions(group),
+	groupDocsMu.Lock()
+	defer groupDocsMu.Unlock()
+	if groupDocsSnapshot != snapshot {
+		groupDocsSnapshot = snapshot
+		clear(groupDocs)
+	}
+	groupDocs[proxy] = &groupDocEntry{
+		key:      key,
+		versions: groupDocVersions(group),
 		doc:      doc,
 	}
 }

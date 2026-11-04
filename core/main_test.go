@@ -1,3 +1,5 @@
+//go:build !cgo && !android
+
 package core
 
 import (
