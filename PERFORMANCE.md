@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-06
-- FlClash main：`92ba7634`
+- FlClash main：`5485b826`
 - Clash.Meta main：`5ac7bbcfa`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04/11-05 持续重构轮次，账本当前共 66 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04/11-05 持续重构轮次，账本当前共 67 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -124,6 +124,7 @@
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
 | 连接表轮询改增量 delta | -（仅 wrapper） | `92ba7634` | `connection.list` 新增 `resync` 参数：Core 用每连接 generation 缓存回答 Added/Removed/Count，答案用 `TrackerInfo.AppendJSON` 直写；500 行稳态 `BenchmarkConnectionsCurrent` 1.361ms ±1% / 348.2KiB / 1504 allocs → `BenchmarkGetConnectionsDelta/connections=500` 37.55µs ±2% / 228B / 3 allocs（时间 **-97.24%**，内存 **-99.94%**，分配 **-99.80%**）。Dart 侧 `connectionsProvider` 合并增量并透传 requestTraffic，请求页打开或超过 5s 才 resync，仪表盘只看数量时仍走 `connection.count`；协议、spill、关闭连接、请求流量、排序与停止轮询均有 focused 测试，131 个相关 Flutter 用例全绿；wrapper 测试/桌面与 Android vet、connection focused race 通过 |
+| 连接 resync 单帧编码 | -（仅 wrapper） | `5485b826` | `ConnectionDelta` 实现 `frameWriter`，500 行 resync `BenchmarkGetConnectionsResyncFrame/connections=500` paired n=7：`json.Marshal(MethodResponse)` 708.4µs ±0% / 681.9KiB / 18 allocs → 直写 envelope 180.0µs ±3% / 369.3KiB / 12 allocs（时间 **-74.58%**，内存 **-45.84%**，分配 **-33.33%**，p=0.001）；新增字节级等价测试钉住 `frameFor` 与 `MethodResponse` 输出；wrapper 全量测试、桌面/Android vet、connection focused race 通过 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
