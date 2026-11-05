@@ -138,14 +138,12 @@ class EditorPage extends ConsumerStatefulWidget {
   ConsumerState<EditorPage> createState() => _EditorPageState();
 }
 
-class _EditorPageState extends ConsumerState<EditorPage>
-    with RouteSettledMixin<EditorPage> {
+class _EditorPageState extends ConsumerState<EditorPage> {
   final _editorKey = GlobalKey<EditorViewState>();
   late UndoRedoController _undoController;
   late TextEditingController _titleController;
   late bool readOnly = false;
   CodeForgeDocument? _document;
-  CodeForgeDocument? _heldDocument;
   var _openGeneration = 0;
   bool _saving = false;
   ({bool isDirty, bool canUndo, bool canRedo}) _barState = (
@@ -245,17 +243,6 @@ class _EditorPageState extends ConsumerState<EditorPage>
     document.dispose();
   }
 
-  @override
-  void didSettleRoute() {
-    final held = _heldDocument;
-    _heldDocument = null;
-    if (held != null) {
-      _show(held);
-    } else {
-      setState(() {});
-    }
-  }
-
   Future<void> _open(Future<CodeForgeDocument> Function() open) async {
     final generation = ++_openGeneration;
     final document = await globalState.safeRun(() async {
@@ -278,11 +265,6 @@ class _EditorPageState extends ConsumerState<EditorPage>
       }
       return;
     }
-    if (!routeSettled) {
-      _heldDocument?.dispose();
-      _heldDocument = document;
-      return;
-    }
     _show(document);
   }
 
@@ -300,7 +282,6 @@ class _EditorPageState extends ConsumerState<EditorPage>
     _undoController.dispose();
     _titleController.dispose();
     _document?.dispose();
-    _heldDocument?.dispose();
     super.dispose();
   }
 
@@ -448,7 +429,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
                 schema: widget.schema,
                 readOnly: readOnly,
                 undoController: _undoController,
-                showsLoading: routeSettled,
+                showsLoading: _document == null,
                 onReady: _handleReady,
               ),
             ),

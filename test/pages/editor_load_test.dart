@@ -75,8 +75,8 @@ void main() {
     );
   });
 
-  testWidgets('loads as the push starts and mounts the editor once the route '
-      'settles', (tester) async {
+  testWidgets('mounts the editor as soon as loaded content arrives during a '
+      'push', (tester) async {
     late BuildContext home;
     await tester.pumpWidget(
       TestApp(
@@ -116,16 +116,16 @@ void main() {
 
     expect(transition!.status, AnimationStatus.forward);
     expect(loads, 1);
+    expect(find.byType(ActivityIndicator), findsOneWidget);
 
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
-    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump();
     expect(transition!.status, AnimationStatus.forward);
-    expect(find.byType(CodeForge), findsNothing);
-    expect(find.byType(ActivityIndicator), findsNothing);
+    expect(find.byType(CodeForge), findsOneWidget);
 
-    await settle(tester, 12);
+    await settle(tester, 2);
     expect(find.byType(CodeForge), findsOneWidget);
   });
 
