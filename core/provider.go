@@ -36,9 +36,9 @@ type externalProviderEntry struct {
 	rule     bool
 }
 
-func externalProviderEntries() []externalProviderEntry {
+func externalProviderEntries() externalProviderEntryList {
 	proxyProviders, ruleProviders := tunnel.ProvidersSnapshot(), tunnel.RuleProvidersSnapshot()
-	entries := make([]externalProviderEntry, 0, len(proxyProviders)+len(ruleProviders))
+	entries := make(externalProviderEntryList, 0, len(proxyProviders)+len(ruleProviders))
 	for name, provider := range proxyProviders {
 		if provider.VehicleType() != cp.Compatible {
 			entries = append(entries, externalProviderEntry{name: name, provider: provider})
@@ -61,7 +61,13 @@ func externalProviderEntries() []externalProviderEntry {
 		}
 		return 0
 	})
-	return entries
+	unique := entries[:0]
+	for index, entry := range entries {
+		if index == 0 || entry.name != unique[len(unique)-1].name {
+			unique = append(unique, entry)
+		}
+	}
+	return unique
 }
 
 func lookupExternalProvider(name string) (cp.Provider, bool) {
@@ -113,26 +119,15 @@ func sideUpdateExternalProvider(p cp.Provider, data []byte) error {
 	}
 }
 
-func handleGetExternalProviders() externalProviderList {
-	entries := externalProviderEntries()
-	eps := make([]ExternalProvider, 0, len(entries))
-	for index, entry := range entries {
-		if index > 0 && entry.name == entries[index-1].name {
-			continue
-		}
-		if externalProvider, err := toExternalProvider(entry.provider); err == nil {
-			eps = append(eps, externalProvider)
-		}
-	}
-	return eps
+func handleGetExternalProviders() externalProviderEntryList {
+	return externalProviderEntries()
 }
 
-type externalProviderList []ExternalProvider
+type externalProviderEntryList []externalProviderEntry
 
-// frameFor implements frameWriter. The resources screen reads the complete
-// list, so each provider and its counters are written directly instead of
-// copied through response reflection.
-func (l externalProviderList) frameFor(id string) []byte {
+// frameFor implements frameWriter. Entries arrive sorted and deduplicated, so
+// the resources screen can turn each provider into its frame bytes directly.
+func (l externalProviderEntryList) frameFor(id string) []byte {
 	buf := make([]byte, 0, len(l)*256+64)
 	if id != "" {
 		buf = append(buf, `{"id":`...)
@@ -141,46 +136,50 @@ func (l externalProviderList) frameFor(id string) []byte {
 	} else {
 		buf = append(buf, `{"result":`...)
 	}
-	if len(l) == 0 {
-		buf = append(buf, '[', ']')
-		return append(buf, '}')
-	}
 	buf = append(buf, '[')
-	for index := range l {
-		if index > 0 {
-			buf = append(buf, ',')
-		}
-		buf = append(buf, `{"name":`...)
-		buf = jsonutil.AppendString(buf, l[index].Name)
-		buf = append(buf, `,"type":`...)
-		buf = jsonutil.AppendString(buf, l[index].Type)
-		buf = append(buf, `,"vehicle-type":`...)
-		buf = jsonutil.AppendString(buf, l[index].VehicleType)
-		buf = append(buf, `,"count":`...)
-		buf = strconv.AppendInt(buf, int64(l[index].Count), 10)
-		buf = append(buf, `,"path":`...)
-		buf = jsonutil.AppendString(buf, l[index].Path)
-		buf = append(buf, `,"update-at":"`...)
-		buf = l[index].UpdateAt.AppendFormat(buf, time.RFC3339Nano)
-		buf = append(buf, '"')
-		if l[index].SubscriptionInfo == nil {
-			buf = append(buf, `,"subscription-info":null`...)
-			buf = append(buf, '}')
+	emitted := false
+	for _, entry := range l {
+		view, err := toExternalProvider(entry.provider)
+		if err != nil {
 			continue
 		}
-		info := l[index].SubscriptionInfo
-		buf = append(buf, `,"subscription-info":{"Upload":`...)
-		buf = strconv.AppendInt(buf, info.Upload, 10)
-		buf = append(buf, `,"Download":`...)
-		buf = strconv.AppendInt(buf, info.Download, 10)
-		buf = append(buf, `,"Total":`...)
-		buf = strconv.AppendInt(buf, info.Total, 10)
-		buf = append(buf, `,"Expire":`...)
-		buf = strconv.AppendInt(buf, info.Expire, 10)
-		buf = append(buf, '}')
-		buf = append(buf, '}')
+		if emitted {
+			buf = append(buf, ',')
+		}
+		buf = appendExternalProviderJSON(buf, view)
+		emitted = true
 	}
 	return append(buf, ']', '}')
+}
+
+func appendExternalProviderJSON(dst []byte, view ExternalProvider) []byte {
+	dst = append(dst, `{"name":`...)
+	dst = jsonutil.AppendString(dst, view.Name)
+	dst = append(dst, `,"type":`...)
+	dst = jsonutil.AppendString(dst, view.Type)
+	dst = append(dst, `,"vehicle-type":`...)
+	dst = jsonutil.AppendString(dst, view.VehicleType)
+	dst = append(dst, `,"count":`...)
+	dst = strconv.AppendInt(dst, int64(view.Count), 10)
+	dst = append(dst, `,"path":`...)
+	dst = jsonutil.AppendString(dst, view.Path)
+	dst = append(dst, `,"update-at":"`...)
+	dst = view.UpdateAt.AppendFormat(dst, time.RFC3339Nano)
+	dst = append(dst, '"')
+	if view.SubscriptionInfo == nil {
+		dst = append(dst, `,"subscription-info":null`...)
+		return append(dst, '}')
+	}
+	info := view.SubscriptionInfo
+	dst = append(dst, `,"subscription-info":{"Upload":`...)
+	dst = strconv.AppendInt(dst, info.Upload, 10)
+	dst = append(dst, `,"Download":`...)
+	dst = strconv.AppendInt(dst, info.Download, 10)
+	dst = append(dst, `,"Total":`...)
+	dst = strconv.AppendInt(dst, info.Total, 10)
+	dst = append(dst, `,"Expire":`...)
+	dst = strconv.AppendInt(dst, info.Expire, 10)
+	return append(dst, '}', '}')
 }
 
 func handleGetExternalProvider(params NameParams) *ExternalProvider {
