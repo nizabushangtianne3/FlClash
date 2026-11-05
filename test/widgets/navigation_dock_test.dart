@@ -588,7 +588,7 @@ void main() {
     expect(tester.widget<Tooltip>(tooltips).message, 'Configuration');
   });
 
-  testWidgets('a quick tap swells an elastic press all the way', (
+  testWidgets('a quick tap starts returning immediately after release', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -611,11 +611,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 40));
     await gesture.up();
     var swollen = resting.width;
-    for (var i = 0; i < 30; i++) {
+    for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 16));
       swollen = math.max(swollen, painted().width);
     }
-    expect(swollen, greaterThan(resting.width * 1.24));
+    expect(swollen, greaterThan(resting.width * 1.05));
+    expect(swollen, lessThan(resting.width * 1.24));
 
     await tester.pumpAndSettle();
     expect(painted(), resting);

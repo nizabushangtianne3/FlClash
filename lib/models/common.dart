@@ -266,6 +266,7 @@ abstract class LogsState with _$LogsState {
 }
 
 final _logSearchTexts = Expando<String>();
+final _logFilteredLists = Expando<List<Log>>();
 
 extension LogsStateExt on LogsState {
   bool get isSearching => SearchQuery(query).isNotEmpty;
@@ -275,7 +276,7 @@ extension LogsStateExt on LogsState {
     if (searchQuery.isEmpty) {
       return logs;
     }
-    return logs
+    return _logFilteredLists[this] ??= logs
         .whereMatches(
           searchQuery,
           (log) => [log.payload, log.logLevel.name],
@@ -320,6 +321,7 @@ abstract class TrackerInfosState with _$TrackerInfosState {
 }
 
 final _trackerInfoSearchTexts = Expando<String>();
+final _trackerInfoFilteredLists = Expando<List<TrackerInfo>>();
 
 extension TrackerInfosStateExt on TrackerInfosState {
   bool get isSearching => SearchQuery(query).isNotEmpty;
@@ -329,7 +331,7 @@ extension TrackerInfosStateExt on TrackerInfosState {
     if (searchQuery.isEmpty) {
       return trackerInfos;
     }
-    return trackerInfos
+    return _trackerInfoFilteredLists[this] ??= trackerInfos
         .whereMatches(
           searchQuery,
           (trackerInfo) => trackerInfo.searchFields,
@@ -418,6 +420,8 @@ final dnsQueryFacets = <RecordFacet<DnsQuery>>[
     ),
 ];
 
+final _dnsQueryFilteredLists = Expando<List<DnsQuery>>();
+
 extension DnsQueriesStateExt on DnsQueriesState {
   bool get isSearching => SearchQuery(query).isNotEmpty;
 
@@ -426,7 +430,7 @@ extension DnsQueriesStateExt on DnsQueriesState {
     if (searchQuery.isEmpty) {
       return dnsQueries;
     }
-    return dnsQueries
+    return _dnsQueryFilteredLists[this] ??= dnsQueries
         .whereMatches(searchQuery, (dnsQuery) => dnsQuery.searchFields)
         .toList();
   }
@@ -645,7 +649,14 @@ extension GroupExt on Group {
     if (type.isComputedSelected) {
       return realNow.isNotEmpty ? realNow : proxyName;
     }
-    return proxyName.isNotEmpty && _isMember(proxyName) ? proxyName : realNow;
+    if (proxyName.isNotEmpty && _isMember(proxyName)) {
+      return proxyName;
+    }
+    if (realNow.isNotEmpty && _isMember(realNow)) {
+      return realNow;
+    }
+    final first = all.firstOrNull?.name ?? '';
+    return first.isNotEmpty ? first : realNow;
   }
 
   /// A saved pick outlives a subscription update that renames or drops it.
