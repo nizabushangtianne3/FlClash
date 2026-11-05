@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
@@ -146,77 +147,95 @@ func routeStamp() (epoch, version uint64) {
 	return currentRoute.epoch, currentRoute.version
 }
 
-// routeGroupNames prefers the parsed config list, falling back to the map for hosts that fill the tunnel without one.
-func routeGroupNames(proxies map[string]constant.Proxy) []string {
-	names := proxyGroupNames(config.GetProxyNameList(), func(name string) (constant.AdapterType, bool) {
-		proxy, ok := proxies[name]
-		if !ok || proxy == nil {
-			return 0, false
+type routeGroup struct {
+	name  string
+	group pickableGroup
+}
+
+// The route projection depends on both the tunnel snapshot and the configured
+// name list. Cache the resolved pickable adapters so steady polls only query
+// live selections and provider versions.
+type routeGroupCache struct {
+	snapshot any
+	source   []string
+	groups   []routeGroup
+}
+
+var cachedRouteGroups atomic.Pointer[routeGroupCache]
+
+func routeGroupProjections(proxies map[string]constant.Proxy) []routeGroup {
+	source := config.GetProxyNameList()
+	if cache := cachedRouteGroups.Load(); cache != nil &&
+		sameProxySnapshot(cache.snapshot, proxies) && slices.Equal(source, cache.source) {
+		return cache.groups
+	}
+
+	var groups []routeGroup
+	hasGlobal := false
+	if len(source) > 0 {
+		for _, name := range source {
+			proxy := proxies[name]
+			if proxy == nil || !isProxyGroupType(proxy.Type()) {
+				continue
+			}
+			if name == globalProxyName {
+				hasGlobal = true
+			}
+			if group, ok := adapterAs[pickableGroup](proxy); ok {
+				groups = append(groups, routeGroup{name: name, group: group})
+			}
 		}
-		return proxy.Type(), true
+	} else {
+		for name, proxy := range proxies {
+			if proxy == nil || !isProxyGroupType(proxy.Type()) {
+				continue
+			}
+			if name == globalProxyName {
+				hasGlobal = true
+			}
+			if group, ok := adapterAs[pickableGroup](proxy); ok {
+				groups = append(groups, routeGroup{name: name, group: group})
+			}
+		}
+	}
+	if !hasGlobal {
+		if proxy := proxies[globalProxyName]; proxy != nil && isProxyGroupType(proxy.Type()) {
+			if group, ok := adapterAs[pickableGroup](proxy); ok {
+				groups = append(groups, routeGroup{name: globalProxyName, group: group})
+			}
+		}
+	}
+
+	groups = slices.Clip(groups)
+	cachedRouteGroups.Store(&routeGroupCache{
+		snapshot: proxies,
+		source:   slices.Clone(source),
+		groups:   groups,
 	})
-	if len(names) > 0 {
-		return names
-	}
-	for name, proxy := range proxies {
-		if proxy != nil && isProxyGroupType(proxy.Type()) {
-			names = append(names, name)
-		}
-	}
-	return names
+	return groups
 }
 
 func readPicks() (map[string]string, map[string]uint32) {
-	proxies := tunnel.AllProxies()
 	picks := map[string]string{}
-	for _, name := range routeGroupNames(proxies) {
-		if group, ok := adapterAs[pickableGroup](proxies[name]); ok {
-			selected := group.Now()
-			if selected != "" {
-				picks[name] = selected
-			}
+	for _, cached := range routeGroupProjections(tunnel.AllProxies()) {
+		if selected := cached.group.Now(); selected != "" {
+			picks[cached.name] = selected
 		}
 	}
 	return picks, readProviderVersions()
 }
-
-// The steady poll fills reusable scratch maps, so a watched route does not
-// allocate two maps and a group-name slice every five seconds.
 func (r *routeTracker) fillScratch(proxies map[string]constant.Proxy) {
 	clear(r.picksScratch)
 	clear(r.versionsScratch)
 
-	names := config.GetProxyNameList()
-	if len(names) == 0 {
-		for name, proxy := range proxies {
-			if proxy != nil && isProxyGroupType(proxy.Type()) {
-				names = append(names, name)
-			}
-		}
-	}
-	for _, name := range names {
-		proxy := proxies[name]
-		if proxy == nil || !isProxyGroupType(proxy.Type()) {
-			continue
-		}
-		if group, ok := adapterAs[pickableGroup](proxy); ok {
-			if selected := group.Now(); selected != "" {
-				r.picksScratch[name] = selected
-			}
-		}
-	}
-	if _, found := r.picksScratch[globalProxyName]; !found {
-		if proxy := proxies[globalProxyName]; proxy != nil && isProxyGroupType(proxy.Type()) {
-			if group, ok := adapterAs[pickableGroup](proxy); ok {
-				if selected := group.Now(); selected != "" {
-					r.picksScratch[globalProxyName] = selected
-				}
-			}
+	for _, cached := range routeGroupProjections(proxies) {
+		if selected := cached.group.Now(); selected != "" {
+			r.picksScratch[cached.name] = selected
 		}
 	}
 
-	for name, p := range tunnel.ProvidersSnapshot() {
-		r.versionsScratch[name] = p.Version()
+	for name, provider := range tunnel.ProvidersSnapshot() {
+		r.versionsScratch[name] = provider.Version()
 	}
 }
 

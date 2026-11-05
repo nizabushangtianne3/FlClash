@@ -97,6 +97,42 @@ func selectorOver(t testing.TB, name string, members ...constant.Proxy) constant
 	return adapter.NewProxy(group)
 }
 
+func TestRouteGroupProjectionFollowsTheNameList(t *testing.T) {
+	first := selectorOver(t, "first", namedProxy("node-a"), namedProxy("node-b"))
+	second := selectorOver(t, "second", namedProxy("node-c"), namedProxy("node-d"))
+	proxies := map[string]constant.Proxy{"first": first, "second": second}
+	tunnel.UpdateProxies(proxies, nil)
+	t.Cleanup(func() { tunnel.UpdateProxies(nil, nil) })
+
+	names := func(groups []routeGroup) []string {
+		return slices.Collect(func(yield func(string) bool) {
+			for _, group := range groups {
+				if !yield(group.name) {
+					return
+				}
+			}
+		})
+	}
+
+	config.SetProxyNameList([]string{"first"})
+	firstNames := names(routeGroupProjections(proxies))
+	if !slices.Contains(firstNames, "first") || slices.Contains(firstNames, "second") {
+		t.Fatalf("projection = %v, want only the configured group", firstNames)
+	}
+
+	config.SetProxyNameList([]string{"second"})
+	secondNames := names(routeGroupProjections(proxies))
+	if !slices.Contains(secondNames, "second") || slices.Contains(secondNames, "first") {
+		t.Fatalf("projection = %v, want the replacement configured group", secondNames)
+	}
+
+	config.SetProxyNameList(nil)
+	allNames := names(routeGroupProjections(proxies))
+	if !slices.Contains(allNames, "first") || !slices.Contains(allNames, "second") {
+		t.Fatalf("fallback projection = %v, want both tunnel groups", allNames)
+	}
+}
+
 func TestHandleChangeProxyReportsWhetherThePickMoved(t *testing.T) {
 	recorder := recordRoutes(t)
 	group := selectorGroup(t, "group", "node-a", "node-b")
