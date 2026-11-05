@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-05
-- FlClash main：`25267abf`
-- Clash.Meta main：`5c215995c`
+- FlClash main：`44f5e080`
+- Clash.Meta main：`ff8fb529c`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04/11-05 持续重构轮次，账本当前共 64 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04/11-05 持续重构轮次，账本当前共 65 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -113,6 +113,12 @@
 | 代理解表键 span 缓存 | -（仅 wrapper） | `8bceffff` | `BenchmarkHandleGetProxies` paired n=7（对 `65ba30c9` 状态）：千节点 103.1µs ±8% → 97.1µs ±7%（**-5.83%**，p=0.017），千节点 urltest 98.7µs ±2% → 93.8µs ±2%（**-4.87%**，p=0.001），allocs/内存持平；纯组场景噪声内（键 span 数量少）。快照缓存重建时预编码每个 `"name":` 键 span（分隔符与转义一次完成，长度取自 `jsonutil.StringLen`），答案循环退化为对 span 与节点视图的 memcopy；收益随节点数增长，与测量记录中"名字追加 span 缓存上限 ~11µs"的预估相符；CGO 两种构建下 wrapper 全量测试 + vet 通过 |
 | 延迟测试持久化合并 | -（仅 Dart） | `25267abf` | 走查定位：`AtomicFilePreferencesStore._update` 每次写入都全量 `json.encode` 整个 store + 原子落盘，而批量延迟测试的每个渲染节拍（300ms）都 `saveDelayMap`（1000 节点 delayMap ≈ 100KB+），测试期间 UI isolate 以 ~3.3 次/秒的频率做全 store 重编码+写盘。改为 2s 尾随写合并 + 批次结束 `_persistDelaysNow` 立即落盘（最终状态不丢）；`_CountingPreferencesStore` spy 钉住"窗口内两次 flush 仅一次写"与"批次结束立即写"，proxies_action_test 64 用例全绿 |
 
+### 2026-11-05 持续重构轮次
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| TUIC v5 NATIVE 数据报直解路由 | `ff8fb529c` | `44f5e080` | `BenchmarkTUICNativeDatagramRoute` paired n=7：旧 pipe+BufferedConn 1637.0ns ±5% → 直接解析+有界 packet channel 216.9ns ±3%（**-86.75%**，p=0.001），0B/0 allocs 保持；IP 地址原地解码、payload 池化拷贝、支持同一 datagram 内多帧与分片；focused race、`go vet ./...`、core 全量 104 包、wrapper 测试/vet 全绿 |
+
 ### 2026-11-05 测量记录（审计后刻意未动）
 
 | 位置 | 测量 | 结论 |
@@ -139,9 +145,6 @@
 | 本地入站 UDP 路径（socks/mixed） | `BenchmarkSocksUDPHandleCached` 112.4–113.7ns/128B/1 alloc（包结构体）；write-back 30ns/0 allocs；`SocksPacketAdapter/native` 2.3–2.6ns/0 allocs | 每包 1 alloc 是包结构体本身，其生命周期跨异步隧道路径——账本工作流规则 6 明确不池化 packetAdapter；关闭 |
 
 ### 稳定统计与统计链路
-
-### 稳定统计与统计链路
-
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
 | `Manager.Snapshot()` 改为返回值 | `3c0530b48` | `9e82d9ff` | 快照路径 2 allocs/op → 1 |
