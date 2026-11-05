@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
@@ -22,7 +23,7 @@ const maxCachedProfileDocumentSize = 4 << 20
 
 var profileDocumentCache struct {
 	mu       sync.RWMutex
-	digest   string
+	buf      []byte
 	document *yaml.Node
 }
 
@@ -75,16 +76,17 @@ func sha256Sum(buf []byte) []byte {
 }
 
 // readProfileDocument parses the profile document, reusing the parse when the
-// file is unchanged.
+// bytes are unchanged. Comparing the wire bytes is cheaper than hashing every
+// repeated merge and gives the same exact-change guarantee.
 func readProfileDocument(buf []byte) (*yaml.Node, error) {
 	if len(buf) > maxCachedProfileDocumentSize {
 		return parseProfileDocument(buf)
 	}
-	digest := hex.EncodeToString(sha256Sum(buf))
 
 	profileDocumentCache.mu.RLock()
+	cachedBuf := profileDocumentCache.buf
 	cached := profileDocumentCache.document
-	hit := digest == profileDocumentCache.digest && cached != nil
+	hit := cached != nil && bytes.Equal(buf, cachedBuf)
 	profileDocumentCache.mu.RUnlock()
 	if hit {
 		return cached, nil
@@ -95,7 +97,7 @@ func readProfileDocument(buf []byte) (*yaml.Node, error) {
 		return nil, err
 	}
 	profileDocumentCache.mu.Lock()
-	profileDocumentCache.digest = digest
+	profileDocumentCache.buf = append([]byte(nil), buf...)
 	profileDocumentCache.document = document
 	profileDocumentCache.mu.Unlock()
 	return document, nil
