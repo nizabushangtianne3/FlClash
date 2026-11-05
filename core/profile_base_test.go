@@ -80,15 +80,17 @@ func TestProfileBaseLeavesTheSharedParseWhole(t *testing.T) {
 	}
 }
 
-func TestReadRawConfigReusesTheParse(t *testing.T) {
+func TestReadProfileReusesTheSnapshot(t *testing.T) {
 	t.Cleanup(forgetProfileRaw)
 	path := writeBaseProfile(t, baseProfile)
 
-	first, firstDigest, err := readCachedRawConfig(path)
+	firstSnapshot, err := readProfile(path)
+	first, firstDigest := firstSnapshot.raw, firstSnapshot.digest
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	second, secondDigest, err := readCachedRawConfig(path)
+	secondSnapshot, err := readProfile(path)
+	second, secondDigest := secondSnapshot.raw, secondSnapshot.digest
 	if err != nil {
 		t.Fatalf("read again: %v", err)
 	}
@@ -100,7 +102,8 @@ func TestReadRawConfigReusesTheParse(t *testing.T) {
 	}
 
 	changed := strings.Replace(baseProfile, "mixed-port: 7000", "mixed-port: 7001", 1)
-	third, _, err := readCachedRawConfig(writeBaseProfile(t, changed))
+	thirdSnapshot, err := readProfile(writeBaseProfile(t, changed))
+	third := thirdSnapshot.raw
 	if err != nil {
 		t.Fatalf("read changed: %v", err)
 	}
@@ -109,7 +112,8 @@ func TestReadRawConfigReusesTheParse(t *testing.T) {
 	}
 
 	forgetProfileRaw()
-	fourth, _, err := readCachedRawConfig(path)
+	fourthSnapshot, err := readProfile(path)
+	fourth := fourthSnapshot.raw
 	if err != nil {
 		t.Fatalf("read after forgetting: %v", err)
 	}
@@ -578,6 +582,32 @@ func BenchmarkHandleGetProfileBaseCached(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if _, err := handleGetProfileBase(PathParams{Path: path}); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// An edit reads the base for validation and merges the profile into the running
+// config, so this is the cold cost of a new profile reaching the core.
+func BenchmarkProfileReadAndMerge(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "profile.yaml")
+	base := &SetupBase{Path: path, Overlay: "rules:\n  - MATCH,DIRECT\n"}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		forgetProfileRaw()
+		document := append(profileDocument(800), []byte(fmt.Sprintf("# round %d\n", i))...)
+		if err := os.WriteFile(path, document, 0o644); err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+
+		if _, err := handleGetProfileBase(PathParams{Path: path}); err != nil {
+			b.Fatal(err)
+		}
+		if _, err := mergeProfileBase(base); err != nil {
 			b.Fatal(err)
 		}
 	}

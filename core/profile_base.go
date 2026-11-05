@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/metacubex/mihomo/component/age"
 	"github.com/metacubex/mihomo/config"
 	"go.yaml.in/yaml/v3"
 )
@@ -21,12 +20,13 @@ var profileBaseSections = []string{"proxies", "proxy-groups", "sub-rules"}
 
 func handleGetProfileBase(params PathParams) (*ProfileBase, error) {
 	defer scheduleLoadMemoryRelease()
-	raw, digest, err := readCachedRawConfig(params.Path)
+	snapshot, err := readProfile(params.Path)
 	if err != nil {
 		return nil, err
 	}
+	raw := snapshot.raw
 	base := &ProfileBase{
-		Digest:      digest,
+		Digest:      snapshot.digest,
 		MatchRules:  []string{},
 		Proxies:     len(raw.Proxy),
 		ProxyGroups: len(raw.ProxyGroup),
@@ -46,10 +46,11 @@ func handleGetProfileBase(params PathParams) (*ProfileBase, error) {
 
 func handleGetProfileOutbounds(params PathParams) (*ProfileOutbounds, error) {
 	defer scheduleLoadMemoryRelease()
-	raw, _, err := readCachedRawConfig(params.Path)
+	snapshot, err := readProfile(params.Path)
 	if err != nil {
 		return nil, err
 	}
+	raw := snapshot.raw
 	return &ProfileOutbounds{Proxies: outboundsOf(raw.Proxy), ProxyGroups: outboundsOf(raw.ProxyGroup)}, nil
 }
 
@@ -109,17 +110,11 @@ func loadConfigWithBase(base *SetupBase, configPath string) (*config.Config, err
 }
 
 func mergeProfileBase(base *SetupBase) (*yaml.Node, error) {
-	buf, err := os.ReadFile(base.Path)
+	snapshot, err := readProfile(base.Path)
 	if err != nil {
 		return nil, err
 	}
-	if buf, err = age.DecryptBytes(buf); err != nil {
-		return nil, fmt.Errorf("decrypt config error: %w", err)
-	}
-	profileDocument, retag, err := readProfileDocument(buf)
-	if err != nil {
-		return nil, err
-	}
+	profileDocument, retag := snapshot.document, snapshot.retag
 	var overlayDocument yaml.Node
 	if err := yaml.Unmarshal([]byte(base.Overlay), &overlayDocument); err != nil {
 		return nil, err

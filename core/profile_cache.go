@@ -4,120 +4,109 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"sync"
 
+	"github.com/metacubex/mihomo/component/age"
 	"github.com/metacubex/mihomo/config"
 	"go.yaml.in/yaml/v3"
 )
 
-// One entry holds the last profile document: the host merges the same profile
-// twice per edit, once to build it and once to apply it, and a merge is almost
-// entirely the parse of that document.
-//
-// The merge only reads the document. What later reaches into it, the writer's
-// alias inlining and the short-id retagging, is idempotent, so a document the
-// writer has already been through merges the same way the second time.
-// TestMergeProfileBaseProducesTheSameDocumentTwice holds that to be true.
-const maxCachedProfileDocumentSize = 4 << 20
+// One entry holds the whole parsed profile: the host reads base sections,
+// outbounds and the merged document from the same file while it edits. Parsing
+// it is the most expensive thing a large subscription costs, so the exact wire
+// bytes are the key and the raw config, short-id classification and response
+// digest are cached with that parse.
+const maxCachedProfileSize = 4 << 20
 
-var profileDocumentCache struct {
-	mu       sync.RWMutex
-	buf      []byte
+type profileSnapshot struct {
+	digest   string
 	document *yaml.Node
+	raw      *config.RawConfig
 	retag    bool
 }
 
-// One entry holds the last profile read: the host opens a profile, previews it
-// and applies it, and each of those re-reads the same file. Parsing it is the
-// most expensive thing a large subscription costs, so the exact bytes are the
-// key and the response digest is cached with the parse.
-const maxCachedProfileSize = 4 << 20
-
-var profileRawCache struct {
-	mu     sync.RWMutex
-	buf    []byte
-	digest string
-	raw    *config.RawConfig
+var profileCache struct {
+	mu       sync.RWMutex
+	buf      []byte
+	digest   string
+	document *yaml.Node
+	raw      *config.RawConfig
+	retag    bool
 }
 
-// readRawConfig parses [path], reusing the parse and digest when the file is
-// unchanged. Comparing bytes avoids hashing every repeated read and prevents
-// an unchanged profile from being answered after a digest collision.
-func readCachedRawConfig(path string) (*config.RawConfig, string, error) {
-	buf, err := os.ReadFile(path)
+// parseProfileSnapshot decrypts wire bytes into the document and raw config
+// that profile readers share.
+func parseProfileSnapshot(wire []byte) (*profileSnapshot, error) {
+	buf, err := age.DecryptBytes(wire)
 	if err != nil {
-		return nil, "", err
+		return nil, fmt.Errorf("decrypt config error: %w", err)
 	}
-	if len(buf) > maxCachedProfileSize {
-		raw, err := unmarshalRawConfig(buf)
-		if err != nil {
-			return nil, "", err
-		}
-		return raw, hex.EncodeToString(sha256Sum(buf)), nil
+	document, err := parseProfileDocument(buf)
+	if err != nil {
+		return nil, err
+	}
+	retag := bytes.Contains(buf, []byte("short-id"))
+	if retag {
+		retagShortIDs(document)
+	}
+	raw := config.DefaultRawConfig()
+	if err := document.Decode(raw); err != nil {
+		return nil, err
+	}
+	return &profileSnapshot{
+		digest:   hex.EncodeToString(sha256Sum(wire)),
+		document: document,
+		raw:      raw,
+		retag:    retag,
+	}, nil
+}
+
+// readProfile decrypts and parses [path] once, reusing the whole snapshot when
+// the file bytes are unchanged. Byte comparison avoids hashing every repeated
+// read and cannot answer an unchanged profile after a digest collision.
+func readProfile(path string) (*profileSnapshot, error) {
+	wire, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
 	}
 
-	profileRawCache.mu.RLock()
-	cachedBuf := profileRawCache.buf
-	cached := profileRawCache.raw
-	cachedDigest := profileRawCache.digest
-	hit := cached != nil && bytes.Equal(buf, cachedBuf)
-	profileRawCache.mu.RUnlock()
+	profileCache.mu.RLock()
+	cachedBuf := profileCache.buf
+	snapshot := &profileSnapshot{
+		digest:   profileCache.digest,
+		document: profileCache.document,
+		raw:      profileCache.raw,
+		retag:    profileCache.retag,
+	}
+	hit := snapshot.raw != nil && snapshot.document != nil && bytes.Equal(wire, cachedBuf)
+	profileCache.mu.RUnlock()
 	if hit {
-		return cached, cachedDigest, nil
+		return snapshot, nil
 	}
 
-	raw, err := unmarshalRawConfig(buf)
+	snapshot, err = parseProfileSnapshot(wire)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	digest := hex.EncodeToString(sha256Sum(buf))
-	profileRawCache.mu.Lock()
-	profileRawCache.buf = append([]byte(nil), buf...)
-	profileRawCache.digest = digest
-	profileRawCache.raw = raw
-	profileRawCache.mu.Unlock()
-	return raw, digest, nil
+	if len(wire) > maxCachedProfileSize {
+		return snapshot, nil
+	}
+
+	profileCache.mu.Lock()
+	profileCache.buf = append([]byte(nil), wire...)
+	profileCache.digest = snapshot.digest
+	profileCache.document = snapshot.document
+	profileCache.raw = snapshot.raw
+	profileCache.retag = snapshot.retag
+	profileCache.mu.Unlock()
+	return snapshot, nil
 }
 
 func sha256Sum(buf []byte) []byte {
 	sum := sha256.Sum256(buf)
 	return sum[:]
-}
-
-// readProfileDocument parses the profile document and reports whether its wire
-// bytes contain short-id. Reusing the parse and classification avoids hashing
-// and scanning an unchanged profile on every repeated merge.
-func readProfileDocument(buf []byte) (*yaml.Node, bool, error) {
-	if len(buf) > maxCachedProfileDocumentSize {
-		document, err := parseProfileDocument(buf)
-		if err != nil {
-			return nil, false, err
-		}
-		return document, bytes.Contains(buf, []byte("short-id")), nil
-	}
-
-	profileDocumentCache.mu.RLock()
-	cachedBuf := profileDocumentCache.buf
-	cached := profileDocumentCache.document
-	hit := cached != nil && bytes.Equal(buf, cachedBuf)
-	cachedRetag := profileDocumentCache.retag
-	profileDocumentCache.mu.RUnlock()
-	if hit {
-		return cached, cachedRetag, nil
-	}
-
-	document, err := parseProfileDocument(buf)
-	if err != nil {
-		return nil, false, err
-	}
-	retag := bytes.Contains(buf, []byte("short-id"))
-	profileDocumentCache.mu.Lock()
-	profileDocumentCache.buf = append([]byte(nil), buf...)
-	profileDocumentCache.document = document
-	profileDocumentCache.retag = retag
-	profileDocumentCache.mu.Unlock()
-	return document, retag, nil
 }
 
 func parseProfileDocument(buf []byte) (*yaml.Node, error) {
@@ -128,12 +117,14 @@ func parseProfileDocument(buf []byte) (*yaml.Node, error) {
 	return &document, nil
 }
 
-// forgetProfileRaw drops the cached parse: a config the host wrote makes the
+// forgetProfile drops the cached snapshot: a config the host wrote makes the
 // parse of what stood there before it stale.
 func forgetProfileRaw() {
-	profileRawCache.mu.Lock()
-	profileRawCache.buf = nil
-	profileRawCache.digest = ""
-	profileRawCache.raw = nil
-	profileRawCache.mu.Unlock()
+	profileCache.mu.Lock()
+	profileCache.buf = nil
+	profileCache.digest = ""
+	profileCache.document = nil
+	profileCache.raw = nil
+	profileCache.retag = false
+	profileCache.mu.Unlock()
 }
