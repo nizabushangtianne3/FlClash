@@ -59,6 +59,11 @@
               "id": "63aaf6d",
               "scope": "access",
               "text": "Keep selections a filter hides"
+            },
+            {
+              "id": "2eb058d",
+              "scope": "core",
+              "text": "Protect singledo call storage"
             }
           ]
         },
