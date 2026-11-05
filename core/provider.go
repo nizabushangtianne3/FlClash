@@ -1,7 +1,6 @@
 package core
 
 import (
-	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -95,15 +94,17 @@ func sideUpdateExternalProvider(p cp.Provider, data []byte) error {
 
 func handleGetExternalProviders() externalProviderList {
 	providers := externalProviders()
-	eps := make([]ExternalProvider, 0, len(providers))
-	for _, p := range providers {
-		if externalProvider, err := toExternalProvider(p); err == nil {
+	names := make([]string, 0, len(providers))
+	for name := range providers {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	eps := make([]ExternalProvider, 0, len(names))
+	for _, name := range names {
+		if externalProvider, err := toExternalProvider(providers[name]); err == nil {
 			eps = append(eps, externalProvider)
 		}
 	}
-	slices.SortFunc(eps, func(a, b ExternalProvider) int {
-		return cmp.Compare(a.Name, b.Name)
-	})
 	return eps
 }
 
