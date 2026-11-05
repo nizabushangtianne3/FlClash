@@ -41,6 +41,10 @@ type routeTracker struct {
 	watched          bool
 	watchSeq         uint64
 	stopPoll         context.CancelFunc
+
+	picksScratch    map[string]string
+	versionsScratch map[string]uint32
+	scratchMu       sync.Mutex
 }
 
 var (
@@ -176,6 +180,78 @@ func readPicks() (map[string]string, map[string]uint32) {
 	return picks, readProviderVersions()
 }
 
+// The steady poll fills reusable scratch maps, so a watched route does not
+// allocate two maps and a group-name slice every five seconds.
+func (r *routeTracker) fillScratch(proxies map[string]constant.Proxy) {
+	clear(r.picksScratch)
+	clear(r.versionsScratch)
+
+	names := config.GetProxyNameList()
+	if len(names) == 0 {
+		for name, proxy := range proxies {
+			if proxy != nil && isProxyGroupType(proxy.Type()) {
+				names = append(names, name)
+			}
+		}
+	}
+	for _, name := range names {
+		proxy := proxies[name]
+		if proxy == nil || !isProxyGroupType(proxy.Type()) {
+			continue
+		}
+		if group, ok := adapterAs[pickableGroup](proxy); ok {
+			if selected := group.Now(); selected != "" {
+				r.picksScratch[name] = selected
+			}
+		}
+	}
+	if _, found := r.picksScratch[globalProxyName]; !found {
+		if proxy := proxies[globalProxyName]; proxy != nil && isProxyGroupType(proxy.Type()) {
+			if group, ok := adapterAs[pickableGroup](proxy); ok {
+				if selected := group.Now(); selected != "" {
+					r.picksScratch[globalProxyName] = selected
+				}
+			}
+		}
+	}
+
+	for name, p := range tunnel.ProvidersSnapshot() {
+		r.versionsScratch[name] = p.Version()
+	}
+}
+
+func refreshRouteVersionsFromScratch() {
+	currentRoute.scratchMu.Lock()
+	defer currentRoute.scratchMu.Unlock()
+	if currentRoute.picksScratch == nil {
+		currentRoute.picksScratch = make(map[string]string, 32)
+		currentRoute.versionsScratch = make(map[string]uint32, 32)
+	}
+	currentRoute.fillScratch(tunnel.AllProxies())
+
+	currentRoute.mu.Lock()
+	providerVersionsChanged := !maps.Equal(currentRoute.versionsScratch, currentRoute.providerVersions)
+	picksChanged := !maps.Equal(currentRoute.picksScratch, currentRoute.picks)
+	if providerVersionsChanged {
+		currentRoute.providerVersions, currentRoute.versionsScratch = currentRoute.versionsScratch, currentRoute.providerVersions
+	}
+	if picksChanged {
+		currentRoute.picks, currentRoute.picksScratch = currentRoute.picksScratch, currentRoute.picks
+	}
+	if providerVersionsChanged || picksChanged {
+		currentRoute.version++
+	}
+	watched := currentRoute.watched
+	var state RouteState
+	if watched {
+		state = routeStateLocked()
+	}
+	currentRoute.mu.Unlock()
+	if watched && (providerVersionsChanged || picksChanged) {
+		publishRoute(state)
+	}
+}
+
 func readProviderVersions() map[string]uint32 {
 	providers := tunnel.ProvidersSnapshot()
 	versions := make(map[string]uint32, len(providers))
@@ -243,8 +319,7 @@ func refreshRouteLocked(change routeChange) {
 // The steady-state poll body. Rule sets and group picks notify on their own,
 // so this only re-reads provider versions and the picks they may have moved.
 func refreshRouteVersions() {
-	picks, versions := readPicks()
-	applyRouteSnapshot(picks, versions, nil, routeUnchanged)
+	refreshRouteVersionsFromScratch()
 }
 
 func refreshRoute() {

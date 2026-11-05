@@ -78,7 +78,7 @@ func currentPicks() map[string]string {
 	return maps.Clone(currentRoute.picks)
 }
 
-func selectorOver(t *testing.T, name string, members ...constant.Proxy) constant.Proxy {
+func selectorOver(t testing.TB, name string, members ...constant.Proxy) constant.Proxy {
 	t.Helper()
 	health := provider.NewHealthCheck(members, "", 0, 0, true, nil)
 	pd, err := provider.NewCompatibleProvider(name+"-provider", members, health)
@@ -284,6 +284,32 @@ func TestRuleSetUpdateSchedulesARouteRefresh(t *testing.T) {
 			t.Fatalf("published = %+v, want one state at epoch %d", published, before+1)
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestRouteVersionsScratchFollowsAGroupPick(t *testing.T) {
+	recordRoutes(t)
+	group := selectorOver(t, "group", namedProxy("node-a"), namedProxy("node-b"))
+	tunnel.UpdateProxies(map[string]constant.Proxy{"group": group}, nil)
+	t.Cleanup(func() { tunnel.UpdateProxies(nil, nil) })
+	config.SetProxyNameList([]string{"group"})
+	t.Cleanup(func() { config.SetProxyNameList(nil) })
+	before := handleWatchRoute(true, 0)
+
+	pickable, ok := adapterAs[pickableGroup](group)
+	if !ok {
+		t.Fatal("the selector did not expose the pickable interface")
+	}
+	if err := pickable.Set("node-b"); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	refreshRouteVersionsFromScratch()
+
+	if got := routeState(); got != (RouteState{CoreEpoch: before.CoreEpoch, RouteVersion: before.RouteVersion + 1}) {
+		t.Fatalf("state = %+v, want the scratch poll to publish %+v", got, before.RouteVersion+1)
+	}
+	if currentPicks()["group"] != "node-b" {
+		t.Fatalf("picks = %v, want the scratch poll to store node-b", currentPicks())
 	}
 }
 
