@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-06
-- FlClash main：`706c8fe7`
+- FlClash main：`3db06b91`
 - Clash.Meta main：`4289e66a3`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次，账本当前共 81 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次，账本当前共 82 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -139,6 +139,7 @@
 | 连接计数单帧编码 | -（仅 wrapper） | `032239b5` | Size 直达后 `connection.count` 仍返回裸 int，完整 dispatch 走 `MethodResponse` 反射；新增 `connectionCount.frameFor` 直写一个数字 envelope，并保持与 `MethodResponse` 字节等价。`BenchmarkConnectionCountDispatch` paired n=7：100 行 613.6ns ±1% / 176B / 5 allocs → 78.33ns ±3% / 48B / 1 alloc（时间 **-87.23%**，内存 **-72.73%**，分配 **-80.00%**）；500 行 642.2ns ±2% / 184B / 6 allocs → 100.4ns ±7% / 56B / 2 allocs（时间 **-84.37%**，内存 **-69.57%**，分配 **-66.67%**；两组 p=0.001）；新增有/无 ID 字节等价 focused 测试，connection focused race、wrapper 全量测试、桌面与 Android vet、Dart analyze、protocol/dashboard/connections 39 个 Flutter 用例通过 |
 | 流量总量单轮 stripe | `4289e66a3` | `794a7101` | `TotalTraffic` 原先调用两个 helper，各自完整扫描 32 个 counter stripe；合并为 `totalPair` 一轮成对读取 upload/download，proxy 与 direct 由同一 helper 分支选择，并删除仅旧路径使用的独立 proxy helper。`BenchmarkTrafficPoll` paired n=7：511.5ns ±2% / 177B / 3 allocs → 487.4ns ±1% / 177B / 3 allocs（时间 **-4.71%**，p=0.001）；同轮 `BenchmarkMemoryStatsDispatch` 215.8ns ±3% → 214.3ns ±1% 无显著变化（p=0.068）；traffic focused race、wrapper 全量测试、`Clash.Meta` 全量测试、桌面与 Android vet 通过 |
 | Provider 轻量键排序 | -（仅 wrapper） | `706c8fe7` | 资源页读取 100 个 Provider 时先物化整个 view slice，再排序约 150B 的 `ExternalProvider` 值；改为排序 map key，再按名称构建 view，减少排序阶段的值移动。`BenchmarkProviderListDispatch` paired n=7：73.99µ ±5% / 46.40KiB / 13 allocs → 60.29µ ±13% / 48.15KiB / 14 allocs（时间 **-18.52%**，p=0.001；新增一个 key slice 使内存 +3.77%、分配 +7.69%，为时间收益接受）；provider focused race、wrapper 全量测试、桌面与 Android vet 通过 |
+| Provider 免合并 map | -（仅 wrapper） | `3db06b91` | 列表构建原先先分配合并 map，再分配 names slice 和 view slice；改为直接物化两类 snapshot 的候选 entry，一轮按 `(name, rule-first)` 排序后相邻去重，rule 优先语义与 lookup 保持一致。100 Provider `BenchmarkProviderListDispatch` paired n=7：60.49µ ±2% / 48.15KiB / 14 allocs → 58.04µ ±3% / 41.25KiB / 3 allocs（时间 **-4.05%**，内存 **-14.33%**，分配 **-78.57%**，p=0.001）；兼容 inline 过滤和 rule/proxy 同名优先 focused 测试已更新，provider focused race、wrapper 全量测试、桌面与 Android vet 通过 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
@@ -277,6 +278,8 @@
 | UDP 多地址回复固定 slab | CNAME+4A allocs 6 → 4，但内存 736B → 1136B（+54.35%），时间 p=0.542 无显著改善；撤销，避免未证明的内存换分配。 |
 | UDP flow/sender 单 slab | paired benchstat：首包 367.5ns/1376B/4 allocs → 508.2ns/2112B/7 allocs（时间 +38.29%，allocs +75%）；escaped closure/interface 抵消收益，已撤销。 |
 | packetSender Done 延迟创建 | paired benchstat：首包 367.5ns/1376B/4 allocs → 473.9ns/1696B/5 allocs（时间 +28.95%，内存 +23.26%）；lazy 路径复杂度无收益，已撤销。 |
+| Provider 精确 answerSize 预分配 | `StringLen` 逐字段扫描后 paired n=7：60.49µ ±2% → 79.07µ ±10%（**+30.72%**），内存/分配不变；撤销，扩容比扫描便宜。 |
+| Provider 帧按 512B/条预分配 | 60.49µ ±2% / 48.15KiB / 14 allocs → 69.01µ ±1% / 77.52KiB / 14 allocs（时间 **+14.08%**，内存 **+61.01%**）；撤销，原增长路径更优。 |
 
 ## 4. 当前验证矩阵
 
