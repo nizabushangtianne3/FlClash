@@ -230,8 +230,8 @@ type sortedProxyNameCache struct {
 	// them; the escaped length comes from jsonutil.StringLen.
 	keySpans  [][]byte
 	nodeViews [][]byte
-	// sizeBase is the proxies-map share of the answer size estimate: one
-	// name-length term per proxy plus the group scaffold, precomputed once.
+	// sizeBase is the answer's precomputed share: static key/node bytes, the
+	// escaped all-list length and a conservative scaffold per cached group kind.
 	sizeBase int
 }
 
@@ -241,28 +241,31 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 		return cache
 	}
 	names := make([]string, 0, len(proxies))
-	sizeBase := 0
-	for name, proxy := range proxies {
+	for name := range proxies {
 		names = append(names, name)
-		sizeBase += len(name) + 32
-		if isProxyGroupType(proxy.Type()) {
-			sizeBase += 320
-		}
 	}
 	slices.Sort(names)
 	keySpans := make([][]byte, len(names))
 	nodeViews := make([][]byte, len(names))
+	// A cached group member list commonly dominates its document. One larger
+	// allocation is cheaper than the old 320B scaffold's repeated growslices.
+	const groupScaffold = 768
+	sizeBase := 64
 	for i, name := range names {
+		proxy := proxies[name]
 		span := make([]byte, 0, jsonutil.StringLen(name)+4)
 		if i > 0 {
 			span = append(span, ',')
 		}
 		span = jsonutil.AppendString(span, name)
 		keySpans[i] = append(span, ':')
-		if isProxyGroupType(proxies[name].Type()) {
+		sizeBase += len(keySpans[i]) + jsonutil.StringLen(name) + 1
+		if isProxyGroupType(proxy.Type()) {
+			sizeBase += groupScaffold
 			continue
 		}
-		nodeViews[i] = appendNodeView(nil, proxies[name])
+		nodeViews[i] = appendNodeView(nil, proxy)
+		sizeBase += len(nodeViews[i])
 	}
 	cache := &sortedProxyNameCache{
 		snapshot:  proxies,
