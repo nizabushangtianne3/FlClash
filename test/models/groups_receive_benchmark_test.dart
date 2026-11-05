@@ -74,7 +74,11 @@ Map<String, Object?> _connectionsAnswer({int rows = 500}) {
   };
 }
 
-Future<void> _measure(String label, int rounds, Future<void> Function() body) async {
+Future<void> _measure(
+  String label,
+  int rounds,
+  Future<void> Function() body,
+) async {
   await body();
   final stopwatch = Stopwatch()..start();
   for (var i = 0; i < rounds; i++) {
@@ -111,9 +115,7 @@ void main() {
       final data = ProxiesData.fromJson(
         Map<String, dynamic>.from(response.result as Map),
       );
-      final built = await buildGroups(
-        proxiesState.copyWith(proxiesData: data),
-      );
+      final built = await buildGroups(proxiesState.copyWith(proxiesData: data));
       if (built.length != _groups) throw StateError('built ${built.length}');
     });
     await _measure('proxies.toGroupsTaskUs', 50, () async {
@@ -124,7 +126,9 @@ void main() {
       final data = ProxiesData.fromJson(
         Map<String, dynamic>.from(response.result as Map),
       );
-      final built = await toGroupsTask(proxiesState.copyWith(proxiesData: data));
+      final built = await toGroupsTask(
+        proxiesState.copyWith(proxiesData: data),
+      );
       if (built.length != _groups) throw StateError('built ${built.length}');
     });
 
