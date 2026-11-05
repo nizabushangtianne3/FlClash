@@ -327,8 +327,8 @@ func TestHandleValidateConfigAcceptsAValidFile(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	if err := handleValidateConfig(path); err != nil {
-		t.Fatalf("handleValidateConfig = %v, want no error", err)
+	if issue := handleValidateConfig(PathParams{Path: path}); issue != nil {
+		t.Fatalf("handleValidateConfig = %q, want no issue", *issue)
 	}
 }
 
@@ -364,15 +364,16 @@ func TestHandleDecryptConfigReadsAnAgeEncryptedFile(t *testing.T) {
 }
 
 func TestHandleValidateProxiesReportsEachProxyInPlace(t *testing.T) {
-	got := handleValidateProxies([]map[string]any{
+	issues := handleValidateProxies(ProxiesParams{Proxies: []map[string]any{
 		{"name": "ok", "type": "socks5", "server": "127.0.0.1", "port": 1080},
 		{"name": "untyped", "server": "127.0.0.1", "port": 1080},
 		{"name": "unknown", "type": "nope"},
-	})
+	}})
 
-	if len(got) != 3 {
-		t.Fatalf("handleValidateProxies returned %d results, want 3", len(got))
+	if len(issues) != 2 {
+		t.Fatalf("handleValidateProxies returned %d issues, want 2", len(issues))
 	}
+	got := issueAt(issues, 3)
 	if got[0] != "" {
 		t.Errorf("valid proxy reported %q", got[0])
 	}
@@ -391,7 +392,7 @@ func TestHandleConvertProxiesReadsABase64ShareLinkList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := handleConvertProxies(path)
+	got, err := handleConvertProxies(PathParams{Path: path})
 
 	if err != nil {
 		t.Fatalf("handleConvertProxies error: %v", err)
@@ -411,7 +412,7 @@ func TestHandleConvertProxiesRejectsAConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := handleConvertProxies(path); err == nil {
+	if _, err := handleConvertProxies(PathParams{Path: path}); err == nil {
 		t.Fatal("handleConvertProxies found share links in a config")
 	}
 }
@@ -435,10 +436,10 @@ func TestHandleValidateProxiesLeavesARunningProxysResolverInPlace(t *testing.T) 
 		}
 	}
 
-	got := handleValidateProxies([]map[string]any{
+	got := issueAt(handleValidateProxies(ProxiesParams{Proxies: []map[string]any{
 		easyTier("mesh"),
 		easyTier("../../../../../../../../../../outside"),
-	})
+	}}), 2)
 
 	if got[0] != "" {
 		t.Fatalf("easytier proxy reported %q", got[0])
@@ -459,13 +460,13 @@ func TestHandleValidateProxiesLeavesARunningProxysResolverInPlace(t *testing.T) 
 }
 
 func TestHandleValidateConfigReportsAMissingFile(t *testing.T) {
-	err := handleValidateConfig(filepath.Join(t.TempDir(), "absent.yaml"))
+	issue := handleValidateConfig(PathParams{Path: filepath.Join(t.TempDir(), "absent.yaml")})
 
-	if err == nil {
+	if issue == nil {
 		t.Fatal("handleValidateConfig accepted a path that does not exist")
 	}
-	if !strings.Contains(err.Error(), "absent.yaml") {
-		t.Errorf("handleValidateConfig = %v, want it to name the missing file", err)
+	if !strings.Contains(*issue, "absent.yaml") {
+		t.Errorf("handleValidateConfig = %q, want it to name the missing file", *issue)
 	}
 }
 
@@ -475,7 +476,7 @@ func TestHandleValidateConfigReportsMalformedYaml(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	if err := handleValidateConfig(path); err == nil {
+	if handleValidateConfig(PathParams{Path: path}) == nil {
 		t.Fatal("handleValidateConfig accepted malformed yaml")
 	}
 }
@@ -743,7 +744,7 @@ func TestUpdateExternalProviderReportsRequestFailureDetails(t *testing.T) {
 	}
 	withTunnelProviders(t, map[string]cp.ProxyProvider{name: provider}, nil)
 
-	methodError := asMethodError(handleUpdateExternalProvider(name))
+	methodError := asMethodError(handleUpdateExternalProvider(NameParams{Name: name}))
 	if methodError.Code != "request_bad_response" {
 		t.Fatalf("methodError = %+v, want request_bad_response", methodError)
 	}
@@ -761,7 +762,7 @@ func TestUpdateExternalProviderCategorizesFailure(t *testing.T) {
 	}
 	withTunnelProviders(t, map[string]cp.ProxyProvider{name: provider}, nil)
 
-	err := handleUpdateExternalProvider(name)
+	err := handleUpdateExternalProvider(NameParams{Name: name})
 	if err == nil {
 		t.Fatal("the provider error was reported as success")
 	}
@@ -797,7 +798,7 @@ func TestUpdateExternalProviderRunsOneAtATime(t *testing.T) {
 	t.Cleanup(func() { close(provider.release) })
 
 	first := make(chan error, 1)
-	go func() { first <- handleUpdateExternalProvider(name) }()
+	go func() { first <- handleUpdateExternalProvider(NameParams{Name: name}) }()
 
 	select {
 	case <-provider.started:
@@ -806,7 +807,7 @@ func TestUpdateExternalProviderRunsOneAtATime(t *testing.T) {
 	}
 
 	second := make(chan error, 1)
-	go func() { second <- handleUpdateExternalProvider(name) }()
+	go func() { second <- handleUpdateExternalProvider(NameParams{Name: name}) }()
 
 	select {
 	case err := <-second:
@@ -1013,7 +1014,7 @@ func TestHandleGetMemoryStatsReportsALiveRuntime(t *testing.T) {
 	if err := json.Unmarshal(encoded, &fields); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"rss", "heapInuse", "heapIdle", "stackInuse", "runtimeOther"} {
+	for _, key := range []string{"rss", "heap-inuse", "heap-idle", "stack-inuse", "runtime-other"} {
 		if _, ok := fields[key]; !ok {
 			t.Errorf("memory stats lost the %q field the Dart model reads", key)
 		}
@@ -1216,7 +1217,7 @@ func TestDumpRuleSetReadsEitherMrsBehavior(t *testing.T) {
 		if err := os.WriteFile(path, []byte(mrs.String()), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		got, err := handleDumpRuleSet(path)
+		got, err := handleDumpRuleSet(PathParams{Path: path})
 		if err != nil {
 			t.Fatalf("dump %s: %v", c.behavior, err)
 		}
@@ -1231,7 +1232,7 @@ func TestDumpRuleSetRejectsText(t *testing.T) {
 	if err := os.WriteFile(path, []byte("example.com\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := handleDumpRuleSet(path); err == nil {
+	if _, err := handleDumpRuleSet(PathParams{Path: path}); err == nil {
 		t.Fatal("dumping a text rule set succeeded")
 	}
 }

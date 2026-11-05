@@ -20,9 +20,9 @@ import (
 // back replaces every other section.
 var profileBaseSections = []string{"proxies", "proxy-groups", "sub-rules"}
 
-func handleGetProfileBase(path string) (*ProfileBase, error) {
+func handleGetProfileBase(params PathParams) (*ProfileBase, error) {
 	defer scheduleLoadMemoryRelease()
-	raw, buf, err := readRawConfig(path)
+	raw, buf, err := readCachedRawConfig(params.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -45,9 +45,9 @@ func handleGetProfileBase(path string) (*ProfileBase, error) {
 	return base, nil
 }
 
-func handleGetProfileOutbounds(path string) (*ProfileOutbounds, error) {
+func handleGetProfileOutbounds(params PathParams) (*ProfileOutbounds, error) {
 	defer scheduleLoadMemoryRelease()
-	raw, _, err := readRawConfig(path)
+	raw, _, err := readCachedRawConfig(params.Path)
 	if err != nil {
 		return nil, err
 	}

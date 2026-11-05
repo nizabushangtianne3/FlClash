@@ -2,20 +2,20 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:fl_clash/common/common.dart';
-import 'package:fl_clash/common/window.dart';
 import 'package:fl_clash/bootstrap.dart';
+import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/common/system_dns.dart';
+import 'package:fl_clash/common/window.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/manager/hotkey_manager.dart';
 import 'package:fl_clash/manager/manager.dart';
-import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/plugins/app.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/ui/ui.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -48,9 +48,7 @@ Widget buildManagerStack({
         )
       : AndroidManager(child: TileManager(child: state));
   return AppEnvManager(
-    child: LocaleManager(
-      child: StatusManager(child: ThemeManager(child: platformState)),
-    ),
+    child: LocaleManager(child: ThemeManager(child: platformState)),
   );
 }
 
@@ -61,31 +59,8 @@ class Application extends ConsumerStatefulWidget {
   ConsumerState<Application> createState() => ApplicationState();
 }
 
-Duration? nextProfileAutoUpdateDelay(Iterable<Profile> profiles, DateTime now) {
-  Duration? next;
-  for (final profile in profiles) {
-    if (!profile.realAutoUpdate) {
-      continue;
-    }
-    final lastUpdateDate = profile.lastUpdateDate;
-    if (lastUpdateDate == null) {
-      return Duration.zero;
-    }
-    final dueAt = lastUpdateDate.add(profile.autoUpdateDuration);
-    if (!dueAt.isAfter(now)) {
-      return Duration.zero;
-    }
-    final delay = dueAt.difference(now);
-    if (next == null || delay < next) {
-      next = delay;
-    }
-  }
-  return next;
-}
-
 class ApplicationState extends ConsumerState<Application> {
   Timer? _autoUpdateProfilesTaskTimer;
-  Timer? _autoUpdateResourcesTaskTimer;
   bool _preHasVpn = false;
   // Windows can only watch SIGINT and SIGHUP.
   final _terminateSignals = system.isDesktop && !system.isWindows
@@ -95,9 +70,6 @@ class ApplicationState extends ConsumerState<Application> {
   @override
   void initState() {
     super.initState();
-    ref.listenManual(profilesProvider, (_, _) {
-      _scheduleAutoUpdateProfilesTask();
-    });
     SystemNavigator.setFrameworkHandlesBack(true);
     WidgetsBinding.instance.addPostFrameCallback((timeStamp) async {
       if (globalState.navigatorKey.currentContext != null) {
@@ -105,8 +77,7 @@ class ApplicationState extends ConsumerState<Application> {
       } else {
         exit(0);
       }
-      _scheduleAutoUpdateProfilesTask();
-      _scheduleAutoUpdateResourcesTask();
+      _autoUpdateProfilesTask();
       _initLink();
       if (!safeModeBuild) {
         unawaited(app?.initShortcuts());
@@ -143,53 +114,16 @@ class ApplicationState extends ConsumerState<Application> {
     });
   }
 
-  void _scheduleAutoUpdateProfilesTask({Duration? minimumDelay}) {
-    _autoUpdateProfilesTaskTimer?.cancel();
-    _autoUpdateProfilesTaskTimer = null;
-    final delay = nextProfileAutoUpdateDelay(
-      ref.read(profilesProvider),
-      DateTime.now(),
-    );
-    if (delay == null) {
-      return;
-    }
-    final effectiveDelay = minimumDelay != null && delay < minimumDelay
-        ? minimumDelay
-        : delay;
-    _autoUpdateProfilesTaskTimer = Timer(
-      effectiveDelay,
-      () => unawaited(_runAutoUpdateProfilesTask()),
-    );
-  }
-
-  Future<void> _runAutoUpdateProfilesTask() async {
-    final hadDueProfile =
-        nextProfileAutoUpdateDelay(
-          ref.read(profilesProvider),
-          DateTime.now(),
-        ) ==
-        Duration.zero;
-    await ref.read(profilesActionProvider.notifier).autoUpdateProfiles();
-    if (!mounted) {
-      return;
-    }
-    _scheduleAutoUpdateProfilesTask(
-      minimumDelay: hadDueProfile ? const Duration(minutes: 5) : null,
-    );
-  }
-
-  void _scheduleAutoUpdateResourcesTask() {
-    _autoUpdateResourcesTaskTimer?.cancel();
-    _autoUpdateResourcesTaskTimer = Timer(
-      const Duration(minutes: 20),
-      () async {
-        await ref.read(resourcesActionProvider.notifier).autoUpdate();
-        if (!mounted) {
-          return;
-        }
-        _scheduleAutoUpdateResourcesTask();
-      },
-    );
+  void _autoUpdateProfilesTask() {
+    _autoUpdateProfilesTaskTimer = Timer(const Duration(minutes: 20), () async {
+      await ref.read(profilesActionProvider.notifier).autoUpdateProfiles();
+      await ref.read(resourcesActionProvider.notifier).autoUpdate();
+      await ref.read(mitmModulesActionProvider.notifier).autoUpdate();
+      if (!mounted) {
+        return;
+      }
+      _autoUpdateProfilesTask();
+    });
   }
 
   Future<void> _handleConnectivityChanged(
@@ -204,8 +138,8 @@ class ApplicationState extends ConsumerState<Application> {
       // Android's NetworkObserver tells the Core about a new network itself.
       if (system.isDesktop) {
         debouncer.call(
-          FunctionTag.clearDnsCache,
-          ref.read(coreActionProvider.notifier).clearDnsCacheOnNetworkChange,
+          FunctionTag.networkChange,
+          ref.read(coreActionProvider.notifier).reportNetworkChange,
           duration: const Duration(milliseconds: 200),
         );
       }
@@ -221,38 +155,47 @@ class ApplicationState extends ConsumerState<Application> {
           appSettingProvider.select((state) => state.locale),
         );
         final themeProps = ref.watch(themeSettingProvider);
-        return MaterialApp(
+        final textScale = themeProps.textScale;
+        return PrismApp(
           debugShowCheckedModeBanner: false,
           navigatorKey: globalState.navigatorKey,
           onNavigationNotification: (_) => true,
           localizationsDelegates: const [
             AppLocalizations.delegate,
             AppUiLocalizations.delegate,
-            ...GlobalMaterialLocalizations.delegates,
+            GlobalWidgetsLocalizations.delegate,
           ],
           builder: (context, child) {
-            return ThemeCrossFade(
-              child: buildManagerStack(
-                isDesktop: system.isDesktop,
-                onConnectivityChanged: _handleConnectivityChanged,
-                terminateSignals: _terminateSignals,
-                child: RemoteFocusAdapter(
-                  enabled: system.isTV,
-                  floatingKeyboard: app?.floatingKeyboard,
-                  child: child!,
-                ),
-              ),
+            return buildManagerStack(
+              isDesktop: system.isDesktop,
+              onConnectivityChanged: _handleConnectivityChanged,
+              terminateSignals: _terminateSignals,
+              child: child!,
             );
           },
-          scrollBehavior: const BaseScrollBehavior(),
           title: appName,
           locale: getLocaleForString(locale),
           supportedLocales: AppLocalizations.delegate.supportedLocales,
           themeMode: themeProps.themeMode,
           theme: watchAppTheme(ref, Brightness.light),
           darkTheme: watchAppTheme(ref, Brightness.dark),
-          themeAnimationStyle: AnimationStyle.noAnimation,
-          home: KeyboardInsetHold(child: child!),
+          textScale: textScale.enable ? textScale.scale : null,
+          minTextScale: minTextScale,
+          maxTextScale: maxTextScale,
+          liquidGlass: switch (themeProps.liquidGlass) {
+            LiquidGlassMode.none => null,
+            LiquidGlassMode.ultra => LiquidGlassQuality.ultra,
+            LiquidGlassMode.standard => LiquidGlassQuality.standard,
+          },
+          emojiFont: (family: FontFamily.twEmoji.value, pattern: emojiPattern),
+          stackedBanners: !ref.watch(isMobileViewProvider),
+          bannerTopInset: ref.watch(overlayTopOffsetProvider),
+          remoteFocus: system.isTV,
+          floatingKeyboard: app?.floatingKeyboard,
+          onGenerateRoute: (settings) => HomeRoute(
+            settings: settings,
+            builder: (_) => KeyboardInsetHold(child: child!),
+          ),
         );
       },
       child: const HomePage(),
@@ -263,7 +206,6 @@ class ApplicationState extends ConsumerState<Application> {
   void dispose() {
     linkManager.destroy();
     _autoUpdateProfilesTaskTimer?.cancel();
-    _autoUpdateResourcesTaskTimer?.cancel();
     super.dispose();
   }
 }

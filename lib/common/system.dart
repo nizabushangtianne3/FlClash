@@ -11,6 +11,7 @@ import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/plugins/app.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
+import 'package:prism_ui/banner.dart';
 
 typedef ProcessRunner =
     Future<ProcessResult> Function(String executable, List<String> arguments);
@@ -47,11 +48,15 @@ class System {
 
   Future<int> init({String? operatingSystem}) async {
     final os = operatingSystem ?? Platform.operatingSystem;
-    _isTV = false;
-    if (os == 'linux') {
-      return 0;
+    final BaseDeviceInfo deviceInfo;
+    try {
+      deviceInfo = await deviceInfoLoader();
+    } on RangeError {
+      // device_info_plus turns the registry InstallDate into a DateTime, and
+      // some Windows installs store a value past DateTime's range.
+      if (isWindows) return 0;
+      rethrow;
     }
-    final deviceInfo = await deviceInfoLoader();
     _isTV = switch (deviceInfo) {
       AndroidDeviceInfo(:final systemFeatures) => systemFeatures.any(
         const {
@@ -370,9 +375,9 @@ Future<AuthorizeCode> registerHelperService(
         'falling back to direct Core',
         logLevel: LogLevel.warning,
       );
-      dialogs.showNotifier(
+      dialogs.showBanner(
         currentAppLocalizations.helperCorruptTip,
-        level: MessageLevel.error,
+        level: BannerLevel.error,
       );
       return AuthorizeCode.error;
     case HelperReadiness.notReady:
@@ -401,12 +406,12 @@ Future<AuthorizeCode> registerHelperService(
   return isRunning ? AuthorizeCode.success : AuthorizeCode.error;
 }
 
-Future<bool> _waitForHelperService() async {
-  const timeout = Duration(seconds: 6);
+Future<bool> _waitForHelperService({
+  Duration timeout = const Duration(seconds: 6),
+}) async {
   const interval = Duration(seconds: 1);
-  const maxAttempts = 6;
   final stopwatch = Stopwatch()..start();
-  for (var attempt = 0; attempt < maxAttempts; attempt++) {
+  while (true) {
     final remaining = timeout - stopwatch.elapsed;
     if (remaining <= Duration.zero) return false;
     final isRunning =
@@ -414,10 +419,9 @@ Future<bool> _waitForHelperService() async {
         HelperReadiness.ready;
     if (isRunning) return true;
     final delay = timeout - stopwatch.elapsed;
-    if (delay <= Duration.zero || attempt == maxAttempts - 1) return false;
+    if (delay <= Duration.zero) return false;
     await Future.delayed(delay < interval ? delay : interval);
   }
-  return false;
 }
 
 final windows = system.isWindows ? Windows() : null;
@@ -432,8 +436,33 @@ class Linux {
     return _instance!;
   }
 
-  Future<AuthorizeCode> registerService() {
+  /// An autostarted session can beat systemd to starting the installed Helper.
+  Future<AuthorizeCode> registerService() async {
+    if (await _isHelperStillStarting()) {
+      commonPrint.log(
+        'waiting for the helper service to start with the system',
+      );
+      if (await _waitForHelperService(timeout: const Duration(seconds: 30))) {
+        commonPrint.log('helper service started with the system');
+        return AuthorizeCode.success;
+      }
+    }
     return registerHelperService(installService);
+  }
+
+  Future<bool> _isHelperStillStarting() async {
+    if (!File(helperUnitPath).existsSync() ||
+        FileSystemEntity.typeSync(helperSocketPath) !=
+            FileSystemEntityType.notFound) {
+      return false;
+    }
+    try {
+      final result = await Process.run('systemctl', ['is-system-running']);
+      final state = result.stdout.toString().trim();
+      return state == 'starting' || state == 'initializing';
+    } catch (_) {
+      return false;
+    }
   }
 
   /// pkexec and sudo both name the requesting user to the installer, which is

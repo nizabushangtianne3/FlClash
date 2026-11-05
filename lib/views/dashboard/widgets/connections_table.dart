@@ -1,19 +1,20 @@
 import 'dart:async';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/method.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/features/features.dart';
 import 'package:fl_clash/models/models.dart';
-import 'package:fl_clash/providers/providers.dart';
-import 'package:fl_clash/views/connection/connections.dart';
+import 'package:fl_clash/providers/app.dart';
+import 'package:fl_clash/providers/core.dart';
 import 'package:fl_clash/views/connection/requests.dart';
 import 'package:fl_clash/views/dashboard/layout.dart';
 import 'package:fl_clash/views/dashboard/style.dart';
 import 'package:fl_clash/views/dns_queries.dart';
 import 'package:fl_clash/widgets/widgets.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:material_ui/material_ui.dart';
 
 import 'card.dart';
 import 'current_outbound.dart';
@@ -50,10 +51,10 @@ enum DashboardFeed {
   requests,
   dns;
 
-  PageLabel get page => switch (this) {
-    connections => PageLabel.connections,
-    requests => PageLabel.requests,
-    dns => PageLabel.dns,
+  String get label => switch (this) {
+    connections => currentAppLocalizations.liveConnections,
+    requests => currentAppLocalizations.recentRequests,
+    dns => PageLabel.dns.label,
   };
 }
 
@@ -65,18 +66,22 @@ void openDashboardFeed(BuildContext context, DashboardFeed feed) {
         : double.maxFinite,
     builder: (_, controller) => NestedPagedSheet(
       builder: (_) => switch (feed) {
-        DashboardFeed.connections => ConnectionsView(
+        DashboardFeed.connections => RequestsView(
           scrollController: controller,
+          initialFeed: RequestFeed.live,
         ),
-        DashboardFeed.requests => RequestsView(scrollController: controller),
+        DashboardFeed.requests => RequestsView(
+          scrollController: controller,
+          initialFeed: RequestFeed.recent,
+        ),
         DashboardFeed.dns => DnsQueriesView(scrollController: controller),
       },
     ),
   );
 }
 
-/// Reads the connection table the provider holds while the dashboard is shown:
-/// the whole list while its table is open, only the count otherwise.
+/// Polls the live connections while the dashboard is shown: the whole list
+/// while its table is open, only the count otherwise.
 mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
     on
         ConsumerState<T>,
@@ -87,27 +92,18 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
   List<TrackerInfo> connections = const [];
   var tcpCount = 0;
   var udpCount = 0;
-  ProviderSubscription<ConnectionsSnapshot>? _connections;
 
   bool get pollsConnections;
+
+  CoreController get _core => ref.read(coreHandlerProvider);
 
   @override
   Duration get pollInterval => Duration(seconds: pollsConnections ? 1 : 2);
 
   @override
   void dispose() {
-    _connections?.close();
     connectionCount.dispose();
     super.dispose();
-  }
-
-  @override
-  void startPolling() {
-    super.startPolling();
-    _connections ??= ref.listenManual(
-      connectionsProvider,
-      (_, snapshot) => _showConnections(snapshot),
-    );
   }
 
   @override
@@ -126,9 +122,26 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
       return;
     }
     try {
-      await ref.read(connectionsProvider.notifier).refresh();
-      if (!isCurrent()) return;
-      _showConnections(ref.read(connectionsProvider));
+      if (pollsConnections) {
+        final next = [...await _core.getConnections()];
+        if (!isCurrent()) return;
+        next.sort((a, b) => b.start.compareTo(a.start));
+        final tcp = next
+            .where((item) => item.metadata.network.toLowerCase() == 'tcp')
+            .length;
+        connectionCount.value = next.length;
+        updateWhenRouteSettled(
+          () => setState(() {
+            connections = next;
+            tcpCount = tcp;
+            udpCount = next.length - tcp;
+          }),
+        );
+      } else {
+        final count = await _core.getConnectionCount();
+        if (!isCurrent()) return;
+        connectionCount.value = count;
+      }
     } catch (error) {
       commonPrint.log(
         'dashboard connections error: $error',
@@ -136,32 +149,7 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
       );
     }
   }
-
-  void _showConnections(ConnectionsSnapshot snapshot) {
-    if (!mounted) {
-      return;
-    }
-    connectionCount.value = snapshot.count;
-    if (!pollsConnections) {
-      return;
-    }
-    var tcp = 0;
-    for (final item in snapshot.connections) {
-      if (item.metadata.network == 'tcp') {
-        tcp++;
-      }
-    }
-    updateWhenRouteSettled(
-      () => setState(() {
-        connections = snapshot.connections;
-        tcpCount = tcp;
-        udpCount = snapshot.connections.length - tcp;
-      }),
-    );
-  }
 }
-
-Comparable<Object> _trackerStartKey(TrackerInfo item) => item.start;
 
 /// Follows a counter the Core moves per event, at the cadence the feed's own
 /// list repaints at.
@@ -281,19 +269,9 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
   void _takeSnapshot() {
     switch (_feed) {
       case DashboardFeed.requests:
-        _requests = ref
-            .read(requestsProvider)
-            .list
-            .reversed
-            .take(_maxFeedRows)
-            .toList();
+        _requests = ref.read(requestsProvider).list.reversed.toList();
       case DashboardFeed.dns:
-        _queries = ref
-            .read(dnsQueriesProvider)
-            .list
-            .reversed
-            .take(_maxFeedRows)
-            .toList();
+        _queries = ref.read(dnsQueriesProvider).list.reversed.toList();
       case DashboardFeed.connections:
         break;
     }
@@ -331,10 +309,10 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
           outer: headerHeight / 2,
           inner: 8,
           background: DashboardColors.of(context).tone,
-          semanticLabel: feed.page.label,
+          semanticLabel: feed.label,
           onTap: () => _select(feed),
           builder: (foreground) => _FeedSegment(
-            label: feed.page.label,
+            label: feed.label,
             count: count,
             height: headerHeight,
             foreground: foreground,
@@ -411,7 +389,6 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
                 items: connections,
                 rowHeight: rowHeight,
                 columnsOf: (width) => _connectionColumns(context, width),
-                newestKey: _trackerStartKey,
               ),
               DashboardFeed.requests => _Table<TrackerInfo>(
                 key: const ValueKey(DashboardFeed.requests),
@@ -501,14 +478,12 @@ class _Table<T> extends ConsumerStatefulWidget {
     required this.items,
     required this.rowHeight,
     required this.columnsOf,
-    this.newestKey,
   });
 
   final String tableId;
   final List<T> items;
   final double rowHeight;
   final List<RecordColumn<T>> Function(double width) columnsOf;
-  final Comparable<Object> Function(T item)? newestKey;
 
   @override
   ConsumerState<_Table<T>> createState() => _TableState<T>();
@@ -535,13 +510,10 @@ class _TableState<T> extends ConsumerState<_Table<T>>
           constraints.maxWidth,
           columnWidths,
         );
-        final items = _sorter.sort(
-          widget.items,
-          columns,
-          _sort,
-          limit: _maxFeedRows,
-          newestKey: widget.newestKey,
-        );
+        final sorted = _sorter.sort(widget.items, columns, _sort);
+        final items = sorted.length > _maxFeedRows
+            ? sorted.sublist(0, _maxFeedRows)
+            : sorted;
         final headerStyle = AppTextStyle.caption1
             .of(context, emphasized: true)
             .copyWith(color: colorScheme.onSurfaceVariant);
@@ -554,11 +526,10 @@ class _TableState<T> extends ConsumerState<_Table<T>>
           color: DashboardColors.of(context).tone,
           shape: shape,
         );
-        final body = ListView.builder(
+        final body = PrismListView(
           padding: const EdgeInsets.only(top: 2),
           itemExtent: rowHeight,
           itemCount: items.length,
-          addAutomaticKeepAlives: false,
           itemBuilder: (context, index) {
             final item = items[index];
             final cells = DefaultTextStyle.merge(
@@ -585,8 +556,7 @@ class _TableState<T> extends ConsumerState<_Table<T>>
           children: [
             DecoratedBox(
               decoration: fill,
-              child: Material(
-                type: MaterialType.transparency,
+              child: Surface.transparent(
                 shape: shape,
                 clipBehavior: Clip.antiAlias,
                 child: TableColumnResizer(
@@ -744,7 +714,6 @@ List<RecordColumn<TrackerInfo>> _connectionColumns(
   double width,
 ) {
   final appLocalizations = context.appLocalizations;
-  final now = DateTime.now();
   final mid = width >= _midTableWidth;
   final wide = width >= _wideTableWidth;
   return [
@@ -814,7 +783,7 @@ List<RecordColumn<TrackerInfo>> _connectionColumns(
           end: true,
         ),
         cell: (_, info) => _Number(
-          trackerDurationText(now.difference(info.start)),
+          trackerDurationText(DateTime.now().difference(info.start)),
           muted: true,
         ),
         sortKey: (info) => -info.start.microsecondsSinceEpoch,

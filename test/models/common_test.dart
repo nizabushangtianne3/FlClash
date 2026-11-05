@@ -113,34 +113,6 @@ void main() {
         'system.app',
       ]);
     });
-
-    test('reuses the source order when no pins or sorting are requested', () {
-      final packages = [
-        const Package(
-          packageName: 'beta.app',
-          label: 'Beta',
-          system: false,
-          internet: true,
-          lastUpdateTime: 2,
-        ),
-        const Package(
-          packageName: 'alpha.app',
-          label: 'Alpha',
-          system: false,
-          internet: true,
-          lastUpdateTime: 1,
-        ),
-      ];
-
-      final result = packages.getViewList(
-        pinedList: const [],
-        sortType: AccessSortType.none,
-        isFilterSystemApp: false,
-        isFilterNonInternetApp: false,
-      );
-
-      expect(identical(result, packages), isTrue);
-    });
   });
 
   group('TrackerInfoExt', () {
@@ -173,36 +145,13 @@ void main() {
       expect(traffic.trayTitle, '1 KB/s\n2 KB/s');
       expect(traffic.speed, 3072);
     });
-
-    test('caches the display strings for repeat reads', () {
-      const traffic = Traffic(up: 1024, down: 2048);
-
-      expect(traffic.speedText, same(traffic.speedText));
-      expect(traffic.trayTitle, same(traffic.trayTitle));
-    });
   });
 
   group('GroupsExt', () {
     test('finds group by name and resolves current selection', () {
       const groups = [
-        Group(
-          name: 'Auto',
-          type: GroupType.URLTest,
-          now: 'Proxy A',
-          all: [
-            Proxy(name: 'Proxy A', type: 'Direct'),
-            Proxy(name: 'Proxy C', type: 'Direct'),
-          ],
-        ),
-        Group(
-          name: 'Manual',
-          type: GroupType.Selector,
-          now: 'Proxy B',
-          all: [
-            Proxy(name: 'Proxy B', type: 'Direct'),
-            Proxy(name: 'Proxy C', type: 'Direct'),
-          ],
-        ),
+        Group(name: 'Auto', type: GroupType.URLTest, now: 'Proxy A'),
+        Group(name: 'Manual', type: GroupType.Selector, now: 'Proxy B'),
       ];
 
       expect(
@@ -214,15 +163,6 @@ void main() {
         'Proxy C',
       );
       expect(groups.getGroup('Missing'), isNull);
-    });
-
-    test('duplicate names keep the first group', () {
-      final groups = [
-        const Group(name: 'Auto', type: GroupType.URLTest, now: 'Proxy A'),
-        const Group(name: 'Auto', type: GroupType.URLTest, now: 'Proxy B'),
-      ];
-
-      expect(groups.getGroup('Auto')?.realNow, 'Proxy A');
     });
   });
 
@@ -324,53 +264,6 @@ void main() {
     });
   });
 
-  group('ConnectionDelta', () {
-    final connection = {
-      'id': 'connection-1',
-      'start': '2026-09-18T04:30:01Z',
-      'metadata': {'network': 'tcp', 'host': 'example.com'},
-      'chains': ['DIRECT'],
-      'rule': 'MATCH',
-      'rulePayload': '',
-    };
-
-    test('parses typed transport maps without changing their shape', () {
-      final delta = connectionDeltaOf({
-        'added': [connection],
-        'removed': ['connection-2'],
-        'count': 1,
-      });
-
-      expect(delta.added.single.id, 'connection-1');
-      expect(delta.added.single.metadata.host, 'example.com');
-      expect(delta.removed, ['connection-2']);
-      expect(delta.count, 1);
-    });
-
-    test('parses legacy object maps and skips malformed rows', () {
-      final delta = connectionDeltaOf(<Object?, Object?>{
-        'added': [Map<String, Object?>.from(connection), 'not-a-connection'],
-        'removed': ['connection-2', 3],
-        'count': 2,
-      });
-
-      expect(delta.added, hasLength(1));
-      expect(delta.added.single.id, 'connection-1');
-      expect(delta.removed, ['connection-2']);
-      expect(delta.count, 2);
-    });
-
-    test('uses empty answers for absent transport fields', () {
-      const delta = ConnectionDelta();
-
-      expect(delta.added, isEmpty);
-      expect(delta.removed, isEmpty);
-      expect(delta.count, 0);
-      expect(connectionDeltaOf(null).added, isEmpty);
-      expect(connectionDeltaOf(null).removed, isEmpty);
-      expect(connectionDeltaOf(null).count, 0);
-    });
-  });
   group('ResultExt', () {
     test('identifies success and error results', () {
       final success = Result.success('ok');

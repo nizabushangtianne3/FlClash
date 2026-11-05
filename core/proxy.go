@@ -456,9 +456,9 @@ const validationNameSuffix = "\x00validate"
 
 // The per-proxy parser the config load runs; checks across proxies, such as
 // duplicate names, are left to the load itself.
-func handleValidateProxies(mappings []map[string]any) []string {
-	results := make([]string, len(mappings))
-	for i, mapping := range mappings {
+func handleValidateProxies(params ProxiesParams) []ValidationIssue {
+	issues := []ValidationIssue{}
+	for i, mapping := range params.Proxies {
 		name, _ := mapping["name"].(string)
 		probe := mapping
 		switch mapping["type"] {
@@ -468,17 +468,17 @@ func handleValidateProxies(mappings []map[string]any) []string {
 		}
 		proxy, err := adapter.ParseProxy(probe, nil)
 		if err != nil {
-			results[i] = strings.ReplaceAll(err.Error(), validationNameSuffix, "")
+			issues = append(issues, ValidationIssue{Index: i, Message: strings.ReplaceAll(err.Error(), validationNameSuffix, "")})
 			continue
 		}
 		_ = proxy.Close()
 	}
-	return results
+	return issues
 }
 
 // The share-link list a proxy provider also accepts, plain or base64.
-func handleConvertProxies(path string) ([]map[string]any, error) {
-	buf, err := os.ReadFile(path)
+func handleConvertProxies(params PathParams) ([]map[string]any, error) {
+	buf, err := os.ReadFile(params.Path)
 	if err != nil {
 		return nil, err
 	}

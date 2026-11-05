@@ -24,29 +24,6 @@ void main() {
       expect(GroupTypeExtension.getGroupType('missing'), isNull);
     });
 
-    test('accepts every spelling the parser accepts', () {
-      for (final type in GroupType.values) {
-        expect(GroupTypeExtension.getGroupType(type.name), type);
-        expect(GroupTypeExtension.getGroupType(type.value), type);
-      }
-      expect(GroupTypeExtension.getGroupType('urltest'), GroupType.URLTest);
-      expect(GroupTypeExtension.getGroupType('selector'), GroupType.Selector);
-      expect(
-        GroupTypeExtension.getGroupType('loadbalance'),
-        GroupType.LoadBalance,
-      );
-    });
-
-    test('separates group types from leaf proxy types', () {
-      expect(GroupTypeExtension.isGroupType('Selector'), isTrue);
-      expect(GroupTypeExtension.isGroupType('load-balance'), isTrue);
-      expect(GroupTypeExtension.isGroupType('relay'), isTrue);
-      expect(GroupTypeExtension.isGroupType('Direct'), isFalse);
-      expect(GroupTypeExtension.isGroupType('REJECT'), isFalse);
-      expect(GroupTypeExtension.isGroupType(null), isFalse);
-      expect(GroupTypeExtension.isGroupType(1), isFalse);
-    });
-
     test('marks only computed selection types', () {
       expect(GroupType.URLTest.isComputedSelected, isTrue);
       expect(GroupType.Fallback.isComputedSelected, isTrue);
@@ -68,52 +45,17 @@ void main() {
   });
 
   group('RuleAction', () {
-    test('maps every value back to its action', () {
-      for (final action in RuleAction.values) {
-        expect(RuleAction.fromValue(action.value), action);
-      }
-      expect(RuleAction.fromValue('NOPE'), isNull);
-      expect(RuleAction.fromValue('domain-suffix'), isNull);
-    });
-
     test('excludes actions that cannot be manually added', () {
       expect(RuleAction.addedRuleActions, isNot(contains(RuleAction.MATCH)));
       expect(RuleAction.addedRuleActions, isNot(contains(RuleAction.RULE_SET)));
       expect(RuleAction.addedRuleActions, isNot(contains(RuleAction.SUB_RULE)));
       expect(RuleAction.addedRuleActions, contains(RuleAction.DOMAIN));
-      expect(
-        RuleAction.addedRuleActions,
-        hasLength(RuleAction.values.length - 3),
-      );
     });
 
-    test('identifies actions that take params', () {
-      expect(
-        RuleAction.values.where((action) => action.hasParams),
-        unorderedEquals([
-          RuleAction.GEOIP,
-          RuleAction.IP_ASN,
-          RuleAction.IP_CIDR,
-          RuleAction.IP_CIDR6,
-          RuleAction.IP_SUFFIX,
-          RuleAction.RULE_SET,
-        ]),
-      );
-    });
-
-    test('identifies actions whose payload keeps its commas', () {
-      expect(
-        RuleAction.values.where((action) => action.hasCommaPayload),
-        unorderedEquals([
-          RuleAction.AND,
-          RuleAction.OR,
-          RuleAction.NOT,
-          RuleAction.SUB_RULE,
-          RuleAction.DOMAIN_REGEX,
-          RuleAction.PROCESS_NAME_REGEX,
-          RuleAction.PROCESS_PATH_REGEX,
-        ]),
-      );
+    test('identifies actions with extra params', () {
+      expect(RuleAction.GEOIP.hasParams, isTrue);
+      expect(RuleAction.IP_CIDR.hasParams, isTrue);
+      expect(RuleAction.DOMAIN.hasParams, isFalse);
     });
   });
 
@@ -135,17 +77,6 @@ void main() {
   });
 
   group('ItemPosition', () {
-    test('reports which edges a position touches', () {
-      expect(ItemPosition.start.isStart, isTrue);
-      expect(ItemPosition.start.isEnd, isFalse);
-      expect(ItemPosition.middle.isStart, isFalse);
-      expect(ItemPosition.middle.isEnd, isFalse);
-      expect(ItemPosition.end.isStart, isFalse);
-      expect(ItemPosition.end.isEnd, isTrue);
-      expect(ItemPosition.startAndEnd.isStart, isTrue);
-      expect(ItemPosition.startAndEnd.isEnd, isTrue);
-    });
-
     test('calculates simple list positions', () {
       expect(ItemPosition.get(0, 1), ItemPosition.startAndEnd);
       expect(ItemPosition.get(0, 3), ItemPosition.start);

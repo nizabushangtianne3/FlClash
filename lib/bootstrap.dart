@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:dynamic_color/dynamic_color.dart';
 import 'package:fl_clash/common/boot_guard.dart';
 import 'package:fl_clash/common/boot_record.dart';
 import 'package:fl_clash/common/common.dart';
@@ -17,10 +16,10 @@ import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/views/disclaimer.dart';
 import 'package:fl_clash/views/navigation.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:material_color_utilities/palettes/tonal_palette.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 class Bootstrap {
@@ -35,7 +34,7 @@ class Bootstrap {
 
   BootDecision _bootDecision = const BootDecision();
 
-  Future<ProviderContainer> init(int version, {Size? viewSize}) async {
+  Future<ProviderContainer> init(int version) async {
     globalState.appEnv = const String.fromEnvironment(
       'APP_ENV',
       defaultValue: 'pre',
@@ -43,32 +42,15 @@ class Bootstrap {
     windowPort = window;
     trayPort = appTray;
     navigationPort = navigation;
-    final packageInfoFuture = PackageInfo.fromPlatform();
-    final config = await migration.run();
-    // Only an adaptive theme needs the system palette.
-    final dynamicColor = config.themeProps.primaryColor == null
-        ? await _initDynamicColor()
-        : const (
-            lightSeed: null,
-            darkSeed: null,
-            accentColor: Color(defaultPrimaryColor),
-          );
-    return _initData(
-      version,
-      config,
-      dynamicColor,
-      packageInfoFuture,
-      viewSize,
-    );
+    final dynamicColor = await _initDynamicColor();
+    return _initData(version, dynamicColor);
   }
 
   Future<DynamicColorSeeds> _initDynamicColor() async {
-    TonalPalette? primaryPalette;
+    ({Color light, Color dark})? systemSeeds;
     Color? accentColor;
-    final primaryPaletteFuture = _getSystemPrimaryPalette();
-    final accentColorFuture = DynamicColorPlugin.getAccentColor();
     try {
-      primaryPalette = await primaryPaletteFuture;
+      systemSeeds = await DynamicColorPlugin.getSystemSeeds();
     } catch (error) {
       commonPrint.log(
         'Failed to get core palette: $error',
@@ -76,7 +58,7 @@ class Bootstrap {
       );
     }
     try {
-      accentColor = await accentColorFuture;
+      accentColor = await DynamicColorPlugin.getAccentColor();
     } catch (error) {
       commonPrint.log(
         'Failed to get accent color: $error',
@@ -84,8 +66,8 @@ class Bootstrap {
       );
     }
     return (
-      lightSeed: primaryPalette != null ? Color(primaryPalette.get(40)) : null,
-      darkSeed: primaryPalette != null ? Color(primaryPalette.get(80)) : null,
+      lightSeed: systemSeeds?.light,
+      darkSeed: systemSeeds?.dark,
       accentColor: accentColor ?? const Color(defaultPrimaryColor),
     );
   }
@@ -100,29 +82,13 @@ class Bootstrap {
     exit(0);
   }
 
-  Future<TonalPalette?> _getSystemPrimaryPalette() async {
-    final raw = await DynamicColorPlugin.channel.invokeMethod<List<dynamic>>(
-      DynamicColorPlugin.methodName,
-    );
-    if (raw == null || raw.length < TonalPalette.commonSize) {
-      return null;
-    }
-    return TonalPalette.fromList(
-      raw.sublist(0, TonalPalette.commonSize).cast<int>(),
-    );
-  }
-
   Future<ProviderContainer> _initData(
     int version,
-    Config initialConfig,
     DynamicColorSeeds dynamicColor,
-    Future<PackageInfo> packageInfoFuture,
-    Size? viewSize,
   ) async {
-    final delayMapFuture = preferences.getDelayMap();
     await _claimDataDirectory();
-    globalState.packageInfo = await packageInfoFuture;
-    var config = initialConfig;
+    globalState.packageInfo = await PackageInfo.fromPlatform();
+    var config = await migration.run();
     _bootDecision = await bootGuard.evaluate(
       profileId: config.currentProfileId,
     );
@@ -135,14 +101,12 @@ class Bootstrap {
       config = config.copyWith(patchClashConfig: patchClashConfig);
       await preferences.saveConfig(config);
     }
-    final restoredDelayMap = await delayMapFuture;
     final appState = AppState(
       brightness: WidgetsBinding.instance.platformDispatcher.platformBrightness,
       version: version,
-      viewSize: viewSize ?? Size.zero,
-      requests: FixedList(maxRequestsLength, keyOf: (request) => request.id),
+      viewSize: Size.zero,
+      requests: FixedList(maxRequestsLength),
       logs: FixedList(maxLogsLength),
-      delayMap: restoredDelayMap ?? const {},
       traffics: FixedList(trafficSampleLength),
       totalTraffic: const Traffic(),
       systemUiOverlayStyle: const SystemUiOverlayStyle(),
@@ -160,19 +124,13 @@ class Bootstrap {
           darkSeed: dynamicColor.darkSeed,
           accentColor: dynamicColor.accentColor,
         );
-    final locale =
-        getLocaleForString(config.appSettingProps.locale) ??
-        WidgetsBinding.instance.platformDispatcher.locale;
-    final profilesFuture = database.profilesDao.query().get();
-    final localizationFuture = AppLocalizations.load(locale);
-    final windowFuture =
-        window?.init(version, config.windowProps) ?? Future<void>.value();
-    final (profiles, _, _) = await (
-      profilesFuture,
-      localizationFuture,
-      windowFuture,
-    ).wait;
-    container.read(profilesProvider.notifier).setInitial(profiles);
+    final profiles = await database.profilesDao.query().get();
+    container.read(profilesProvider.notifier).reorder(profiles);
+    await AppLocalizations.load(
+      getLocaleForString(config.appSettingProps.locale) ??
+          WidgetsBinding.instance.platformDispatcher.locale,
+    );
+    await window?.init(version, config.windowProps);
     if (system.isAndroid) {
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
@@ -194,6 +152,8 @@ class Bootstrap {
     unawaited(
       _container.read(profilesActionProvider.notifier).autoUpdateProfiles(),
     );
+    unawaited(clearUpdateDownloads());
+    unawaited(_container.read(commonActionProvider.notifier).autoCheckUpdate());
     unawaited(
       autoLaunch?.updateStatus(_container.read(appSettingProvider).autoLaunch),
     );
@@ -203,17 +163,7 @@ class Bootstrap {
       unawaited(window?.hide());
     }
     await _handleFailedPreference();
-    final isFirstLaunch =
-        _container.read(
-          appSettingProvider.select((state) => state.acceptedDisclaimerVersion),
-        ) ==
-        0;
-    if (!isFirstLaunch) {
-      unawaited(
-        _container.read(commonActionProvider.notifier).autoCheckUpdate(),
-      );
-    }
-    if (!await _handlerDisclaimer(isFirstLaunch)) {
+    if (!await _handlerDisclaimer()) {
       return;
     }
     await _showCrashRecoveryTip();
@@ -223,12 +173,9 @@ class Bootstrap {
     }
     _container.read(initProvider.notifier).value = true;
     unawaited(_container.read(resourcesActionProvider.notifier).autoUpdate());
+    unawaited(_container.read(mitmModulesActionProvider.notifier).autoUpdate());
     await bootGuard.markRunning();
-    if (!isFirstLaunch) {
-      unawaited(
-        _container.read(locationPermissionsProvider.notifier).refresh(),
-      );
-    }
+    unawaited(_container.read(locationPermissionsProvider.notifier).refresh());
   }
 
   Future<void> _showCrashRecoveryTip() async {
@@ -283,21 +230,15 @@ class Bootstrap {
 
   /// Android's exit only finishes the activity, so Dart keeps running after
   /// [SystemAction.handleExit] returns and must not go on to start the app.
-  Future<bool> _handlerDisclaimer(bool isFirstLaunch) async {
+  Future<bool> _handlerDisclaimer() async {
     final acceptedVersion = _container.read(
       appSettingProvider.select((state) => state.acceptedDisclaimerVersion),
     );
-    final accepted = acceptedVersion >= disclaimerVersion;
-    if (accepted || (!isFirstLaunch && _isDisclaimerAcceptedByEnvironment)) {
-      _container
-          .read(appSettingProvider.notifier)
-          .update(
-            (state) =>
-                state.copyWith(acceptedDisclaimerVersion: disclaimerVersion),
-          );
+    if (acceptedVersion >= disclaimerVersion) {
       return true;
     }
-    final isDisclaimerAccepted = await requestDisclaimerConsent();
+    final isDisclaimerAccepted =
+        _isDisclaimerAcceptedByEnvironment || await requestDisclaimerConsent();
     if (!isDisclaimerAccepted) {
       await _container.read(systemActionProvider.notifier).handleExit();
       return false;

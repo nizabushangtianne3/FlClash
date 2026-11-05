@@ -60,7 +60,7 @@ func TestProfileBaseLeavesTheSharedParseWhole(t *testing.T) {
 	t.Cleanup(forgetProfileRaw)
 	path := writeBaseProfile(t, baseProfile)
 
-	base, err := handleGetProfileBase(path)
+	base, err := handleGetProfileBase(PathParams{Path: path})
 	if err != nil {
 		t.Fatalf("getProfileBase: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestProfileBaseLeavesTheSharedParseWhole(t *testing.T) {
 		t.Fatalf("base = %d proxies, %d groups, want 2 and 1", base.Proxies, base.ProxyGroups)
 	}
 
-	outbounds, err := handleGetProfileOutbounds(path)
+	outbounds, err := handleGetProfileOutbounds(PathParams{Path: path})
 	if err != nil {
 		t.Fatalf("getProfileOutbounds: %v", err)
 	}
@@ -84,11 +84,11 @@ func TestReadRawConfigReusesTheParse(t *testing.T) {
 	t.Cleanup(forgetProfileRaw)
 	path := writeBaseProfile(t, baseProfile)
 
-	first, _, err := readRawConfig(path)
+	first, _, err := readCachedRawConfig(path)
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	second, _, err := readRawConfig(path)
+	second, _, err := readCachedRawConfig(path)
 	if err != nil {
 		t.Fatalf("read again: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestReadRawConfigReusesTheParse(t *testing.T) {
 	}
 
 	changed := strings.Replace(baseProfile, "mixed-port: 7000", "mixed-port: 7001", 1)
-	third, _, err := readRawConfig(writeBaseProfile(t, changed))
+	third, _, err := readCachedRawConfig(writeBaseProfile(t, changed))
 	if err != nil {
 		t.Fatalf("read changed: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestReadRawConfigReusesTheParse(t *testing.T) {
 	}
 
 	forgetProfileRaw()
-	fourth, _, err := readRawConfig(path)
+	fourth, _, err := readCachedRawConfig(path)
 	if err != nil {
 		t.Fatalf("read after forgetting: %v", err)
 	}
@@ -162,7 +162,7 @@ func ruleStrings(cfg *config.Config) []string {
 func TestHandleGetProfileBaseLeavesTheBulkSectionsInTheCore(t *testing.T) {
 	path := writeBaseProfile(t, baseProfile)
 
-	base, err := handleGetProfileBase(path)
+	base, err := handleGetProfileBase(PathParams{Path: path})
 
 	if err != nil {
 		t.Fatalf("handleGetProfileBase = %v", err)
@@ -189,7 +189,7 @@ func TestHandleGetProfileBaseLeavesTheBulkSectionsInTheCore(t *testing.T) {
 func TestHandleGetProfileOutboundsListsOnlyNamesAndTypes(t *testing.T) {
 	path := writeBaseProfile(t, baseProfile)
 
-	outbounds, err := handleGetProfileOutbounds(path)
+	outbounds, err := handleGetProfileOutbounds(PathParams{Path: path})
 
 	if err != nil {
 		t.Fatalf("handleGetProfileOutbounds = %v", err)
@@ -206,7 +206,7 @@ func TestHandleGetProfileOutboundsListsOnlyNamesAndTypes(t *testing.T) {
 func TestHandleBuildProfileWritesTheMergedConfigWhereTheHostReadsSpills(t *testing.T) {
 	withSpillHome(t, responseSpillThreshold)
 	path := writeBaseProfile(t, baseProfile)
-	base, err := handleGetProfileBase(path)
+	base, err := handleGetProfileBase(PathParams{Path: path})
 	if err != nil {
 		t.Fatalf("handleGetProfileBase = %v", err)
 	}
@@ -231,7 +231,7 @@ func TestHandleBuildProfileWritesTheMergedConfigWhereTheHostReadsSpills(t *testi
 
 func TestLoadConfigWithBasePutsTheAddedRulesFirstAndTheOverlayOverTheRest(t *testing.T) {
 	path := writeBaseProfile(t, baseProfile)
-	base, err := handleGetProfileBase(path)
+	base, err := handleGetProfileBase(PathParams{Path: path})
 	if err != nil {
 		t.Fatalf("handleGetProfileBase = %v", err)
 	}
@@ -275,7 +275,7 @@ func TestLoadConfigWithBasePutsTheAddedRulesFirstAndTheOverlayOverTheRest(t *tes
 // profile, and the anchor it was written with sits in a section the overlay drops.
 func TestLoadConfigWithBaseWritesAConfigThatLoadsAlone(t *testing.T) {
 	path := writeBaseProfile(t, baseProfile)
-	base, err := handleGetProfileBase(path)
+	base, err := handleGetProfileBase(PathParams{Path: path})
 	if err != nil {
 		t.Fatalf("handleGetProfileBase = %v", err)
 	}
@@ -299,9 +299,9 @@ func TestLoadConfigWithBaseWritesAConfigThatLoadsAlone(t *testing.T) {
 	if len(reloaded.Proxies) != len(cfg.Proxies) {
 		t.Errorf("reloaded %d proxies, want %d", len(reloaded.Proxies), len(cfg.Proxies))
 	}
-	raw, err := handleGetConfig(configPath)
+	raw, err := readRawConfig(configPath)
 	if err != nil {
-		t.Fatalf("handleGetConfig(config.yaml) = %v", err)
+		t.Fatalf("readRawConfig(config.yaml) = %v", err)
 	}
 	for _, proxy := range raw.Proxy {
 		if proxy["name"] != "b" {
@@ -351,7 +351,7 @@ func TestLoadSetupConfigReadsConfigYamlWithoutABase(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	cfg, err := loadSetupConfig(defaultSetupParams())
+	cfg, err := loadSetupConfig(&SetupParams{})
 
 	if err != nil {
 		t.Fatalf("loadSetupConfig = %v", err)
@@ -370,15 +370,15 @@ func TestHandleGetProxyDefinitionReadsTheRunningConfig(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	merged, err := handleGetProxyDefinition("a")
+	merged, err := handleGetProxyDefinition(NameParams{Name: "a"})
 	if err != nil {
 		t.Fatalf("handleGetProxyDefinition(a) = %v", err)
 	}
-	reality, err := handleGetProxyDefinition("b")
+	reality, err := handleGetProxyDefinition(NameParams{Name: "b"})
 	if err != nil {
 		t.Fatalf("handleGetProxyDefinition(b) = %v", err)
 	}
-	group, err := handleGetProxyDefinition("g")
+	group, err := handleGetProxyDefinition(NameParams{Name: "g"})
 	if err != nil {
 		t.Fatalf("handleGetProxyDefinition(g) = %v", err)
 	}
@@ -421,7 +421,7 @@ func TestHandleGetProxyDefinitionReadsAProviderProxyAsItsProviderBuildsIt(t *tes
 			t.Fatalf("write %s: %v", path, err)
 		}
 	}
-	raw, err := handleGetConfig(runningConfigPath())
+	raw, err := readRawConfig(runningConfigPath())
 	if err != nil {
 		t.Fatalf("read running config: %v", err)
 	}
@@ -444,7 +444,7 @@ func TestHandleGetProxyDefinitionReadsAProviderProxyAsItsProviderBuildsIt(t *tes
 		"c":   {"name": "c", "type": "socks5", "server": "127.0.0.3", "port": 1080},
 		"a":   nil,
 	} {
-		got, err := handleGetProxyDefinition(name)
+		got, err := handleGetProxyDefinition(NameParams{Name: name})
 		if err != nil {
 			t.Fatalf("handleGetProxyDefinition(%s) = %v", name, err)
 		}
@@ -494,7 +494,7 @@ func TestEncodeConfigMappingKeepsEveryKeyAfterAnOpenEndedScalar(t *testing.T) {
 // often it has been through the writer.
 func TestMergeProfileBaseProducesTheSameDocumentTwice(t *testing.T) {
 	path := writeBaseProfile(t, baseProfile)
-	base, err := handleGetProfileBase(path)
+	base, err := handleGetProfileBase(PathParams{Path: path})
 	if err != nil {
 		t.Fatalf("handleGetProfileBase = %v", err)
 	}

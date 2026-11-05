@@ -1,28 +1,22 @@
-import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/widgets/widgets.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_ui/material_ui.dart';
 
 import '../helpers/test_app.dart';
+import '../helpers/host_scaffold.dart';
 
 void main() {
   testWidgets('hides expiry when both values do not fit', (tester) async {
     const trafficLabel = '1KB / 1GB';
 
     await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: const [
-          AppLocalizations.delegate,
-          AppUiLocalizations.delegate,
-          ...GlobalMaterialLocalizations.delegates,
-        ],
-        supportedLocales: AppLocalizations.delegate.supportedLocales,
+      HostApp(
         builder: (context, child) {
           return wrapAppScopes(context, child!);
         },
-        home: const Scaffold(
+        home: const HostScaffold(
           body: SizedBox(
             width: 120,
             child: SubscriptionInfoView(
@@ -52,15 +46,9 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
+      HostApp(
         builder: (context, child) => wrapAppScopes(context, child!),
-        localizationsDelegates: const [
-          AppLocalizations.delegate,
-          AppUiLocalizations.delegate,
-          ...GlobalMaterialLocalizations.delegates,
-        ],
-        supportedLocales: AppLocalizations.delegate.supportedLocales,
-        home: const Scaffold(
+        home: const HostScaffold(
           body: SizedBox(
             width: 300,
             child: SubscriptionInfoView(
@@ -85,67 +73,15 @@ void main() {
     );
   });
 
-  testWidgets('the expiry follows the width it is laid out in', (tester) async {
-    Future<void> pumpAt(double width) {
-      return tester.pumpWidget(
-        MaterialApp(
-          builder: (context, child) => wrapAppScopes(context, child!),
-          localizationsDelegates: const [
-            AppLocalizations.delegate,
-            AppUiLocalizations.delegate,
-            ...GlobalMaterialLocalizations.delegates,
-          ],
-          supportedLocales: AppLocalizations.delegate.supportedLocales,
-          home: Scaffold(
-            body: SizedBox(
-              width: width,
-              child: const SubscriptionInfoView(
-                subscriptionInfo: SubscriptionInfo(
-                  upload: 1024,
-                  total: 1073741824,
-                  expire: 4102444800,
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    await pumpAt(120);
-    expect(
-      find.descendant(
-        of: find.byType(SubscriptionInfoView),
-        matching: find.byType(Text),
-      ),
-      findsOneWidget,
-    );
-
-    await pumpAt(300);
-    expect(
-      find.descendant(
-        of: find.byType(SubscriptionInfoView),
-        matching: find.byType(Text),
-      ),
-      findsNWidgets(2),
-    );
-  });
-
   testWidgets('shows full subscription details in information rows', (
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: const [
-          AppLocalizations.delegate,
-          AppUiLocalizations.delegate,
-          ...GlobalMaterialLocalizations.delegates,
-        ],
-        supportedLocales: AppLocalizations.delegate.supportedLocales,
+      HostApp(
         builder: (context, child) {
           return wrapAppScopes(context, child!);
         },
-        home: const Scaffold(
+        home: const HostScaffold(
           body: SubscriptionInfoDetailView(
             subscriptionInfo: SubscriptionInfo(
               upload: 1024,

@@ -1,20 +1,18 @@
-import 'package:fl_clash/ui/keyed_animated_list.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:prism_ui/prism_ui.dart';
+import '../helpers/host_scaffold.dart';
+import '../helpers/test_app.dart';
 
 void main() {
-  setUp(() {
-    keyedAnimatedListIndexBuilds = 0;
-  });
-
   Widget buildList(List<String> items) {
-    return MaterialApp(
-      home: Scaffold(
+    return HostApp(
+      home: HostScaffold(
         body: KeyedAnimatedList<String>(
           items: items,
           keyOf: (item) => item,
           separator: const Divider(height: 0),
-          itemBuilder: (_, item, _) => SizedBox(
+          itemBuilder: (_, item) => SizedBox(
             key: ValueKey('row-$item'),
             height: 40,
             child: Text(item),
@@ -93,6 +91,7 @@ void main() {
   ) async {
     final visible = [for (var i = 0; i < 30; i++) '$i'];
     await tester.pumpWidget(buildList(visible));
+    await tester.pumpAndSettle();
     await tester.pumpWidget(
       buildList([...visible, for (var i = 30; i < 70; i++) '$i']),
     );
@@ -127,56 +126,43 @@ void main() {
     expect(topOf(tester, '10'), 400);
   });
 
-  testWidgets('a row is built with its position among the items', (
-    tester,
-  ) async {
-    final positions = <String, int?>{};
-    Widget buildList(List<String> items) {
-      return MaterialApp(
-        home: Scaffold(
-          body: KeyedAnimatedList<String>(
-            items: items,
-            keyOf: (item) => item,
-            itemBuilder: (_, item, index) {
-              positions[item] = index;
-              return SizedBox(
-                key: ValueKey('row-$item'),
-                height: 40,
-                child: Text(item),
-              );
-            },
-          ),
+  testWidgets('a row keeps its state as it settles', (tester) async {
+    var mounts = 0;
+    Widget build(List<String> items) => HostApp(
+      home: HostScaffold(
+        body: KeyedAnimatedList<String>(
+          items: items,
+          keyOf: (item) => item,
+          itemBuilder: (_, item) => _CountsMounts(onMount: () => mounts++),
         ),
-      );
-    }
-
-    await tester.pumpWidget(buildList(const ['a', 'b', 'c']));
-    expect(positions, {'a': 0, 'b': 1, 'c': 2});
-
-    await tester.pumpWidget(buildList(const ['c', 'a']));
-    expect(positions, {'a': 1, 'b': null, 'c': 0});
+      ),
+    );
+    await tester.pumpWidget(build(const ['a']));
+    await tester.pumpWidget(build(const ['b', 'a']));
+    await tester.pump();
+    expect(mounts, 2);
 
     await tester.pumpAndSettle();
-    expect(find.text('b'), findsNothing);
+    expect(mounts, 2);
   });
+}
 
-  testWidgets('a rebuild with the same items keeps the index table', (
-    tester,
-  ) async {
-    const items = ['a', 'b', 'c'];
-    await tester.pumpWidget(buildList(items));
-    expect(keyedAnimatedListIndexBuilds, 1);
+class _CountsMounts extends StatefulWidget {
+  const _CountsMounts({required this.onMount});
 
-    await tester.pumpWidget(buildList(items));
-    expect(keyedAnimatedListIndexBuilds, 1);
-  });
+  final VoidCallback onMount;
 
-  testWidgets('a refresh over new item objects builds it once', (tester) async {
-    await tester.pumpWidget(buildList(const ['a', 'b', 'c']));
-    expect(keyedAnimatedListIndexBuilds, 1);
+  @override
+  State<_CountsMounts> createState() => _CountsMountsState();
+}
 
-    await tester.pumpWidget(buildList(['a', 'b', 'c']));
-    await tester.pump();
-    expect(keyedAnimatedListIndexBuilds, 2);
-  });
+class _CountsMountsState extends State<_CountsMounts> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onMount();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(height: 40);
 }

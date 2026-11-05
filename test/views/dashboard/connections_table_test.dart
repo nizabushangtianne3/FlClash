@@ -9,13 +9,15 @@ import 'package:fl_clash/views/dashboard/dashboard.dart';
 import 'package:fl_clash/views/dashboard/layout.dart';
 import 'package:fl_clash/views/dashboard/widgets/widgets.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:prism_ui/prism_list.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../helpers/test_app.dart';
 import '../../helpers/test_profiles.dart';
+import '../../helpers/host_scaffold.dart';
 
 class _MockCore extends Mock implements CoreHandlerInterface {}
 
@@ -57,10 +59,7 @@ void main() {
     globalState.container = container;
     container.listen(appSettingProvider, (_, _) {});
     final requests = container.read(requestsProvider.notifier);
-    requests.value = FixedList<TrackerInfo>(
-      500,
-      keyOf: (request) => request.id,
-    );
+    requests.value = FixedList<TrackerInfo>(500);
     requests.addRequest(_request('gamma.test', 10));
     requests.addRequest(_request('alpha.test', 30));
     requests.addRequest(_request('beta.test', 20));
@@ -114,29 +113,6 @@ void main() {
     await teardown(tester);
   });
 
-  testWidgets('the requests feed keeps its newest hundred rows', (
-    tester,
-  ) async {
-    final requests = container.read(requestsProvider.notifier);
-    requests.value = FixedList<TrackerInfo>(
-      500,
-      keyOf: (request) => request.id,
-    );
-    for (var index = 0; index < 150; index++) {
-      requests.addRequest(_request('request-$index.test', index));
-    }
-    await pumpRequestsTable(tester);
-
-    expect(
-      topOf(tester, 'request-149.test'),
-      lessThan(topOf(tester, 'request-148.test')),
-    );
-    final list = tester.widget<ListView>(find.byType(ListView));
-    expect(list.childrenDelegate.estimatedChildCount, 100);
-
-    await teardown(tester);
-  });
-
   testWidgets('a column dragged wider in the card keeps its width', (
     tester,
   ) async {
@@ -173,18 +149,15 @@ void main() {
   testWidgets('the table keeps the newest rows, sorts every connection and '
       'counts them all', (tester) async {
     final core = _MockCore();
-    when(() => core.getConnections(resync: any(named: 'resync'))).thenAnswer(
-      (_) async => ConnectionDelta(
-        added: [
-          for (var index = 0; index < 150; index++)
-            _connection(
-              index,
-              network: index < 130 ? 'tcp' : 'udp',
-              download: index == 0 ? 1 << 30 : index,
-            ),
-        ],
-        count: 150,
-      ),
+    when(() => core.getConnections()).thenAnswer(
+      (_) async => [
+        for (var index = 0; index < 150; index++)
+          _connection(
+            index,
+            network: index < 130 ? 'tcp' : 'udp',
+            download: index == 0 ? 1 << 30 : index,
+          ),
+      ],
     );
     final connections = ProviderContainer(
       overrides: [
@@ -206,7 +179,7 @@ void main() {
       UncontrolledProviderScope(
         container: connections,
         child: const TestApp(
-          child: Scaffold(
+          child: HostScaffold(
             body: SizedBox(
               width: 960,
               height: 600,
@@ -226,8 +199,8 @@ void main() {
     expect(find.text('TCP 130'), findsOneWidget);
     expect(find.text('UDP 20'), findsOneWidget);
     expect(find.text('host-149.test'), findsOneWidget);
-    final list = tester.widget<ListView>(find.byType(ListView));
-    expect(list.childrenDelegate.estimatedChildCount, 100);
+    final list = tester.widget<PrismListView>(find.byType(PrismListView));
+    expect(list.itemCount, 100);
     expect(find.text('host-0.test'), findsNothing);
 
     await tester.tap(find.text('Download'));

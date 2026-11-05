@@ -65,7 +65,7 @@ func withProbeProxies(t *testing.T, names ...string) {
 	t.Cleanup(func() { tunnel.UpdateProxies(nil, nil) })
 }
 
-func TestHandleProbePinsTheNamedProxy(t *testing.T) {
+func TestRunProbePinsTheNamedProxy(t *testing.T) {
 	var userAgent string
 	server := probeServer(t, func(w http.ResponseWriter, r *http.Request) {
 		userAgent = r.UserAgent()
@@ -74,16 +74,16 @@ func TestHandleProbePinsTheNamedProxy(t *testing.T) {
 	})
 	withProbeProxies(t, "node-a")
 
-	result := handleProbe(&ProbeParams{
-		Url:       server.URL + "/trace",
-		ProxyName: "node-a",
-		Headers:   map[string]string{"User-Agent": "probe-test"},
-		Timeout:   2000,
-		MaxBody:   1024,
+	result := runProbe(context.Background(), probeRequest{
+		url:       server.URL + "/trace",
+		proxyName: "node-a",
+		headers:   map[string]string{"User-Agent": "probe-test"},
+		timeout:   2000 * time.Millisecond,
+		maxBody:   1024,
 	})
 
 	if result == nil {
-		t.Fatal("handleProbe = nil, want a result")
+		t.Fatal("runProbe = nil, want a result")
 	}
 	if result.Error != "" {
 		t.Fatalf("error = %q (%s), want none", result.Error, result.Message)
@@ -105,7 +105,7 @@ func TestHandleProbePinsTheNamedProxy(t *testing.T) {
 	}
 }
 
-func TestHandleProbeFollowsRedirectsAndCapsTheBody(t *testing.T) {
+func TestRunProbeFollowsRedirectsAndCapsTheBody(t *testing.T) {
 	server := probeServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			http.Redirect(w, r, "/final", http.StatusFound)
@@ -115,7 +115,7 @@ func TestHandleProbeFollowsRedirectsAndCapsTheBody(t *testing.T) {
 	})
 	withProbeProxies(t, "node-a")
 
-	result := handleProbe(&ProbeParams{Url: server.URL, ProxyName: "node-a", Timeout: 2000, MaxBody: 8})
+	result := runProbe(context.Background(), probeRequest{url: server.URL, proxyName: "node-a", timeout: 2000 * time.Millisecond, maxBody: 8})
 
 	if result == nil || result.Error != "" {
 		t.Fatalf("result = %+v, want a success", result)
@@ -175,13 +175,13 @@ func TestReadProbeBodyKeepsTheCapWithoutAMarker(t *testing.T) {
 	}
 }
 
-func TestHandleProbeSkipsTheBodyWhenNotAsked(t *testing.T) {
+func TestRunProbeSkipsTheBodyWhenNotAsked(t *testing.T) {
 	server := probeServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	withProbeProxies(t, "node-a")
 
-	result := handleProbe(&ProbeParams{Url: server.URL, ProxyName: "node-a", Timeout: 2000})
+	result := runProbe(context.Background(), probeRequest{url: server.URL, proxyName: "node-a", timeout: 2000 * time.Millisecond})
 
 	if result == nil || result.Error != "" {
 		t.Fatalf("result = %+v, want a success", result)
@@ -191,15 +191,15 @@ func TestHandleProbeSkipsTheBodyWhenNotAsked(t *testing.T) {
 	}
 }
 
-func TestHandleProbeReportsATimeout(t *testing.T) {
+func TestRunProbeReportsATimeout(t *testing.T) {
 	addr := blackHoleServer(t)
 	withProbeProxies(t, "node-a")
 
 	start := time.Now()
-	result := handleProbe(&ProbeParams{Url: "http://" + addr.String(), ProxyName: "node-a", Timeout: 200})
+	result := runProbe(context.Background(), probeRequest{url: "http://" + addr.String(), proxyName: "node-a", timeout: 200 * time.Millisecond})
 
 	if result == nil {
-		t.Fatal("handleProbe = nil, want a result")
+		t.Fatal("runProbe = nil, want a result")
 	}
 	if result.Error != probeErrorTimeout {
 		t.Errorf("error = %q (%s), want timeout", result.Error, result.Message)
@@ -209,13 +209,13 @@ func TestHandleProbeReportsATimeout(t *testing.T) {
 	}
 }
 
-func TestHandleProbeReportsARefusedConnection(t *testing.T) {
+func TestRunProbeReportsARefusedConnection(t *testing.T) {
 	server := probeServer(t, func(http.ResponseWriter, *http.Request) {})
 	url := server.URL
 	server.Close()
 	withProbeProxies(t, "node-a")
 
-	result := handleProbe(&ProbeParams{Url: url, ProxyName: "node-a", Timeout: 2000})
+	result := runProbe(context.Background(), probeRequest{url: url, proxyName: "node-a", timeout: 2000 * time.Millisecond})
 
 	if result == nil || result.Error != probeErrorFailed {
 		t.Fatalf("result = %+v, want a failed probe", result)
@@ -225,7 +225,7 @@ func TestHandleProbeReportsARefusedConnection(t *testing.T) {
 	}
 }
 
-func TestHandleProbeRejectsAnUnknownProxyWithoutWaitingForASlot(t *testing.T) {
+func TestRunProbeRejectsAnUnknownProxyWithoutWaitingForASlot(t *testing.T) {
 	for i := 0; i < probeConcurrency; i++ {
 		probeSlots <- struct{}{}
 	}
@@ -237,7 +237,7 @@ func TestHandleProbeRejectsAnUnknownProxyWithoutWaitingForASlot(t *testing.T) {
 
 	done := make(chan *ProbeResult, 1)
 	go func() {
-		done <- handleProbe(&ProbeParams{Url: "http://example.invalid", ProxyName: "missing", Timeout: 1})
+		done <- runProbe(context.Background(), probeRequest{url: "http://example.invalid", proxyName: "missing", timeout: 1 * time.Millisecond})
 	}()
 
 	select {
@@ -250,7 +250,7 @@ func TestHandleProbeRejectsAnUnknownProxyWithoutWaitingForASlot(t *testing.T) {
 	}
 }
 
-func TestHandleProbeGivesUpQueueingOnTheDeadline(t *testing.T) {
+func TestRunProbeGivesUpQueueingOnTheDeadline(t *testing.T) {
 	for i := 0; i < probeConcurrency; i++ {
 		probeSlots <- struct{}{}
 	}
@@ -261,12 +261,12 @@ func TestHandleProbeGivesUpQueueingOnTheDeadline(t *testing.T) {
 	})
 	withProbeProxies(t, "node-a")
 
-	if result := handleProbe(&ProbeParams{Url: "http://example.invalid", ProxyName: "node-a", Timeout: 50}); result != nil {
+	if result := runProbe(context.Background(), probeRequest{url: "http://example.invalid", proxyName: "node-a", timeout: 50 * time.Millisecond}); result != nil {
 		t.Errorf("result = %+v, want nil when no slot was granted", result)
 	}
 }
 
-func TestHandleProbeRoutesThroughTheTunnel(t *testing.T) {
+func TestRunProbeRoutesThroughTheTunnel(t *testing.T) {
 	server := probeServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("routed"))
 	})
@@ -274,7 +274,7 @@ func TestHandleProbeRoutesThroughTheTunnel(t *testing.T) {
 	tunnel.OnRunning()
 	t.Cleanup(tunnel.OnSuspend)
 
-	result := handleProbe(&ProbeParams{Url: server.URL, Timeout: 2000, MaxBody: 64})
+	result := runProbe(context.Background(), probeRequest{url: server.URL, timeout: 2000 * time.Millisecond, maxBody: 64})
 
 	if result == nil || result.Error != "" {
 		t.Fatalf("result = %+v, want a success", result)
@@ -319,7 +319,7 @@ func (c *earlyDataConn) Write(b []byte) (int, error) {
 	return c.Conn.Write(b)
 }
 
-func TestHandleProbeSendsTheRequestWithTheHandshake(t *testing.T) {
+func TestRunProbeSendsTheRequestWithTheHandshake(t *testing.T) {
 	server := probeServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("routed"))
 	})
@@ -331,7 +331,7 @@ func TestHandleProbeSendsTheRequestWithTheHandshake(t *testing.T) {
 	tunnel.OnRunning()
 	t.Cleanup(tunnel.OnSuspend)
 
-	result := handleProbe(&ProbeParams{Url: server.URL, Timeout: 2000, MaxBody: 64})
+	result := runProbe(context.Background(), probeRequest{url: server.URL, timeout: 2000 * time.Millisecond, maxBody: 64})
 
 	if result == nil || result.Error != "" {
 		t.Fatalf("result = %+v, want a success", result)
@@ -344,7 +344,7 @@ func TestHandleProbeSendsTheRequestWithTheHandshake(t *testing.T) {
 	}
 }
 
-func TestHandleProbeWaitsOutASuspendedTunnel(t *testing.T) {
+func TestRunProbeWaitsOutASuspendedTunnel(t *testing.T) {
 	server := probeServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("resumed"))
 	})
@@ -353,7 +353,7 @@ func TestHandleProbeWaitsOutASuspendedTunnel(t *testing.T) {
 	t.Cleanup(tunnel.OnSuspend)
 	time.AfterFunc(150*time.Millisecond, tunnel.OnRunning)
 
-	result := handleProbe(&ProbeParams{Url: server.URL, Timeout: 2000, MaxBody: 64})
+	result := runProbe(context.Background(), probeRequest{url: server.URL, timeout: 2000 * time.Millisecond, maxBody: 64})
 
 	if result == nil || result.Error != "" {
 		t.Fatalf("result = %+v, want the answer once the tunnel runs again", result)
@@ -363,50 +363,17 @@ func TestHandleProbeWaitsOutASuspendedTunnel(t *testing.T) {
 	}
 }
 
-func TestHandleProbeTimesOutWhileTheTunnelStaysSuspended(t *testing.T) {
+func TestRunProbeTimesOutWhileTheTunnelStaysSuspended(t *testing.T) {
 	server := probeServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("unreachable"))
 	})
 	withProbeProxies(t, "DIRECT")
 	tunnel.OnSuspend()
 
-	result := handleProbe(&ProbeParams{Url: server.URL, Timeout: 200})
+	result := runProbe(context.Background(), probeRequest{url: server.URL, timeout: 200 * time.Millisecond})
 
 	if result == nil || result.Error != probeErrorTimeout {
 		t.Fatalf("result = %+v, want a timeout", result)
-	}
-}
-
-func TestProbeRequestsShareTheConnectionOfAServiceCheck(t *testing.T) {
-	server, accepted := probeConnectionServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("region"))
-	})
-	withProbeProxies(t, "node-pool")
-	forgetProbeConnections()
-	t.Cleanup(forgetProbeConnections)
-
-	// A check walks the same host in sequence: register a device, exchange the
-	// assertion, ask the session. Each step is its own probe request.
-	requests := []*ProbeParams{
-		{Url: server.URL + "/devices", ProxyName: "node-pool", Timeout: 2000, MaxBody: 64},
-		{Url: server.URL + "/token", ProxyName: "node-pool", Timeout: 2000, MaxBody: 64},
-		{Url: server.URL + "/graphql", ProxyName: "node-pool", Timeout: 2000, MaxBody: 64},
-	}
-	for index, params := range requests {
-		result := handleProbe(params)
-		if result == nil || result.Error != "" {
-			t.Fatalf("probe %d = %+v, want a success", index, result)
-		}
-		if result.Body != "region" {
-			t.Errorf("probe %d body = %q", index, result.Body)
-		}
-		if !slices.Equal(result.Chains, []string{"node-pool"}) {
-			t.Errorf("probe %d chains = %v, want the proxy it went through", index, result.Chains)
-		}
-	}
-
-	if got := accepted.Load(); got != 1 {
-		t.Errorf("connections accepted = %d, want the requests after the first to reuse it", got)
 	}
 }
 

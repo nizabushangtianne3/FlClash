@@ -163,18 +163,17 @@ IpInfo Function(String) _json(IpInfo Function(Map<String, dynamic>) parse) {
 
 final Map<String, IpInfo Function(String)> ipInfoSources = {
   'https://www.cloudflare.com/cdn-cgi/trace': IpInfo.fromCloudflareTrace,
-  'https://ident.me/json': _json(IpInfo.fromIdentMeJson),
   'https://api.ip.sb/geoip': _json(IpInfo.fromIpSbJson),
+  'https://ipinfo.io/json': _json(IpInfo.fromIpInfoIoJson),
   'https://ipwho.is': _json(IpInfo.fromIpWhoIsJson),
   'https://get.geojs.io/v1/ip/geo.json': _json(IpInfo.fromGeoJsJson),
   'https://api.country.is': _json(IpInfo.fromCountryIsJson),
   'https://api.ipquery.io/?format=json': _json(IpInfo.fromIpQueryJson),
-  'http://ip-api.com/json': _json(IpInfo.fromIpAPIJson),
-  'https://ipinfo.io/json': _json(IpInfo.fromIpInfoIoJson),
+  'https://ident.me/json': _json(IpInfo.fromIdentMeJson),
 };
 
 /// Raw so the route stamp survives; [parseOutboundIp] reads the address.
-Future<OutboundIpResult?> lookupOutboundIp(
+Future<OutboundIpResult> lookupOutboundIp(
   CoreController core,
   String proxyName, {
   Duration timeout = outboundIpTimeoutDuration,
@@ -188,8 +187,8 @@ Future<OutboundIpResult?> lookupOutboundIp(
   );
 }
 
-IpInfo? parseOutboundIp(OutboundIpResult? result) {
-  if (result == null || result.error != null || result.body.isEmpty) {
+IpInfo? parseOutboundIp(OutboundIpResult result) {
+  if (result.error != null || result.body.isEmpty) {
     return null;
   }
   final parse = ipInfoSources[result.url];

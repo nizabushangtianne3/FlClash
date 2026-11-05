@@ -54,7 +54,7 @@ void main() {
     final file = spill(spillDirectory, {
       'id': '4',
       'result': {
-        'added': [
+        'connections': [
           {
             'id': 'c1',
             'metadata': {'network': 'tcp'},
@@ -64,17 +64,15 @@ void main() {
             'rulePayload': '',
           },
         ],
-        'removed': [],
-        'count': 1,
       },
     });
 
     final response = await resolveSpilledResponse(
       CoreMethodResponse(id: '4', file: file.path),
-      method: CoreMethod.getConnections,
+      method: CoreMethod.connectionList,
     );
 
-    expect(response.unwrap<ConnectionDelta>()?.added.single.id, 'c1');
+    expect(response.unwrap<List<TrackerInfo>>()?.single.id, 'c1');
   });
 
   test('refuses a file outside the spill directory', () async {

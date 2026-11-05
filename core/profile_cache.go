@@ -39,7 +39,7 @@ var profileRawCache struct {
 }
 
 // readRawConfig parses [path], reusing the parse when the file is unchanged.
-func readRawConfig(path string) (*config.RawConfig, []byte, error) {
+func readCachedRawConfig(path string) (*config.RawConfig, []byte, error) {
 	buf, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, err

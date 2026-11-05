@@ -76,9 +76,7 @@ func sameProbeMetadata(left, right *constant.Metadata) bool {
 }
 
 type probeRoute struct {
-	chains      []string
-	rule        string
-	rulePayload string
+	chains []string
 }
 
 // probeDialer opens one connection per dial, either pinned to a proxy or
@@ -263,11 +261,7 @@ func notifyProbeRoute(tracker statistic.Tracker) {
 	if pending == nil {
 		return
 	}
-	pending.settle(&probeRoute{
-		chains:      append([]string(nil), info.Chain...),
-		rule:        info.Rule,
-		rulePayload: info.RulePayload,
-	})
+	pending.settle(&probeRoute{chains: append([]string(nil), info.Chain...)})
 }
 
 // Multi-request checks and repeating probes share one transport per proxy; the
@@ -367,15 +361,20 @@ type probeRequest struct {
 	recorder *hitRecorder
 }
 
-func handleProbe(params *ProbeParams) *ProbeResult {
-	return runProbe(context.Background(), probeRequest{
-		method:    http.MethodGet,
-		url:       params.Url,
-		proxyName: params.ProxyName,
-		headers:   params.Headers,
-		timeout:   timeoutFromMillis(params.Timeout, defaultProbeTimeout),
-		maxBody:   params.MaxBody,
-	})
+type ProbeResult struct {
+	StatusCode   int
+	Delay        int64
+	Body         string
+	Url          string
+	Chains       []string
+	Error        string
+	Message      string
+	CoreEpoch    uint64
+	RouteVersion uint64
+
+	header    http.Header
+	lowerBody string
+	hits      []RouteHit
 }
 
 // runProbe returns nil when the request never got a slot before its deadline.
@@ -463,8 +462,6 @@ func runProbeRequest(parent context.Context, req probeRequest, dialSlots *slots)
 	result.Url = response.Request.URL.String()
 	if route := conns.dialer.route(); route != nil {
 		result.Chains = route.chains
-		result.Rule = route.rule
-		result.RulePayload = route.rulePayload
 	}
 	if req.maxBody > 0 {
 		result.Body = readProbeBody(response.Body, req.maxBody, req.until)

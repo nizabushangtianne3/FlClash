@@ -5,11 +5,12 @@ import 'dart:math';
 import 'package:collection/collection.dart';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
-import 'package:fl_clash/ui/icons/glyph.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/widgets.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:prism_ui/icons/glyph.dart';
 
 import 'clash_config.dart';
+import 'record_filter.dart';
 
 part 'generated/common.freezed.dart';
 
@@ -59,32 +60,28 @@ extension PackagesExt on List<Package> {
     required bool isFilterSystemApp,
     required bool isFilterNonInternetApp,
   }) {
-    if (pinedList.isEmpty && sortType == AccessSortType.none) {
-      if (!isFilterSystemApp && !isFilterNonInternetApp) {
-        return this;
-      }
-      return whereVisible(
-        isFilterSystemApp: isFilterSystemApp,
-        isFilterNonInternetApp: isFilterNonInternetApp,
-      ).toList(growable: false);
-    }
     final pinned = pinedList.toSet();
-    return whereVisible(
+    final first = <Package>[];
+    final rest = <Package>[];
+    for (final package in whereVisible(
       isFilterSystemApp: isFilterSystemApp,
       isFilterNonInternetApp: isFilterNonInternetApp,
-    ).sorted((a, b) {
-      final isSelectA = pinned.contains(a.packageName);
-      final isSelectB = pinned.contains(b.packageName);
-
-      if (isSelectA != isSelectB) {
-        return isSelectA ? -1 : 1;
-      }
-      return switch (sortType) {
-        AccessSortType.none => 0,
-        AccessSortType.name => a.label.compareTo(b.label),
-        AccessSortType.time => b.lastUpdateTime.compareTo(a.lastUpdateTime),
-      };
-    });
+    )) {
+      (pinned.contains(package.packageName) ? first : rest).add(package);
+    }
+    final compare = switch (sortType) {
+      AccessSortType.none => null,
+      AccessSortType.name => (Package a, Package b) => a.label.compareTo(
+        b.label,
+      ),
+      AccessSortType.time =>
+        (Package a, Package b) => b.lastUpdateTime.compareTo(a.lastUpdateTime),
+    };
+    if (compare != null) {
+      first.sort(compare);
+      rest.sort(compare);
+    }
+    return first..addAll(rest);
   }
 }
 
@@ -108,6 +105,8 @@ abstract class Metadata with _$Metadata {
     @Default('') String sourceIPASN,
     @Default('') String specialRules,
     @Default('') String specialProxy,
+    @Default(false) bool mitm,
+    @Default(false) bool mitmRefused,
   }) = _Metadata;
 
   factory Metadata.fromJson(Map<String, Object?> json) =>
@@ -134,51 +133,15 @@ abstract class TrackerInfo with _$TrackerInfo {
 }
 
 /// Reads the Core's `getConnections` answer.
-///
-/// The answer carries what moved since the last one, so the host keeps the
-/// table and merges instead of being sent every row on every poll.
-class ConnectionDelta {
-  const ConnectionDelta({
-    this.added = const [],
-    this.removed = const [],
-    this.count = 0,
-  });
-
-  final List<TrackerInfo> added;
-  final List<String> removed;
-  final int count;
-}
-
-Map<String, Object?>? _typedMap(Object? value) {
-  if (value is Map<String, Object?>) return value;
-  return value is Map ? Map<String, Object?>.from(value) : null;
-}
-
-List<TrackerInfo> _addedConnections(Object? value) {
-  if (value is List<TrackerInfo>) return value;
-  if (value is! List) return const [];
+List<TrackerInfo> trackerInfosOf(Object? data) {
+  final connections = data is Map ? data['connections'] : null;
+  if (connections is! List) {
+    return const [];
+  }
   return [
-    for (final item in value)
-      if (item is Map) TrackerInfo.fromJson(_typedMap(item)!),
+    for (final item in connections.whereType<Map>())
+      TrackerInfo.fromJson(Map<String, Object?>.from(item)),
   ];
-}
-
-List<String> _removedConnections(Object? value) {
-  if (value is List<String>) return value;
-  if (value is! List) return const [];
-  return [
-    for (final item in value)
-      if (item is String) item,
-  ];
-}
-
-ConnectionDelta connectionDeltaOf(Object? data) {
-  final result = _typedMap(data);
-  return ConnectionDelta(
-    added: _addedConnections(result?['added']),
-    removed: _removedConnections(result?['removed']),
-    count: result?['count'] as int? ?? 0,
-  );
 }
 
 typedef RequestTraffic = ({int upload, int download});
@@ -200,6 +163,8 @@ extension TrackerInfoExt on TrackerInfo {
     }
     return process.trim();
   }
+
+  String get ruleText => rulePayload.isNotEmpty ? '$rule($rulePayload)' : rule;
 
   List<String> get searchFields => [
     metadata.network,
@@ -243,43 +208,38 @@ abstract class Log with _$Log {
 final _logPayloads = Expando<LogPayload>();
 
 extension LogExt on Log {
-  LogPayload get parsedPayload =>
-      _logPayloads[this] ??= LogPayload.parse(payload);
+  LogPayload get parsed => _logPayloads[this] ??= LogPayload.parse(payload);
 }
+
+final logFacets = <RecordFacet<Log>>[
+  RecordFacet(
+    RecordFacetKind.level,
+    (log) => [log.logLevel.name],
+    offered: true,
+    order: [for (final level in LogLevel.values) level.name],
+  ),
+];
 
 @freezed
 abstract class LogsState with _$LogsState {
   const factory LogsState({
     @Default([]) List<Log> logs,
-    @Default([]) List<String> keywords,
     @Default('') String query,
     @Default(true) bool autoScrollToEnd,
   }) = _LogsState;
 }
 
 final _logSearchTexts = Expando<String>();
-final _logsSearchQueries = Expando<SearchQuery>();
-final _logLists = Expando<List<Log>>();
 
 extension LogsStateExt on LogsState {
-  SearchQuery get _searchQuery =>
-      _logsSearchQueries[this] ??= SearchQuery(query);
-
-  bool get isSearching => keywords.isNotEmpty || _searchQuery.isNotEmpty;
+  bool get isSearching => SearchQuery(query).isNotEmpty;
 
   List<Log> get list {
-    final searchQuery = _searchQuery;
-    if (keywords.isEmpty && searchQuery.isEmpty) {
+    final searchQuery = SearchQuery(query);
+    if (searchQuery.isEmpty) {
       return logs;
     }
-    final cached = _logLists[this];
-    if (cached != null) {
-      return cached;
-    }
-    return _logLists[this] = logs
-        .where(
-          (log) => keywords.every((keyword) => keyword == log.logLevel.name),
-        )
+    return logs
         .whereMatches(
           searchQuery,
           (log) => [log.payload, log.logLevel.name],
@@ -289,44 +249,51 @@ extension LogsStateExt on LogsState {
   }
 }
 
+final trackerInfoFacets = <RecordFacet<TrackerInfo>>[
+  RecordFacet(
+    RecordFacetKind.network,
+    (info) => [info.metadata.network],
+    offered: true,
+    order: const ['tcp', 'udp'],
+    labelOf: (value) => value.toUpperCase(),
+  ),
+  RecordFacet(RecordFacetKind.rule, (info) => [info.rule], offered: true),
+  RecordFacet(
+    RecordFacetKind.mitm,
+    (info) => [if (info.metadata.mitm) 'MITM'],
+    offered: true,
+  ),
+  RecordFacet(RecordFacetKind.app, (info) => [info.metadata.process]),
+  RecordFacet(RecordFacetKind.proxy, (info) => info.chains),
+];
+
+final trackerInfoGroupers = <RecordGrouper<TrackerInfo>>[
+  RecordGrouper(RecordGrouping.app, (info) => info.metadata.process),
+  RecordGrouper(RecordGrouping.host, (info) => info.title),
+  RecordGrouper(RecordGrouping.rule, (info) => info.ruleText),
+  RecordGrouper(RecordGrouping.exit, (info) => info.chains.firstOrNull ?? ''),
+];
+
 @freezed
 abstract class TrackerInfosState with _$TrackerInfosState {
   const factory TrackerInfosState({
     @Default([]) List<TrackerInfo> trackerInfos,
-    @Default([]) List<String> keywords,
     @Default('') String query,
     @Default(true) bool autoScrollToEnd,
   }) = _TrackerInfosState;
 }
 
 final _trackerInfoSearchTexts = Expando<String>();
-final _trackerInfosSearchQueries = Expando<SearchQuery>();
-final _trackerInfoLists = Expando<List<TrackerInfo>>();
-final _dnsQuerySearchTexts = Expando<String>();
 
 extension TrackerInfosStateExt on TrackerInfosState {
-  SearchQuery get _searchQuery =>
-      _trackerInfosSearchQueries[this] ??= SearchQuery(query);
-
-  bool get isSearching => keywords.isNotEmpty || _searchQuery.isNotEmpty;
+  bool get isSearching => SearchQuery(query).isNotEmpty;
 
   List<TrackerInfo> get list {
-    final searchQuery = _searchQuery;
-    if (keywords.isEmpty && searchQuery.isEmpty) {
+    final searchQuery = SearchQuery(query);
+    if (searchQuery.isEmpty) {
       return trackerInfos;
     }
-    final cached = _trackerInfoLists[this];
-    if (cached != null) {
-      return cached;
-    }
-    return _trackerInfoLists[this] = trackerInfos
-        .where(
-          (trackerInfo) => keywords.every(
-            (keyword) =>
-                keyword == trackerInfo.metadata.process ||
-                trackerInfo.chains.contains(keyword),
-          ),
-        )
+    return trackerInfos
         .whereMatches(
           searchQuery,
           (trackerInfo) => trackerInfo.searchFields,
@@ -363,14 +330,19 @@ extension DnsQueryExt on DnsQuery {
 
   String get summary => error.isNotEmpty ? error : answers.join(', ');
 
-  List<String> get tags => [type, ...resultTags];
+  List<String> get tags => [
+    type,
+    for (final filter in resultFilters) filter.value,
+  ];
 
-  List<String> get resultTags {
+  List<RecordFilter> get resultFilters {
     final initiator = this.initiator;
     return [
-      if (initiator != null) initiator.label,
-      if (cached) currentAppLocalizations.cache,
-      if (hasFailureRcode) rcode,
+      if (initiator != null)
+        RecordFilter(RecordFacetKind.initiator, initiator.label),
+      if (cached)
+        RecordFilter(RecordFacetKind.cache, currentAppLocalizations.cache),
+      if (hasFailureRcode) RecordFilter(RecordFacetKind.rcode, rcode),
     ];
   }
 
@@ -388,37 +360,38 @@ extension DnsQueryExt on DnsQuery {
 abstract class DnsQueriesState with _$DnsQueriesState {
   const factory DnsQueriesState({
     @Default([]) List<DnsQuery> dnsQueries,
-    @Default([]) List<String> keywords,
     @Default('') String query,
     @Default(true) bool autoScrollToEnd,
   }) = _DnsQueriesState;
 }
 
-final _dnsQueriesSearchQueries = Expando<SearchQuery>();
-final _dnsQueryLists = Expando<List<DnsQuery>>();
+final dnsQueryFacets = <RecordFacet<DnsQuery>>[
+  RecordFacet(RecordFacetKind.type, (query) => [query.type], offered: true),
+  for (final kind in const [
+    RecordFacetKind.initiator,
+    RecordFacetKind.cache,
+    RecordFacetKind.rcode,
+  ])
+    RecordFacet(
+      kind,
+      (query) => [
+        for (final filter in query.resultFilters)
+          if (filter.kind == kind) filter.value,
+      ],
+      offered: true,
+    ),
+];
 
 extension DnsQueriesStateExt on DnsQueriesState {
-  SearchQuery get _searchQuery =>
-      _dnsQueriesSearchQueries[this] ??= SearchQuery(query);
-
-  bool get isSearching => keywords.isNotEmpty || _searchQuery.isNotEmpty;
+  bool get isSearching => SearchQuery(query).isNotEmpty;
 
   List<DnsQuery> get list {
-    final searchQuery = _searchQuery;
-    if (keywords.isEmpty && searchQuery.isEmpty) {
+    final searchQuery = SearchQuery(query);
+    if (searchQuery.isEmpty) {
       return dnsQueries;
     }
-    final cached = _dnsQueryLists[this];
-    if (cached != null) {
-      return cached;
-    }
-    return _dnsQueryLists[this] = dnsQueries
-        .where((dnsQuery) => keywords.every(dnsQuery.tags.contains))
-        .whereMatches(
-          searchQuery,
-          (dnsQuery) => dnsQuery.searchFields,
-          texts: _dnsQuerySearchTexts,
-        )
+    return dnsQueries
+        .whereMatches(searchQuery, (dnsQuery) => dnsQuery.searchFields)
         .toList();
   }
 }
@@ -539,6 +512,19 @@ extension FileInfoFileExt on File {
     return FileInfo(size: size, lastModified: lastModified);
   }
 
+  /// One stat call, for reading many files in a batch.
+  FileInfo? getFileInfoSync() {
+    final stat = statSync();
+    if (stat.type != FileSystemEntityType.file) {
+      return null;
+    }
+    final modified = stat.modified;
+    return FileInfo(
+      size: stat.size,
+      lastModified: modified.year > 1970 ? modified : null,
+    );
+  }
+
   Future<DateTime?> _getValidLastModified() async {
     try {
       final value = await lastModified();
@@ -557,18 +543,9 @@ abstract class Traffic with _$Traffic {
       _$TrafficFromJson(json);
 }
 
-final _trafficSpeedTexts = Expando<String>();
-final _trafficTrayTitles = Expando<String>();
-
 extension TrafficExt on Traffic {
-  String get speedText {
-    return _trafficSpeedTexts[this] ??=
-        '↑ ${up.traffic.show}/s   ↓ ${down.traffic.show}/s';
-  }
-
   String get trayTitle {
-    return _trafficTrayTitles[this] ??=
-        '${up.shortTraffic.show}/s\n${down.shortTraffic.show}/s';
+    return '${up.shortTraffic.show}/s\n${down.shortTraffic.show}/s';
   }
 
   num get speed => up + down;
@@ -599,43 +576,28 @@ abstract class Group with _$Group {
   factory Group.fromJson(Map<String, Object?> json) => _$GroupFromJson(json);
 }
 
+final _groupsByName = Expando<Map<String, Group>>();
+
 extension GroupsExt on List<Group> {
-  Group? getGroup(String groupName) => groupsByNameFor(this)[groupName];
+  /// Indexed once per list, so a list must not change after its first lookup.
+  Group? getGroup(String groupName) => (_groupsByName[this] ??= {
+    for (final group in this) group.name: group,
+  })[groupName];
 }
 
 extension GroupExt on Group {
   String get realNow => now ?? '';
 
   String getCurrentSelectedName(String proxyName) {
-    final supportsSelection =
-        type == GroupType.Selector || type.isComputedSelected;
-    if (!supportsSelection) {
-      for (final proxy in all) {
-        if (proxy.name == realNow) {
-          return realNow;
-        }
-      }
-      return '';
+    if (type.isComputedSelected) {
+      return realNow.isNotEmpty ? realNow : proxyName;
     }
-    final storedName = proxyName.isNotEmpty ? proxyName : realNow;
-    final selected = type.isComputedSelected && realNow.isNotEmpty
-        ? realNow
-        : storedName;
-    String? fallback;
-    for (final proxy in all) {
-      final memberName = proxy.name;
-      if (memberName == selected) {
-        return selected;
-      }
-      if (memberName == realNow) {
-        fallback = realNow;
-      }
-      if (memberName == storedName) {
-        fallback ??= storedName;
-      }
-    }
-    return fallback ?? all.firstOrNull?.name ?? '';
+    return proxyName.isNotEmpty && _isMember(proxyName) ? proxyName : realNow;
   }
+
+  /// A saved pick outlives a subscription update that renames or drops it.
+  bool _isMember(String proxyName) =>
+      all.isEmpty || all.any((proxy) => proxy.name == proxyName);
 }
 
 @freezed
@@ -683,14 +645,6 @@ abstract class IpInfo with _$IpInfo {
         ip: ip,
         countryCode: countryCode,
       ),
-      _ => throw const FormatException('invalid json'),
-    };
-  }
-
-  static IpInfo fromIpAPIJson(Map<String, dynamic> json) {
-    return switch (json) {
-      {'query': final String ip, 'countryCode': final String countryCode} =>
-        IpInfo(ip: ip, countryCode: countryCode),
       _ => throw const FormatException('invalid json'),
     };
   }
@@ -857,6 +811,33 @@ extension ScriptExt on Script {
     final response = await request.getTextResponseForUrl(url!);
     return save(response.data ?? '');
   }
+}
+
+@freezed
+abstract class MitmModule with _$MitmModule {
+  const factory MitmModule({
+    required int id,
+    required String name,
+    @Default('') String description,
+    String? url,
+    @Default(true) bool enabled,
+    int? order,
+    @Default({}) Map<String, String> arguments,
+    @Default({}) Map<String, String> resources,
+    String? system,
+
+    /// Its scripts FlClash runs, which turning it on asks about first.
+    @Default(0) int scripts,
+    required DateTime lastUpdateTime,
+  }) = _MitmModule;
+}
+
+extension MitmModuleExt on MitmModule {
+  bool get isRemote => url != null;
+
+  String get fileName => '$id.txt';
+
+  String get updatingKey => 'mitm_module_$id';
 }
 
 @freezed
@@ -1054,6 +1035,33 @@ bool _isHttpUrl(String value) {
   }
   final name = document['name'];
   return (name: name is String ? name.trim() : '', icons: icons);
+}
+
+@freezed
+abstract class DelayState with _$DelayState {
+  const factory DelayState({required int delay, required bool group}) =
+      _DelayState;
+}
+
+extension DelayStateExt on DelayState {
+  int get priority {
+    if (delay > 0) return 0;
+    if (delay == 0) return 1;
+    if (delay == delayTimedOutValue) return 2;
+    return 3;
+  }
+
+  int compareTo(DelayState other) {
+    if (priority != other.priority) {
+      return priority.compareTo(other.priority);
+    }
+    if (delay != other.delay) {
+      return delay.compareTo(other.delay);
+    }
+    if (group && !other.group) return -1;
+    if (!group && other.group) return 1;
+    return 0;
+  }
 }
 
 @freezed

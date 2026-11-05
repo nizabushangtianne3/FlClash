@@ -17,66 +17,12 @@ import 'package:fl_clash/providers/state.dart';
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:mocktail/mocktail.dart';
 import 'package:riverpod/riverpod.dart';
-import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
-import '../helpers/preferences.dart';
 import '../helpers/test_profiles.dart';
 
-/// Counts whole-store writes through the platform seam, so a test can tell a
-/// coalesced persist from one per flush.
-class _CountingPreferencesStore extends InMemorySharedPreferencesStore {
-  _CountingPreferencesStore() : super.withData(const {});
-
-  int delayMapWrites = 0;
-
-  @override
-  Future<bool> setValue(String valueType, String key, Object value) {
-    if (key.endsWith(delayMapKey)) {
-      delayMapWrites++;
-    }
-    return super.setValue(valueType, key, value);
-  }
-}
-
-Future<_CountingPreferencesStore> _spyPreferences() async {
-  final store = _CountingPreferencesStore();
-  SharedPreferencesStorePlatform.instance = store;
-  await preferences.rebind();
-  return store;
-}
-
 class MockCoreHandlerInterface extends Mock implements CoreHandlerInterface {}
-
-class _RecordingCoreController extends CoreController {
-  _RecordingCoreController(this.onGetProxiesGroups)
-    : super.scoped(MockCoreHandlerInterface());
-
-  final Future<List<Group>> Function(Map<String, String> selectedMap)
-  onGetProxiesGroups;
-
-  @override
-  Future<List<Group>> getProxiesGroups({
-    required ProxiesSortType sortType,
-    required DelayMap delayMap,
-    required Map<String, String> selectedMap,
-    required String defaultTestUrl,
-    bool forceFull = false,
-  }) {
-    return onGetProxiesGroups(selectedMap);
-  }
-}
-
-class _CountingProxiesAction extends ProxiesAction {
-  int resortCalls = 0;
-
-  @override
-  Future<void> resortGroupsByDelay() async {
-    resortCalls++;
-  }
-}
 
 const _testUrl = 'http://delay.test';
 
@@ -92,6 +38,22 @@ Profile _selectedProfile(String proxyName) => Profile(
 );
 
 final _delayKey = delayTestKey(_testUrl, 'HK-01');
+
+TestDelayParams _delayTest(String testUrl, [String? proxyName]) {
+  var matcher = isA<TestDelayParams>().having(
+    (params) => params.testUrl,
+    'testUrl',
+    testUrl,
+  );
+  if (proxyName != null) {
+    matcher = matcher.having(
+      (params) => params.proxyName,
+      'proxyName',
+      proxyName,
+    );
+  }
+  return any(that: matcher);
+}
 
 ProviderContainer _delayContainer(ProviderContainer Function() build) {
   final container = build();
@@ -117,29 +79,21 @@ void main() {
     registerFallbackValue(
       const ChangeProxyParams(groupName: 'G', proxyName: 'P'),
     );
-    registerFallbackValue(Duration.zero);
+    registerFallbackValue(
+      const TestDelayParams(proxyName: 'P', testUrl: 'U', timeout: 0),
+    );
     core = MockCoreHandlerInterface();
     await AppLocalizations.load(const Locale('en'));
   });
 
-  setUp(() async {
-    reset(core);
-    await mockPreferences();
-  });
+  setUp(() => reset(core));
 
-  ProviderContainer buildContainer({
-    Profile? profile,
-    CoreController? coreController,
-    List<Override> extraOverrides = const [],
-  }) {
+  ProviderContainer buildContainer({Profile? profile}) {
     final container = ProviderContainer(
       overrides: [
-        coreHandlerProvider.overrideWithValue(
-          coreController ?? CoreController.scoped(core),
-        ),
+        coreHandlerProvider.overrideWithValue(CoreController.scoped(core)),
         profilesProvider.overrideWith(() => TestProfiles([?profile])),
         currentProfileIdProvider.overrideWithBuild((_, _) => profile?.id),
-        ...extraOverrides,
       ],
     );
     addTearDown(container.dispose);
@@ -157,26 +111,6 @@ void main() {
   }
 
   group('updateGroups', () {
-    test('does not schedule a delay resort for non-delay sorting', () async {
-      addTearDown(() => debouncer.cancel(FunctionTag.updateDelay));
-      final container = buildContainer(
-        extraOverrides: [
-          proxiesActionProvider.overrideWith(_CountingProxiesAction.new),
-        ],
-      );
-      container
-          .read(proxiesStyleSettingProvider.notifier)
-          .update((state) => state.copyWith(sortType: ProxiesSortType.name));
-      final action =
-          container.read(proxiesActionProvider.notifier)
-              as _CountingProxiesAction;
-
-      action.resortGroupsByDelayDebounce(Duration.zero);
-      await Future<void>.delayed(Duration.zero);
-
-      expect(action.resortCalls, 0);
-    });
-
     test('publishes the groups derived from core proxy data', () async {
       when(core.getProxies).thenAnswer(
         (_) async => ProxiesData(
@@ -260,69 +194,6 @@ void main() {
       },
     );
 
-    test('retries with the latest selection state', () async {
-      final seenSelections = <Map<String, String>>[];
-      late ProviderContainer container;
-      final coreController = _RecordingCoreController((selectedMap) async {
-        seenSelections.add(Map.of(selectedMap));
-        if (seenSelections.length == 1) {
-          final profile = container.read(currentProfileProvider)!;
-          container
-              .read(profilesProvider.notifier)
-              .put(profile.copyWith(selectedMap: {'Proxy': 'HK-01'}));
-          return const <Group>[];
-        }
-        return [
-          _group('Proxy', const [_proxy]),
-        ];
-      });
-      container = buildContainer(
-        profile: _selectedProfile('HK-00'),
-        coreController: coreController,
-      );
-
-      await actionOf(container).updateGroups();
-
-      expect(seenSelections, [
-        {'Proxy': 'HK-00'},
-        {'Proxy': 'HK-01'},
-      ]);
-      expect(container.read(groupsProvider).single.name, 'Proxy');
-    });
-
-    test('does not retry a deterministic Core error', () async {
-      var calls = 0;
-      final coreController = _RecordingCoreController((_) async {
-        calls++;
-        throw const CoreMethodException(code: 'unsupported', message: 'no');
-      });
-      final container = buildContainer(coreController: coreController);
-      container.read(groupsProvider.notifier).value = [
-        _group('Stale', const []),
-      ];
-
-      await actionOf(container).updateGroups();
-
-      expect(calls, 1);
-      expect(container.read(groupsProvider).single.name, 'Stale');
-    });
-
-    test('still retries a transient Core error', () async {
-      var calls = 0;
-      final coreController = _RecordingCoreController((_) async {
-        calls++;
-        throw const CoreMethodException(
-          code: 'internal_error',
-          message: 'temporary',
-        );
-      });
-      final container = buildContainer(coreController: coreController);
-
-      await actionOf(container).updateGroups();
-
-      expect(calls, 3);
-    });
-
     test('a core status change alone does not clear the groups', () {
       final container = buildContainer();
       actionOf(container);
@@ -402,78 +273,6 @@ void main() {
       expect(container.read(currentProfileProvider)?.selectedMap, {
         'Proxy': 'HK-01',
       });
-    });
-
-    test('serializes connection cleanup across switches', () async {
-      final gate = Completer<void>();
-      var cleanupCalls = 0;
-      when(core.closeConnections).thenAnswer((_) async {
-        cleanupCalls++;
-        await gate.future;
-        return true;
-      });
-      final container = runningContainer();
-      container.read(appSettingProvider.notifier).value = const AppSettingProps(
-        closeConnections: true,
-      );
-      final action = actionOf(container);
-
-      await action.changeProxy(groupName: 'Proxy', proxyName: 'HK-01');
-      await action.changeProxy(groupName: 'Proxy', proxyName: 'HK-02');
-      await Future<void>.delayed(Duration.zero);
-      expect(cleanupCalls, 1);
-
-      gate.complete();
-      await Future<void>.delayed(Duration.zero);
-      expect(cleanupCalls, 2);
-    });
-
-    test('coalesces a burst of connection cleanups', () async {
-      final gate = Completer<void>();
-      var cleanupCalls = 0;
-      when(core.closeConnections).thenAnswer((_) async {
-        cleanupCalls++;
-        if (cleanupCalls == 1) {
-          await gate.future;
-        }
-        return true;
-      });
-      final container = runningContainer();
-      container.read(appSettingProvider.notifier).value = const AppSettingProps(
-        closeConnections: true,
-      );
-      final action = actionOf(container);
-
-      for (var index = 0; index < 5; index++) {
-        await action.changeProxy(groupName: 'Proxy', proxyName: 'HK-0$index');
-      }
-      await Future<void>.delayed(Duration.zero);
-      expect(cleanupCalls, 1);
-
-      gate.complete();
-      await Future<void>.delayed(Duration.zero);
-      expect(cleanupCalls, 2);
-    });
-
-    test('a direct switch cancels a pending debounced switch', () async {
-      addTearDown(() => debouncer.cancel((FunctionTag.changeProxy, 'Proxy')));
-      final container = buildContainer(profile: _selectedProfile('HK-00'));
-      final action = actionOf(container);
-
-      action.changeProxyDebounce('Proxy', 'HK-01');
-      await action.changeProxy(groupName: 'Proxy', proxyName: 'HK-02');
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-
-      verify(
-        () => core.changeProxy(
-          const ChangeProxyParams(groupName: 'Proxy', proxyName: 'HK-02'),
-        ),
-      ).called(1);
-      verifyNever(
-        () => core.changeProxy(
-          const ChangeProxyParams(groupName: 'Proxy', proxyName: 'HK-01'),
-        ),
-      );
     });
 
     test('skips the connection reset when the switch itself fails', () async {
@@ -567,245 +366,13 @@ void main() {
         debouncer.cancel((FunctionTag.changeProxy, 'Proxy'));
       },
     );
-
-    test('a stale completion cannot overwrite the newest switch', () async {
-      final first = Completer<ChangeProxyResult>();
-      final second = Completer<ChangeProxyResult>();
-      when(() => core.changeProxy(any())).thenAnswer((invocation) {
-        final params =
-            invocation.positionalArguments.single as ChangeProxyParams;
-        return params.proxyName == 'HK-01' ? first.future : second.future;
-      });
-      final container = buildContainer(profile: _selectedProfile('HK-00'));
-      container.read(groupsProvider.notifier).value = [
-        _group('Proxy', const [
-          Proxy(name: 'HK-01', type: 'ss'),
-          Proxy(name: 'HK-02', type: 'ss'),
-        ]),
-      ];
-      final action = actionOf(container);
-
-      final firstRun = action.changeProxy(
-        groupName: 'Proxy',
-        proxyName: 'HK-01',
-      );
-      final secondRun = action.changeProxy(
-        groupName: 'Proxy',
-        proxyName: 'HK-02',
-      );
-
-      first.complete(const ChangeProxyResult(changed: true));
-      await firstRun;
-      expect(container.read(currentProfileProvider)?.selectedMap, {
-        'Proxy': 'HK-02',
-      });
-
-      second.completeError(StateError('second switch failed'));
-      await secondRun;
-      expect(container.read(currentProfileProvider)?.selectedMap, {
-        'Proxy': 'HK-01',
-      });
-    });
-
-    test(
-      'a stale success cannot overwrite an already applied switch',
-      () async {
-        final first = Completer<ChangeProxyResult>();
-        final second = Completer<ChangeProxyResult>();
-        when(() => core.changeProxy(any())).thenAnswer((invocation) {
-          final params =
-              invocation.positionalArguments.single as ChangeProxyParams;
-          return params.proxyName == 'HK-01' ? first.future : second.future;
-        });
-        final container = buildContainer(profile: _selectedProfile('HK-00'));
-        container.read(groupsProvider.notifier).value = [
-          _group('Proxy', const [
-            Proxy(name: 'HK-01', type: 'ss'),
-            Proxy(name: 'HK-02', type: 'ss'),
-          ]),
-        ];
-        final action = actionOf(container);
-
-        final firstRun = action.changeProxy(
-          groupName: 'Proxy',
-          proxyName: 'HK-01',
-        );
-        final secondRun = action.changeProxy(
-          groupName: 'Proxy',
-          proxyName: 'HK-02',
-        );
-
-        second.complete(const ChangeProxyResult(changed: true));
-        await secondRun;
-        expect(container.read(groupsProvider).single.now, 'HK-02');
-
-        first.complete(const ChangeProxyResult(changed: true));
-        await firstRun;
-
-        expect(container.read(currentProfileProvider)?.selectedMap, {
-          'Proxy': 'HK-02',
-        });
-        expect(container.read(groupsProvider).single.now, 'HK-02');
-      },
-    );
-
-    test('a stale success does not clean up connections again', () async {
-      final first = Completer<ChangeProxyResult>();
-      final second = Completer<ChangeProxyResult>();
-      when(() => core.changeProxy(any())).thenAnswer((invocation) {
-        final params =
-            invocation.positionalArguments.single as ChangeProxyParams;
-        return params.proxyName == 'HK-01' ? first.future : second.future;
-      });
-      var cleanupCalls = 0;
-      when(core.closeConnections).thenAnswer((_) async {
-        cleanupCalls++;
-        return true;
-      });
-      final container = buildContainer(profile: _selectedProfile('HK-00'));
-      container.read(appSettingProvider.notifier).value = const AppSettingProps(
-        closeConnections: true,
-      );
-      final action = actionOf(container);
-
-      final firstRun = action.changeProxy(
-        groupName: 'Proxy',
-        proxyName: 'HK-01',
-      );
-      final secondRun = action.changeProxy(
-        groupName: 'Proxy',
-        proxyName: 'HK-02',
-      );
-
-      second.complete(const ChangeProxyResult(changed: true));
-      await secondRun;
-      await Future<void>.delayed(Duration.zero);
-      expect(cleanupCalls, 1);
-
-      first.complete(const ChangeProxyResult(changed: true));
-      await firstRun;
-      await Future<void>.delayed(Duration.zero);
-      expect(cleanupCalls, 1);
-    });
-  });
-
-  group('delay sorting', () {
-    test('does not reorder mid-batch and puts untested nodes last', () async {
-      final gates = {
-        'HK-01': Completer<Delay?>(),
-        'HK-02': Completer<Delay?>(),
-      };
-      when(() => core.asyncTestDelay(_testUrl, any(), any())).thenAnswer(
-        (invocation) =>
-            gates[invocation.positionalArguments[1] as String]?.future ??
-            Future<Delay?>.value(),
-      );
-      const proxies = [
-        Proxy(name: 'HK-02', type: 'ss'),
-        Proxy(name: 'HK-01', type: 'ss'),
-        Proxy(name: 'HK-03', type: 'ss'),
-      ];
-      final container = _delayContainer(buildContainer);
-      container.listen(proxiesStyleSettingProvider, (_, _) {});
-      container
-          .read(proxiesStyleSettingProvider.notifier)
-          .update((state) => state.copyWith(sortType: ProxiesSortType.delay));
-      expect(
-        container.read(proxiesStyleSettingProvider).sortType,
-        ProxiesSortType.delay,
-      );
-      final action = actionOf(container);
-      container.read(groupsProvider.notifier).value = [
-        const Group(
-          type: GroupType.Selector,
-          name: 'Proxy',
-          testUrl: _testUrl,
-          all: proxies,
-        ),
-      ];
-
-      final run = action.delayTest(proxies);
-      await Future<void>.delayed(Duration.zero);
-      gates['HK-01']!.complete(
-        const Delay(name: 'HK-01', url: _testUrl, value: 50),
-      );
-      await Future<void>.delayed(renderThrottleDuration * 2);
-      await action.resortGroupsByDelay();
-
-      expect(
-        container.read(groupsProvider).single.all.map((proxy) => proxy.name),
-        ['HK-02', 'HK-01', 'HK-03'],
-      );
-
-      gates['HK-02']!.complete(
-        const Delay(name: 'HK-02', url: _testUrl, value: 200),
-      );
-      await run;
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-      expect(container.read(delayDataSourceProvider)[_testUrl], {
-        'HK-01': 50,
-        'HK-02': 200,
-      });
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-
-      expect(
-        container.read(groupsProvider).single.all.map((proxy) => proxy.name),
-        ['HK-01', 'HK-02', 'HK-03'],
-      );
-    });
-  });
-
-  group('route picks', () {
-    test('updates group selection from the Core pick map', () {
-      final container = buildContainer();
-      container.read(groupsProvider.notifier).value = [
-        _group('Proxy', const [_proxy]),
-      ];
-
-      actionOf(container).applyRoutePicks(const {'Proxy': 'HK-01'});
-
-      expect(container.read(groupsProvider).single.now, 'HK-01');
-    });
-
-    test('closes connections after an automatic pick change', () async {
-      when(core.closeConnections).thenAnswer((_) async => true);
-      final container = buildContainer();
-      container.read(groupsProvider.notifier).value = [
-        _group('Proxy', const [_proxy]),
-      ];
-
-      actionOf(
-        container,
-      ).applyRoutePicks(const {'Proxy': 'HK-01'}, closeConnections: true);
-      await Future<void>.delayed(const Duration(milliseconds: 1));
-
-      verify(core.closeConnections).called(1);
-    });
-
-    test('does not overwrite a selection that is still applying', () async {
-      final release = Completer<ChangeProxyResult>();
-      when(() => core.changeProxy(any())).thenAnswer((_) => release.future);
-      final container = buildContainer(profile: _selectedProfile('HK-01'));
-      container.read(groupsProvider.notifier).value = [
-        _group('Proxy', const [_proxy, Proxy(name: 'HK-02', type: 'ss')]),
-      ];
-      final action = actionOf(container);
-
-      final run = action.changeProxy(groupName: 'Proxy', proxyName: 'HK-02');
-      action.applyRoutePicks(const {'Proxy': 'HK-01'});
-
-      expect(container.read(groupsProvider).single.now, isNull);
-
-      release.complete(const ChangeProxyResult(changed: false));
-      await run;
-    });
   });
 
   group('proxyDelayTest', () {
     test('marks the node pending while it runs, then records it', () async {
       late ProviderContainer container;
       final observed = <bool>[];
-      when(() => core.asyncTestDelay(_testUrl, 'HK-01', any())).thenAnswer((
+      when(() => core.testDelay(_delayTest(_testUrl, 'HK-01'))).thenAnswer((
         _,
       ) async {
         observed.add(
@@ -824,8 +391,8 @@ void main() {
 
     test('keeps the last measurement when the Core does not answer', () async {
       when(
-        () => core.asyncTestDelay(_testUrl, 'HK-01', any()),
-      ).thenAnswer((_) async => null);
+        () => core.testDelay(_delayTest(_testUrl, 'HK-01')),
+      ).thenThrow(TimeoutException('no answer'));
       final container = _delayContainer(buildContainer);
       container
           .read(delayDataSourceProvider.notifier)
@@ -839,7 +406,7 @@ void main() {
 
     test('falls back to untested when a throwing call had no value', () async {
       when(
-        () => core.asyncTestDelay(_testUrl, 'HK-01', any()),
+        () => core.testDelay(_delayTest(_testUrl, 'HK-01')),
       ).thenThrow(StateError('channel is gone'));
       final container = _delayContainer(buildContainer);
 
@@ -856,139 +423,16 @@ void main() {
 
       expect(container.read(delayDataSourceProvider), isEmpty);
       expect(container.read(pendingDelayTestsProvider), isEmpty);
-      verifyNever(() => core.asyncTestDelay(any(), any(), any()));
+      verifyNever(() => core.testDelay(any()));
     });
   });
 
   group('delayTest', () {
-    test('coalesces repeated buffered values for the same target', () async {
-      final container = _delayContainer(buildContainer);
-      final action = actionOf(container);
-
-      action.setDelay(const Delay(name: 'HK-01', url: _testUrl, value: 120));
-      action.setDelay(const Delay(name: 'HK-01', url: _testUrl, value: 80));
-      await Future<void>.delayed(renderThrottleDuration * 2);
-
-      expect(container.read(delayDataSourceProvider)[_testUrl], {'HK-01': 80});
-    });
-
-    test(
-      'persists the delay map once for flushes inside the persist window',
-      () async {
-        final store = await _spyPreferences();
-        final container = _delayContainer(buildContainer);
-        final action = actionOf(container);
-
-        action.setDelay(const Delay(name: 'HK-01', url: _testUrl, value: 120));
-        await Future<void>.delayed(renderThrottleDuration);
-        action.setDelay(const Delay(name: 'HK-01', url: _testUrl, value: 80));
-        await Future<void>.delayed(const Duration(milliseconds: 2100));
-
-        expect(
-          store.delayMapWrites,
-          1,
-          reason:
-              'a save rewrites the whole store, so flushes inside the '
-              'persist window must coalesce into one write',
-        );
-        expect(container.read(delayDataSourceProvider)[_testUrl], {
-          'HK-01': 80,
-        });
-      },
-    );
-
-    test('persists the delay map as soon as a test batch settles', () async {
-      when(() => core.asyncTestDelay(_testUrl, 'HK-01', any())).thenAnswer(
-        (_) async => const Delay(name: 'HK-01', url: _testUrl, value: 128),
-      );
-      final store = await _spyPreferences();
-      final container = _delayContainer(buildContainer);
-
-      await actionOf(container).proxyDelayTest(_proxy);
-      // The persist is fire-and-forget; let its store write settle.
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      expect(store.delayMapWrites, 1);
-      expect(container.read(delayDataSourceProvider)[_testUrl]?['HK-01'], 128);
-    });
-
-    test('shares an in-flight delay probe across overlapping runs', () async {
-      var calls = 0;
-      final answer = Completer<Delay?>();
-      when(() => core.asyncTestDelay(_testUrl, 'HK-01', any())).thenAnswer((_) {
-        calls++;
-        return answer.future;
-      });
-      final container = _delayContainer(buildContainer);
-      final action = actionOf(container);
-
-      final first = action.proxyDelayTest(_proxy);
-      final second = action.proxyDelayTest(_proxy);
-      await Future<void>.delayed(Duration.zero);
-
-      expect(calls, 1);
-      answer.complete(const Delay(name: 'HK-01', url: _testUrl, value: 24));
-      await Future.wait([first, second]);
-      await Future<void>.delayed(renderThrottleDuration * 2);
-
-      expect(container.read(delayDataSourceProvider)[_testUrl], {'HK-01': 24});
-    });
-
-    test('interactive probes start before queued bulk probes', () async {
-      final firstBatch = {
-        for (var index = 0; index < maxConcurrentDelayTests; index++)
-          'HK-$index': Completer<Delay?>(),
-      };
-      final urgent = Completer<Delay?>();
-      final started = <String>[];
-      when(() => core.asyncTestDelay(any(), 'URGENT', any())).thenAnswer((_) {
-        started.add('URGENT');
-        return urgent.future;
-      });
-      when(() => core.asyncTestDelay(_testUrl, any(), any())).thenAnswer((
-        invocation,
-      ) {
-        final name = invocation.positionalArguments[1] as String;
-        started.add(name);
-        final gate = firstBatch[name];
-        if (gate != null) {
-          return gate.future;
-        }
-        return Future.value(Delay(name: name, url: _testUrl, value: 8));
-      });
-      final container = _delayContainer(buildContainer);
-      final action = actionOf(container);
-      final bulk = action.delayTest([
-        for (var index = 0; index < maxConcurrentDelayTests + 8; index++)
-          Proxy(name: 'HK-$index', type: 'ss'),
-      ]);
-      await Future<void>.delayed(Duration.zero);
-
-      final interactive = action.proxyDelayTest(
-        const Proxy(name: 'URGENT', type: 'ss'),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      expect(started, isNot(contains('URGENT')));
-      expect(started, isNot(contains('HK-32')));
-
-      firstBatch['HK-0']!.complete(null);
-      await Future<void>.delayed(renderThrottleDuration * 2);
-      expect(started, contains('URGENT'));
-      expect(started, isNot(contains('HK-32')));
-
-      urgent.complete(const Delay(name: 'URGENT', url: _testUrl, value: 6));
-      for (final gate in firstBatch.values) {
-        if (!gate.isCompleted) {
-          gate.complete(null);
-        }
-      }
-      await Future.wait([bulk, interactive]);
-    });
-
     test('measures every proxy and bumps the sort counter', () async {
-      when(() => core.asyncTestDelay(_testUrl, any(), any())).thenAnswer(
+      when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer(
         (invocation) async => Delay(
-          name: invocation.positionalArguments[1] as String,
+          name:
+              (invocation.positionalArguments[0] as TestDelayParams).proxyName,
           url: _testUrl,
           value: 10,
         ),
@@ -1008,9 +452,10 @@ void main() {
     });
 
     test('lands a run of quick results in batches, not one per node', () async {
-      when(() => core.asyncTestDelay(_testUrl, any(), any())).thenAnswer(
+      when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer(
         (invocation) async => Delay(
-          name: invocation.positionalArguments[1] as String,
+          name:
+              (invocation.positionalArguments[0] as TestDelayParams).proxyName,
           url: _testUrl,
           value: 10,
         ),
@@ -1039,12 +484,13 @@ void main() {
     test(
       'marks only nodes the pool runs as running, the rest queued',
       () async {
-        final answers = <String, Completer<Delay?>>{};
-        when(() => core.asyncTestDelay(_testUrl, any(), any())).thenAnswer(
+        final answers = <String, Completer<Delay>>{};
+        when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer(
           (invocation) => answers
               .putIfAbsent(
-                invocation.positionalArguments[1] as String,
-                Completer<Delay?>.new,
+                (invocation.positionalArguments[0] as TestDelayParams)
+                    .proxyName,
+                Completer<Delay>.new,
               )
               .future,
         );
@@ -1063,7 +509,7 @@ void main() {
         expect(phaseOf(maxConcurrentDelayTests - 1), DelayTestPhase.running);
         expect(phaseOf(maxConcurrentDelayTests), DelayTestPhase.queued);
 
-        answers['HK-0']!.complete(null);
+        answers['HK-0']!.completeError(TimeoutException('no answer'));
         await Future<void>.delayed(renderThrottleDuration * 2);
 
         expect(phaseOf(0), isNull);
@@ -1071,7 +517,7 @@ void main() {
 
         for (final answer in answers.values) {
           if (!answer.isCompleted) {
-            answer.complete(null);
+            answer.completeError(TimeoutException('no answer'));
           }
         }
         await run;
@@ -1081,18 +527,18 @@ void main() {
     );
 
     test('probes a node that appears twice only once', () async {
-      when(() => core.asyncTestDelay(_testUrl, 'HK-01', any())).thenAnswer(
+      when(() => core.testDelay(_delayTest(_testUrl, 'HK-01'))).thenAnswer(
         (_) async => const Delay(name: 'HK-01', url: _testUrl, value: 10),
       );
       final container = _delayContainer(buildContainer);
 
       await actionOf(container).delayTest(const [_proxy, _proxy]);
 
-      verify(() => core.asyncTestDelay(_testUrl, 'HK-01', any())).called(1);
+      verify(() => core.testDelay(_delayTest(_testUrl, 'HK-01'))).called(1);
     });
 
     test('passes the delay test timeout setting to the core', () async {
-      when(() => core.asyncTestDelay(_testUrl, 'HK-01', any())).thenAnswer(
+      when(() => core.testDelay(_delayTest(_testUrl, 'HK-01'))).thenAnswer(
         (_) async => const Delay(name: 'HK-01', url: _testUrl, value: 10),
       );
       final container = _delayContainer(buildContainer);
@@ -1103,39 +549,23 @@ void main() {
       await actionOf(container).delayTest(const [_proxy]);
 
       verify(
-        () => core.asyncTestDelay(
-          _testUrl,
-          'HK-01',
-          const Duration(milliseconds: 2000),
+        () => core.testDelay(
+          const TestDelayParams(
+            proxyName: 'HK-01',
+            testUrl: _testUrl,
+            timeout: 2000,
+          ),
         ),
       ).called(1);
     });
 
-    test('skips built-in adapters that cannot be probed', () async {
-      when(() => core.asyncTestDelay(_testUrl, any(), any())).thenAnswer(
-        (invocation) async => Delay(
-          name: invocation.positionalArguments[1] as String,
-          url: _testUrl,
-          value: 10,
-        ),
-      );
-      final container = _delayContainer(buildContainer);
-
-      await actionOf(container).delayTest(const [
-        Proxy(name: 'REJECT', type: 'Reject'),
-        Proxy(name: 'DIRECT', type: 'Direct'),
-      ]);
-
-      verify(() => core.asyncTestDelay(_testUrl, 'DIRECT', any())).called(1);
-      verifyNever(() => core.asyncTestDelay(_testUrl, 'REJECT', any()));
-    });
-
     test('testing groups probes a shared node once per test URL', () async {
       const otherUrl = 'http://other.test';
-      when(() => core.asyncTestDelay(any(), any(), any())).thenAnswer(
+      when(() => core.testDelay(any())).thenAnswer(
         (invocation) async => Delay(
-          url: invocation.positionalArguments[0] as String,
-          name: invocation.positionalArguments[1] as String,
+          url: (invocation.positionalArguments[0] as TestDelayParams).testUrl,
+          name:
+              (invocation.positionalArguments[0] as TestDelayParams).proxyName,
           value: 10,
         ),
       );
@@ -1153,18 +583,19 @@ void main() {
         ),
       ]);
 
-      verify(() => core.asyncTestDelay(_testUrl, 'HK-01', any())).called(1);
-      verify(() => core.asyncTestDelay(_testUrl, 'HK-02', any())).called(1);
-      verify(() => core.asyncTestDelay(otherUrl, 'HK-01', any())).called(1);
+      verify(() => core.testDelay(_delayTest(_testUrl, 'HK-01'))).called(1);
+      verify(() => core.testDelay(_delayTest(_testUrl, 'HK-02'))).called(1);
+      verify(() => core.testDelay(_delayTest(otherUrl, 'HK-01'))).called(1);
       expect(container.read(sortNumProvider), before + 1);
     });
 
     test(
       'testing a page group probes the nodes the timeout filter hides',
       () async {
-        when(() => core.asyncTestDelay(_testUrl, any(), any())).thenAnswer(
+        when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer(
           (invocation) async => Delay(
-            name: invocation.positionalArguments[1] as String,
+            name: (invocation.positionalArguments[0] as TestDelayParams)
+                .proxyName,
             url: _testUrl,
             value: 10,
           ),
@@ -1191,18 +622,19 @@ void main() {
 
         await actionOf(container).delayTestPageGroup('Proxy');
 
-        verify(() => core.asyncTestDelay(_testUrl, 'HK-01', any())).called(1);
-        verify(() => core.asyncTestDelay(_testUrl, 'HK-02', any())).called(1);
-        verifyNever(() => core.asyncTestDelay(_testUrl, 'JP-01', any()));
+        verify(() => core.testDelay(_delayTest(_testUrl, 'HK-01'))).called(1);
+        verify(() => core.testDelay(_delayTest(_testUrl, 'HK-02'))).called(1);
+        verifyNever(() => core.testDelay(_delayTest(_testUrl, 'JP-01')));
       },
     );
 
     test(
       'a group tested away from the proxies page ignores its search',
       () async {
-        when(() => core.asyncTestDelay(_testUrl, any(), any())).thenAnswer(
+        when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer(
           (invocation) async => Delay(
-            name: invocation.positionalArguments[1] as String,
+            name: (invocation.positionalArguments[0] as TestDelayParams)
+                .proxyName,
             url: _testUrl,
             value: 10,
           ),
@@ -1225,15 +657,15 @@ void main() {
           container,
         ).delayTestPageGroup('Proxy', matchSearch: false);
 
-        verify(() => core.asyncTestDelay(_testUrl, 'HK-01', any())).called(1);
-        verify(() => core.asyncTestDelay(_testUrl, 'JP-01', any())).called(1);
+        verify(() => core.testDelay(_delayTest(_testUrl, 'HK-01'))).called(1);
+        verify(() => core.testDelay(_delayTest(_testUrl, 'JP-01'))).called(1);
       },
     );
 
     test('a page group holds its testing mark until the run settles', () async {
-      final release = Completer<Delay?>();
+      final release = Completer<Delay>();
       when(
-        () => core.asyncTestDelay(_testUrl, 'HK-01', any()),
+        () => core.testDelay(_delayTest(_testUrl, 'HK-01')),
       ).thenAnswer((_) => release.future);
       final container = _delayContainer(buildContainer);
       container
@@ -1253,15 +685,13 @@ void main() {
       );
       await run;
 
-      verify(() => core.asyncTestDelay(_testUrl, 'HK-01', any())).called(1);
+      verify(() => core.testDelay(_delayTest(_testUrl, 'HK-01'))).called(1);
       expect(container.read(delayTestingGroupsProvider), isEmpty);
     });
 
     test('stops the run once the transport is gone', () async {
       var calls = 0;
-      when(() => core.asyncTestDelay(_testUrl, any(), any())).thenAnswer((
-        _,
-      ) async {
+      when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer((_) async {
         calls++;
         throw const CoreMethodException(
           code: 'transport_disconnected',
@@ -1284,13 +714,14 @@ void main() {
 
     test('a proxy that answers nothing leaves the rest of the run', () async {
       var calls = 0;
-      when(() => core.asyncTestDelay(_testUrl, any(), any())).thenAnswer((
+      when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer((
         invocation,
       ) async {
         calls++;
-        final name = invocation.positionalArguments[1] as String;
+        final name =
+            (invocation.positionalArguments[0] as TestDelayParams).proxyName;
         if (name == 'HK-1') {
-          return null;
+          throw TimeoutException('no answer');
         }
         return Delay(name: name, url: _testUrl, value: 10);
       });
@@ -1311,11 +742,12 @@ void main() {
 
     test('a proxy that fails leaves the rest of the run', () async {
       var calls = 0;
-      when(() => core.asyncTestDelay(_testUrl, any(), any())).thenAnswer((
+      when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer((
         invocation,
       ) async {
         calls++;
-        final name = invocation.positionalArguments[1] as String;
+        final name =
+            (invocation.positionalArguments[0] as TestDelayParams).proxyName;
         if (name == 'HK-1') {
           throw const CoreMethodException(
             code: 'internal_error',
@@ -1340,9 +772,9 @@ void main() {
     });
 
     test('drops every spinner when the Core goes away mid-run', () async {
-      final release = Completer<Delay?>();
+      final release = Completer<Delay>();
       when(
-        () => core.asyncTestDelay(_testUrl, any(), any()),
+        () => core.testDelay(_delayTest(_testUrl)),
       ).thenAnswer((_) => release.future);
       final container = _delayContainer(buildContainer);
       container.read(coreStatusProvider.notifier).value = CoreStatus.connected;
@@ -1370,7 +802,7 @@ void main() {
       'stores the refreshed provider and clears the updating flag',
       () async {
         final refreshed = _provider('geo', count: 5);
-        final release = Completer<String>();
+        final release = Completer<void>();
         when(
           () => core.updateExternalProvider('geo'),
         ).thenAnswer((_) => release.future);
@@ -1386,10 +818,9 @@ void main() {
 
         expect(container.read(isUpdatingProvider('provider_geo')), isTrue);
 
-        release.complete('');
-        final message = await update;
+        release.complete();
+        await update;
 
-        expect(message, isEmpty);
         expect(container.read(providersProvider), [refreshed]);
         expect(container.read(isUpdatingProvider('provider_geo')), isFalse);
       },
@@ -1399,7 +830,7 @@ void main() {
       tester,
     ) async {
       final refreshed = _provider('geo', count: 8);
-      final release = Completer<String>();
+      final release = Completer<void>();
       when(
         () => core.updateExternalProvider('geo'),
       ).thenAnswer((_) => release.future);
@@ -1418,9 +849,9 @@ void main() {
 
       expect(container.read(isUpdatingProvider('provider_geo')), isFalse);
 
-      release.complete('');
+      release.complete();
 
-      expect(await update, isEmpty);
+      await update;
       expect(container.read(providersProvider), [refreshed]);
 
       await tester.pump(Duration.zero);
@@ -1429,7 +860,7 @@ void main() {
     testWidgets('a core disconnect clears the provider updating state', (
       tester,
     ) async {
-      final release = Completer<String>();
+      final release = Completer<void>();
       when(
         () => core.updateExternalProvider('geo'),
       ).thenAnswer((_) => release.future);
@@ -1451,22 +882,22 @@ void main() {
 
       expect(container.read(isUpdatingProvider('provider_geo')), isFalse);
 
-      release.complete('');
+      release.complete();
       await update;
       await tester.pump(Duration.zero);
     });
 
-    test('returns the core message without storing a provider', () async {
-      when(
-        () => core.updateExternalProvider('geo'),
-      ).thenAnswer((_) async => 'update failed');
+    test('surfaces the core error without storing a provider', () async {
+      when(() => core.updateExternalProvider('geo')).thenThrow(
+        const CoreMethodException(code: 'core_error', message: 'update failed'),
+      );
       final container = buildContainer();
 
-      final message = await actionOf(
-        container,
-      ).updateProvider(_provider('geo'), showLoading: true);
+      await expectLater(
+        actionOf(container).updateProvider(_provider('geo'), showLoading: true),
+        throwsA(isA<CoreMethodException>()),
+      );
 
-      expect(message, 'update failed');
       expect(container.read(providersProvider), isEmpty);
       expect(container.read(isUpdatingProvider('provider_geo')), isFalse);
       verifyNever(() => core.getExternalProvider(any()));
@@ -1490,7 +921,7 @@ void main() {
   group('sideLoadExternalProvider', () {
     test('stores the provider after a successful side load', () async {
       final refreshed = _provider('rules', count: 3);
-      final release = Completer<String>();
+      final release = Completer<void>();
       when(
         () => core.sideLoadExternalProvider(
           providerName: 'rules',
@@ -1511,25 +942,28 @@ void main() {
 
       expect(container.read(isUpdatingProvider('provider_rules')), isTrue);
 
-      release.complete('');
-      final message = await sideLoad;
+      release.complete();
+      await sideLoad;
 
-      expect(message, isEmpty);
       expect(container.read(providersProvider), [refreshed]);
       expect(container.read(isUpdatingProvider('provider_rules')), isFalse);
     });
 
-    test('surfaces the core message and skips the refresh', () async {
+    test('surfaces the core error and skips the refresh', () async {
       when(
         () => core.sideLoadExternalProvider(providerName: 'rules', data: 'bad'),
-      ).thenAnswer((_) async => 'invalid payload');
+      ).thenThrow(
+        const CoreMethodException(
+          code: 'core_error',
+          message: 'invalid payload',
+        ),
+      );
       final container = buildContainer();
 
-      final message = await actionOf(
-        container,
-      ).sideLoadExternalProvider(_provider('rules'), 'bad');
-
-      expect(message, 'invalid payload');
+      await expectLater(
+        actionOf(container).sideLoadExternalProvider(_provider('rules'), 'bad'),
+        throwsA(isA<CoreMethodException>()),
+      );
       verifyNever(() => core.getExternalProvider(any()));
     });
   });

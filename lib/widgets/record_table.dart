@@ -2,8 +2,8 @@ import 'package:collection/collection.dart';
 import 'package:fl_clash/providers/config.dart';
 import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/ui/ui.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:material_ui/material_ui.dart';
 
 const _recordTableMinWidth = 720.0;
 const recordWideTableWidth = 1000.0;
@@ -47,12 +47,7 @@ RecordSort? nextRecordSort<T>(RecordSort? sort, RecordColumn<T> column) {
 class RecordSorter<T> {
   List<T>? _source;
   RecordSort? _sortedBy;
-  Comparable<Object> Function(T item)? _newestKey;
-  int? _limit;
-  bool _reverse;
   List<T> _sorted = const [];
-
-  RecordSorter() : _reverse = false;
 
   /// [reverse] marks a list shown bottom up, its last item on top.
   List<T> sort(
@@ -60,110 +55,32 @@ class RecordSorter<T> {
     List<RecordColumn<T>> columns,
     RecordSort? sort, {
     bool reverse = false,
-    int? limit,
-    Comparable<Object> Function(T item)? newestKey,
   }) {
     final sortKey = sort == null
-        ? newestKey
+        ? null
         : columns
               .firstWhereOrNull((column) => column.id == sort.columnId)
               ?.sortKey;
-    if (sortKey == null) {
-      if (limit == null || items.length <= limit) {
-        return items;
-      }
-      return items.sublist(0, limit);
+    if (sort == null || sortKey == null) {
+      return items;
     }
-    if (_isCached(items, sort, reverse, limit, newestKey)) {
+    if (identical(_source, items) && _sortedBy == sort) {
       return _sorted;
     }
     final shown = reverse ? items.reversed.toList() : items;
-    final sorted = _sortShown(
-      shown,
-      sortKey,
-      descending: sort?.descending ?? true,
-      limit: limit,
-      tieBreakKey: sort == null ? null : newestKey,
-    );
-    _source = items;
-    _sortedBy = sort;
-    _newestKey = newestKey;
-    _limit = limit;
-    _reverse = reverse;
-    return _sorted = reverse ? sorted.reversed.toList() : sorted;
-  }
-
-  bool _isCached(
-    List<T> items,
-    RecordSort? sort,
-    bool reverse,
-    int? limit,
-    Comparable<Object> Function(T item)? newestKey,
-  ) {
-    return identical(_source, items) &&
-        _sortedBy == sort &&
-        _reverse == reverse &&
-        _limit == limit &&
-        identical(_newestKey, newestKey);
-  }
-
-  List<T> _sortShown(
-    List<T> items,
-    Comparable<Object> Function(T item) sortKey, {
-    required bool descending,
-    int? limit,
-    Comparable<Object> Function(T item)? tieBreakKey,
-  }) {
-    final keys = [for (final item in items) sortKey(item)];
-    final tieKeys = tieBreakKey == null
-        ? null
-        : [for (final item in items) tieBreakKey(item)];
-    int prefer(int a, int b) {
-      final compared = keys[a].compareTo(keys[b]);
-      if (compared != 0) {
-        return descending ? compared : -compared;
-      }
-      if (tieKeys != null) {
-        final tie = tieKeys[a].compareTo(tieKeys[b]);
-        if (tie != 0) {
-          return tie;
-        }
-      }
-      return b.compareTo(a);
-    }
-
-    if (limit != null && items.length > limit) {
-      return _topByKeys(items, prefer, limit: limit);
-    }
+    final keys = [for (final item in shown) sortKey(item)];
+    final direction = sort.descending ? -1 : 1;
     // Sorting indexes keeps ties in their shown order; collection's
     // mergeSort is stable too but measured over ten times slower.
-    final order = List.generate(items.length, (index) => index)
-      ..sort((a, b) => -prefer(a, b));
-    return [for (final index in order) items[index]];
-  }
-
-  List<T> _topByKeys(
-    List<T> items,
-    int Function(int a, int b) prefer, {
-    required int limit,
-  }) {
-    final queue = HeapPriorityQueue<int>(prefer);
-    for (var index = 0; index < items.length; index++) {
-      if (queue.length < limit) {
-        queue.add(index);
-        continue;
-      }
-      final worst = queue.first;
-      if (prefer(index, worst) > 0) {
-        queue.removeFirst();
-        queue.add(index);
-      }
-    }
-
-    final ascending = List<T>.generate(queue.length, (_) {
-      return items[queue.removeFirst()];
-    });
-    return ascending.reversed.toList();
+    final order = List.generate(shown.length, (index) => index)
+      ..sort((a, b) {
+        final compared = keys[a].compareTo(keys[b]);
+        return compared != 0 ? direction * compared : a - b;
+      });
+    final sorted = [for (final index in order) shown[index]];
+    _source = items;
+    _sortedBy = sort;
+    return _sorted = reverse ? sorted.reversed.toList() : sorted;
   }
 }
 
@@ -216,26 +133,17 @@ class RecordTable<T> {
   final List<TableColumn> layouts;
   final List<double> widths;
   final double rowHeight;
-  final RoundedSuperellipseBorder rowShape;
-  final TextStyle rowStyle;
 
   const RecordTable._({
     required this.columns,
     required this.layouts,
     required this.widths,
     required this.rowHeight,
-    required this.rowShape,
-    required this.rowStyle,
   });
 
   List<Widget> cellsOf(BuildContext context, T item) => [
     for (final column in columns) column.cell(context, item),
   ];
-
-  /// For a list separated by zero-height dividers, which sit at odd indexes.
-  double estimateExtent(int? index, double crossAxisExtent) {
-    return index != null && index.isEven ? rowHeight : 0;
-  }
 }
 
 /// Builds a record list as a table once it is wide enough, with the column
@@ -273,6 +181,8 @@ class _RecordTableFrameState<T> extends ConsumerState<RecordTableFrame<T>>
     with TableColumnWidthsMixin<RecordTableFrame<T>> {
   final _sorter = RecordSorter<T>();
   RecordSort? _sort;
+  RecordTable<T>? _table;
+  Object? _tableInputs;
 
   @override
   String get tableId => widget.tableId;
@@ -281,13 +191,25 @@ class _RecordTableFrameState<T> extends ConsumerState<RecordTableFrame<T>>
     if (width < _recordTableMinWidth) {
       return null;
     }
-    final columns = widget.columnsOf(width);
-    final layouts = [for (final column in columns) column.layout];
     final rowHeight =
         MediaQuery.textScalerOf(context).scale(_recordCellLineHeight) +
         _recordRowPadding * 2;
-    final rowBaseStyle = AppTextStyle.subheadline.of(context);
-    return RecordTable._(
+    // Rows are memoized on the table, so a refresh must get the same one.
+    final inputs = (
+      width,
+      columnWidths,
+      rowHeight,
+      Localizations.localeOf(context),
+      Theme.of(context),
+    );
+    final table = _table;
+    if (table != null && inputs == _tableInputs) {
+      return table;
+    }
+    final columns = widget.columnsOf(width);
+    final layouts = [for (final column in columns) column.layout];
+    _tableInputs = inputs;
+    return _table = RecordTable._(
       columns: columns,
       layouts: layouts,
       widths: tableColumnWidths(
@@ -296,12 +218,6 @@ class _RecordTableFrameState<T> extends ConsumerState<RecordTableFrame<T>>
         columnWidths,
       ),
       rowHeight: rowHeight,
-      rowShape: AppShape.all(AppCorner.fit(rowHeight)),
-      rowStyle: rowBaseStyle.copyWith(
-        color: context.colorScheme.onSurface,
-        height: _recordCellLineHeight / rowBaseStyle.fontSize!,
-        fontFeatures: const [FontFeature.tabularFigures()],
-      ),
     );
   }
 
@@ -392,7 +308,7 @@ class _RecordTableHeader<T> extends StatelessWidget {
     );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: _recordTableMargin),
-      child: Material(
+      child: Surface(
         color: context.raisedSurfaceLevel.colorOf(colorScheme),
         shape: AppShape.all(AppCorner.fit(height)),
         clipBehavior: Clip.antiAlias,
@@ -495,8 +411,11 @@ class RecordHeaderCell extends StatelessWidget {
     if (onTap == null) {
       return content;
     }
-    return InkWell(
-      onTap: onTap,
+    return PressSurface(
+      fill: Colors.transparent,
+      shape: AppShape.all(AppCorner.none),
+      childFills: true,
+      onPressed: onTap,
       child: SizedBox.expand(child: content),
     );
   }
@@ -519,35 +438,31 @@ class RecordTableRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = context.colorScheme;
-    final style = table.rowStyle;
-    final shape = table.rowShape;
+    final style = AppTextStyle.subheadline.of(context);
+    final shape = AppShape.all(AppCorner.fit(table.rowHeight));
     final level = striped ? context.raisedSurfaceLevel : context.surfaceLevel;
-    final fill = striped ? level.colorOf(colorScheme) : null;
-    Widget row = Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: onTap,
-        customBorder: shape,
-        child: DefaultTextStyle(
-          style: style,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          child: TableCells(
-            columns: table.layouts,
-            widths: table.widths,
-            height: table.rowHeight,
-            inset: _recordCellInset,
-            cells: cells,
-          ),
+    final row = PressSurface(
+      fill: striped ? level.colorOf(colorScheme) : Colors.transparent,
+      shape: shape,
+      childFills: true,
+      onPressed: onTap,
+      child: DefaultTextStyle(
+        style: style.copyWith(
+          color: colorScheme.onSurface,
+          height: _recordCellLineHeight / style.fontSize!,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        child: TableCells(
+          columns: table.layouts,
+          widths: table.widths,
+          height: table.rowHeight,
+          inset: _recordCellInset,
+          cells: cells,
         ),
       ),
     );
-    if (fill != null) {
-      row = DecoratedBox(
-        decoration: ShapeDecoration(color: fill, shape: shape),
-        child: row,
-      );
-    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: _recordTableMargin),
       child: SurfaceScope(level: level, child: row),
