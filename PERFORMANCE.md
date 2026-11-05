@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-05
-- FlClash main：`8bceffff`
+- FlClash main：`25267abf`
 - Clash.Meta main：`5c215995c`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04/11-05 持续重构轮次，账本当前共 63 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04/11-05 持续重构轮次，账本当前共 64 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -111,6 +111,7 @@
 | 组文档缓存扩展至全部组类型 | `5c215995c` | `65ba30c9` | `BenchmarkHandleGetProxies` paired n=7（新增 urltest/fallback/loadbalance 场景，无 kind 后缀的 Selector 场景名不变保持跨轮配对）：200 组 urltest 153.2µs ±5% → 69.9µs ±1%（**-54.42%**），千节点 urltest 188.1µs ±2% → 98.7µs ±2%（**-47.55%**），fallback 171.3µs ±3% → 79.2µs ±3%（**-53.75%**），loadbalance 154.3µs ±3% → 66.1µs ±10%（**-57.20%**），各 p=0.001，urltest allocs -1（命中路径免 `MarshalJSON` 缓冲）；Selector 既有场景 p=0.21–0.90 噪声内。键完备性：URLTest/Fallback 文档可变字段=（now=自主改选，fixed=用户钉选，all=provider 版本），fixed 与 now 独立可变（钉选节点死亡时 now 走最快而 fixed 保留，故两值都必须入键），LoadBalance 文档不含选择字段仅版本入键，其余字段构造期恒定——推翻本表上一行「URLTest/Fallback/LoadBalance 始终实时编码」的保守结论；键仍以代理实例为标识、快照身份变更即清空；子模块为 URLTest/Fallback 导出 `SelectedName()`（`5c215995c`）；`TestGroupDocsAnswerWhatTheirGroupsChange` 钉住四种 kind 的稳态答案字节等价、钉选（Set→fixed/now）与订阅刷新（provider 版本→all）到达下一答案、answered now==live Now()、每答案 AllocsPerRun≤4；CGO 启用/禁用两种构建下 wrapper 全量测试、focused race、`go vet .`、子模块 outboundgroup 测试+vet、core 全量 `go test ./...`（104 包）+`go vet ./...`、adapter 包 Android arm64 vet 全部通过 |
 
 | 代理解表键 span 缓存 | -（仅 wrapper） | `8bceffff` | `BenchmarkHandleGetProxies` paired n=7（对 `65ba30c9` 状态）：千节点 103.1µs ±8% → 97.1µs ±7%（**-5.83%**，p=0.017），千节点 urltest 98.7µs ±2% → 93.8µs ±2%（**-4.87%**，p=0.001），allocs/内存持平；纯组场景噪声内（键 span 数量少）。快照缓存重建时预编码每个 `"name":` 键 span（分隔符与转义一次完成，长度取自 `jsonutil.StringLen`），答案循环退化为对 span 与节点视图的 memcopy；收益随节点数增长，与测量记录中"名字追加 span 缓存上限 ~11µs"的预估相符；CGO 两种构建下 wrapper 全量测试 + vet 通过 |
+| 延迟测试持久化合并 | -（仅 Dart） | `25267abf` | 走查定位：`AtomicFilePreferencesStore._update` 每次写入都全量 `json.encode` 整个 store + 原子落盘，而批量延迟测试的每个渲染节拍（300ms）都 `saveDelayMap`（1000 节点 delayMap ≈ 100KB+），测试期间 UI isolate 以 ~3.3 次/秒的频率做全 store 重编码+写盘。改为 2s 尾随写合并 + 批次结束 `_persistDelaysNow` 立即落盘（最终状态不丢）；`_CountingPreferencesStore` spy 钉住"窗口内两次 flush 仅一次写"与"批次结束立即写"，proxies_action_test 64 用例全绿 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
@@ -130,6 +131,12 @@
 | statistic 记账路径 | `BenchmarkManagerPushStriped` 2.22–2.25ns/0 allocs、`ManagerSnapshot` 100/500 行 1 alloc、`NewTCPTracker` 隔离 2 allocs（前轮钉住） | 全部饱和；不动 |
 | 组健康检查 | `GroupBase.healthCheck` 每 provider 一个 goroutine 并行，成本在 provider 的 HTTP 探测网络等待 | 网络主导，wrapper/Go 侧无分配热点；不动 |
 | DNS 查询事件路径 | `newDnsQuery` 走查：`TrimSuffix` 零分配、答案串为 UI 必需、事件进批量直写编码（见 d838533e 行） | 每查询仅答案串本身分配，形状已最小；不动 |
+| Dart 代理页搜索键入路径 | `SearchQuery` 走查：文本经 Expando 缓存且已小写，`terms.every(contains)` 已是最小操作，1000 节点每键击 ~0.2ms | 缓存已完备，无再削减空间；不动 |
+| HTTP 客户端复用（provider/geo 下载） | `Request` 构造单例 Dio + `IOHttpClientAdapter` 的 `createHttpClient` 懒创建一次，keep-alive 连接复用成立 | 已是复用形状；不动 |
+| 脚本引擎调用路径 | `handleEvaluate` 每次 profile 应用一次，Rust 侧执行；`json.encode(config)` 在 UI isolate，一次性且低于预算 | 一次性成本；不动 |
+| 进程匹配（find-process-mode） | `tunnel` 侧严格模式惰性（仅 PROCESS 规则触发）、always 显式开启；Windows 实现继承上游 `GetExtendedTcpTable` | 门控正确，实现属上游预算（Core API Safety：fork 改动留给 feature）；不动 |
+
+### 稳定统计与统计链路
 
 ### 稳定统计与统计链路
 
