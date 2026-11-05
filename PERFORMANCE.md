@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-06
-- FlClash main：`8c38a98c`
+- FlClash main：`0c3069a3`
 - Clash.Meta main：`4289e66a3`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次，账本当前共 83 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次，账本当前共 84 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -141,6 +141,7 @@
 | Provider 轻量键排序 | -（仅 wrapper） | `706c8fe7` | 资源页读取 100 个 Provider 时先物化整个 view slice，再排序约 150B 的 `ExternalProvider` 值；改为排序 map key，再按名称构建 view，减少排序阶段的值移动。`BenchmarkProviderListDispatch` paired n=7：73.99µ ±5% / 46.40KiB / 13 allocs → 60.29µ ±13% / 48.15KiB / 14 allocs（时间 **-18.52%**，p=0.001；新增一个 key slice 使内存 +3.77%、分配 +7.69%，为时间收益接受）；provider focused race、wrapper 全量测试、桌面与 Android vet 通过 |
 | Provider 免合并 map | -（仅 wrapper） | `3db06b91` | 列表构建原先先分配合并 map，再分配 names slice 和 view slice；改为直接物化两类 snapshot 的候选 entry，一轮按 `(name, rule-first)` 排序后相邻去重，rule 优先语义与 lookup 保持一致。100 Provider `BenchmarkProviderListDispatch` paired n=7：60.49µ ±2% / 48.15KiB / 14 allocs → 58.04µ ±3% / 41.25KiB / 3 allocs（时间 **-4.05%**，内存 **-14.33%**，分配 **-78.57%**，p=0.001）；兼容 inline 过滤和 rule/proxy 同名优先 focused 测试已更新，provider focused race、wrapper 全量测试、桌面与 Android vet 通过 |
 | Proxy 快照精确容量 | -（仅 wrapper） | `8c38a98c` | `answerSize` 原先按节点名长度 +32、每组 +320 粗估，大表 frame 多次 `growslice`；snapshot 构建时已持有静态 keySpan/nodeView，现在直接累计它们的实际长度、all 列表 JSON 长度和每组 768B 缓存文档 scaffold。200 组 +1000 节点 paired n=7：urltest 138.7µ ±2% / 276.8KiB / 6 allocs → 121.3µ ±5% / 228.6KiB / 4 allocs（时间 **-12.52%**，内存 **-17.40%**，分配 **-33.33%**，p=0.001）；selector 121.5µ ±16% → 112.8µ ±39% 无显著时间变化（p=0.073），但内存 **-17.42%**、分配 `4 → 3`（p=0.001）；proxy focused race、wrapper 全量测试、桌面与 Android vet 通过 |
+| Proxy 组名投影缓存 | -（仅 wrapper） | `0c3069a3` | 大表稳态读取每次仍调用 `proxyGroupNames` 遍历配置名单并分配投影；改为按 `(tunnel snapshot, name-list 内容)` 缓存不可变投影，名单克隆入键避免同底层数组原地修改误命中。200 组 +1000 节点 paired n=7：selector 110.4µ ±12% / 227.5KiB / 3 allocs → 91.55µ ±21% / 224.1KiB / 2 allocs（时间 **-17.09%**，p=0.026；内存 **-1.49%**、分配 **-33.33%**，p=0.001）；urltest 125.0µ ±8% / 228.7KiB / 5 allocs → 110.5µ ±2% / 225.1KiB / 3 allocs（时间 **-11.62%**，内存 **-1.54%**，分配 **-40.00%**，p=0.001）；新增名单变更/顺序变更投影 focused 测试，proxy focused race、wrapper 全量测试、桌面与 Android vet 通过 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
