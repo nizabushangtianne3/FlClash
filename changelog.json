@@ -64,6 +64,11 @@
               "id": "2eb058d",
               "scope": "core",
               "text": "Protect singledo call storage"
+            },
+            {
+              "id": "f6754cf",
+              "scope": "ui",
+              "text": "Release page buttons immediately"
             }
           ]
         },

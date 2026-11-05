@@ -17,6 +17,7 @@
 - **core** Auto-select leaves an unusable first node at once (7d5db7e)
 - **access** Keep selections a filter hides (63aaf6d)
 - **core** Protect singledo call storage (2eb058d)
+- **ui** Release page buttons immediately (f6754cf)
 
 **Performance**
 
