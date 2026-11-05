@@ -135,6 +135,8 @@
 | HTTP 客户端复用（provider/geo 下载） | `Request` 构造单例 Dio + `IOHttpClientAdapter` 的 `createHttpClient` 懒创建一次，keep-alive 连接复用成立 | 已是复用形状；不动 |
 | 脚本引擎调用路径 | `handleEvaluate` 每次 profile 应用一次，Rust 侧执行；`json.encode(config)` 在 UI isolate，一次性且低于预算 | 一次性成本；不动 |
 | 进程匹配（find-process-mode） | `tunnel` 侧严格模式惰性（仅 PROCESS 规则触发）、always 显式开启；Windows 实现继承上游 `GetExtendedTcpTable` | 门控正确，实现属上游预算（Core API Safety：fork 改动留给 feature）；不动 |
+| 协议包路径全量扫描（99 条基准，2026-11-05） | `go test ./adapter/outbound/... ./transport/... -bench Packet`：稳态每包 0 allocs 的路径占绝大多数（hysteria hop/mekya/vmess/ssr/trojan/vless/socks5 写读、Relay、UDPPacket 池化生命周期等）；非零分配点逐一定位：`EncodeUDPPacket`（分配版）无生产调用者，仅作 `Into` 变体的测试字节 oracle（同 messageBatchCall 参考实现先例）；trusttunnel 客户端写 64B/1 alloc 仅在无前置余量回退分支（headroom 优先路径零分配，稀有协议）；snell `WritePacketResponse` 属 snell 监听入站（FlClash 客户端不可达）；`PacketConnIDGeneration/uuid` 即账本已拒绝的每代理 uuid；mekya `WrappedPacketConnForward` 908ns/0 allocs（网络面前可忽略）；hysteria hop 生产路径走 `udpPacketPool`（owned 变体仅为基准对照） | 全部关闭：饱和路径不动，oracle 保留，回退分支与不可达面不投复杂度 |
+| 本地入站 UDP 路径（socks/mixed） | `BenchmarkSocksUDPHandleCached` 112.4–113.7ns/128B/1 alloc（包结构体）；write-back 30ns/0 allocs；`SocksPacketAdapter/native` 2.3–2.6ns/0 allocs | 每包 1 alloc 是包结构体本身，其生命周期跨异步隧道路径——账本工作流规则 6 明确不池化 packetAdapter；关闭 |
 
 ### 稳定统计与统计链路
 
