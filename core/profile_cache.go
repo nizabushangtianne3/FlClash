@@ -30,45 +30,54 @@ var profileDocumentCache struct {
 
 // One entry holds the last profile read: the host opens a profile, previews it
 // and applies it, and each of those re-reads the same file. Parsing it is the
-// most expensive thing a large subscription costs, so the digest the host
-// already computes is the key.
+// most expensive thing a large subscription costs, so the exact bytes are the
+// key and the response digest is cached with the parse.
 const maxCachedProfileSize = 4 << 20
 
 var profileRawCache struct {
 	mu     sync.RWMutex
+	buf    []byte
 	digest string
 	raw    *config.RawConfig
 }
 
-// readRawConfig parses [path], reusing the parse when the file is unchanged.
-func readCachedRawConfig(path string) (*config.RawConfig, []byte, error) {
+// readRawConfig parses [path], reusing the parse and digest when the file is
+// unchanged. Comparing bytes avoids hashing every repeated read and prevents
+// an unchanged profile from being answered after a digest collision.
+func readCachedRawConfig(path string) (*config.RawConfig, string, error) {
 	buf, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", err
 	}
 	if len(buf) > maxCachedProfileSize {
 		raw, err := unmarshalRawConfig(buf)
-		return raw, buf, err
+		if err != nil {
+			return nil, "", err
+		}
+		return raw, hex.EncodeToString(sha256Sum(buf)), nil
 	}
-	digest := hex.EncodeToString(sha256Sum(buf))
 
 	profileRawCache.mu.RLock()
+	cachedBuf := profileRawCache.buf
 	cached := profileRawCache.raw
-	hit := digest == profileRawCache.digest && cached != nil
+	cachedDigest := profileRawCache.digest
+	hit := cached != nil && bytes.Equal(buf, cachedBuf)
 	profileRawCache.mu.RUnlock()
 	if hit {
-		return cached, buf, nil
+		return cached, cachedDigest, nil
 	}
 
 	raw, err := unmarshalRawConfig(buf)
 	if err != nil {
-		return nil, buf, err
+		return nil, "", err
 	}
+	digest := hex.EncodeToString(sha256Sum(buf))
 	profileRawCache.mu.Lock()
+	profileRawCache.buf = append([]byte(nil), buf...)
 	profileRawCache.digest = digest
 	profileRawCache.raw = raw
 	profileRawCache.mu.Unlock()
-	return raw, buf, nil
+	return raw, digest, nil
 }
 
 func sha256Sum(buf []byte) []byte {
@@ -123,6 +132,7 @@ func parseProfileDocument(buf []byte) (*yaml.Node, error) {
 // parse of what stood there before it stale.
 func forgetProfileRaw() {
 	profileRawCache.mu.Lock()
+	profileRawCache.buf = nil
 	profileRawCache.digest = ""
 	profileRawCache.raw = nil
 	profileRawCache.mu.Unlock()

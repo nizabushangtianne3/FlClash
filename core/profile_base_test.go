@@ -84,16 +84,19 @@ func TestReadRawConfigReusesTheParse(t *testing.T) {
 	t.Cleanup(forgetProfileRaw)
 	path := writeBaseProfile(t, baseProfile)
 
-	first, _, err := readCachedRawConfig(path)
+	first, firstDigest, err := readCachedRawConfig(path)
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	second, _, err := readCachedRawConfig(path)
+	second, secondDigest, err := readCachedRawConfig(path)
 	if err != nil {
 		t.Fatalf("read again: %v", err)
 	}
 	if first != second {
 		t.Error("an unchanged profile was parsed again")
+	}
+	if firstDigest == "" || firstDigest != secondDigest {
+		t.Fatalf("digests = %q and %q, want one cached digest", firstDigest, secondDigest)
 	}
 
 	changed := strings.Replace(baseProfile, "mixed-port: 7000", "mixed-port: 7001", 1)
@@ -559,6 +562,24 @@ func BenchmarkUnmarshalProfileDocument(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// The host reads the base again as it edits sections, so the cached answer is
+// what every repeat costs.
+func BenchmarkHandleGetProfileBaseCached(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "profile.yaml")
+	if err := os.WriteFile(path, profileDocument(800), 0o600); err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(forgetProfileRaw)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := handleGetProfileBase(PathParams{Path: path}); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

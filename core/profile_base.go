@@ -3,7 +3,6 @@ package core
 import (
 	"bufio"
 	"bytes"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -22,12 +21,12 @@ var profileBaseSections = []string{"proxies", "proxy-groups", "sub-rules"}
 
 func handleGetProfileBase(params PathParams) (*ProfileBase, error) {
 	defer scheduleLoadMemoryRelease()
-	raw, buf, err := readCachedRawConfig(params.Path)
+	raw, digest, err := readCachedRawConfig(params.Path)
 	if err != nil {
 		return nil, err
 	}
 	base := &ProfileBase{
-		Digest:      hex.EncodeToString(sha256Sum(buf)),
+		Digest:      digest,
 		MatchRules:  []string{},
 		Proxies:     len(raw.Proxy),
 		ProxyGroups: len(raw.ProxyGroup),
