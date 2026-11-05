@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-06
-- FlClash main：`287ec8e5`
+- FlClash main：`5be90cbb`
 - Clash.Meta main：`5ac7bbcfa`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次，账本当前共 75 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次，账本当前共 76 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -133,6 +133,7 @@
 | Profile 文档缓存字节比对 | -（仅 wrapper） | `a2c80782` | CPU profile 显示 800 节点 cached merge 中 46.5% 时间在重复 SHA256、15.8% 在查找 `short-id` 标记；文档缓存从 digest 键改为缓存并整段比较 wire bytes，命中时不再哈希，同时保留精确变更判定。800 节点 `BenchmarkMergeProfileBaseCached` paired n=7：346.2µ ±2% / 200.6KiB / 60 allocs → 166.2µ ±1% / 200.5KiB / 58 allocs（时间 **-51.99%**，内存约持平，分配 **-3.33%**，p=0.001）；新增 unchanged/changed 文档缓存 focused 测试，profile focused race、wrapper 全量测试、桌面/Android vet 通过 |
 | Profile short-id 分类缓存 | -（仅 wrapper） | `2cd80b6f` | 文档字节比对落地后 CPU 热路径仍包含每次缓存命中的 `bytes.Contains`；`readProfileDocument` 将 `short-id` 分类与文档同键缓存，命中时直接返回，超大文档解析失败也不再扫描。800 节点 `BenchmarkMergeProfileBaseCached` paired n=7：167.6µ ±2% / 200.5KiB / 58 allocs → 136.9µ ±2% / 200.5KiB / 58 allocs（时间 **-18.30%**，p=0.001；内存/分配保持）；新增含 `short-id`、unchanged 与 changed 文档的分类 focused 测试，profile focused race、wrapper `go test ./...`、桌面与 Android vet 通过 |
 | Profile raw 摘要缓存 | -（仅 wrapper） | `287ec8e5` | CPU profile 显示 800 节点 cached base 中 `sha256.blockAVX2` 占 83.70%，`readCachedRawConfig` 占 59.24%；raw 缓存键从每次 SHA256+hex 改为整段字节比对，响应 digest 与解析同键缓存，`getProfileBase` 不再对同一文件二次哈希。新增 800 节点 `BenchmarkHandleGetProfileBaseCached` paired n=7：459.1µ ±3% / 100.70KiB / 40 allocs → 100.1µ ±3% / 99.52KiB / 14 allocs（时间 **-78.20%**，分配 **-65.00%**，p=0.001）；profile focused race、wrapper 全量测试、`Clash.Meta` 全量测试、桌面与 Android vet、Dart analyze、protocol/setup 96 个 Flutter 用例通过 |
+| Profile 解析快照统一 | -（仅 wrapper） | `5be90cbb` | `getProfileBase` 与 `mergeProfileBase` 原先分别维护 raw 和 YAML document 缓存，冷读取同一 profile 会解密/解析两次；合并为一份 wire-byte 键控 `profileSnapshot`，一次解密、retag、解析并共享 raw config/document/digest，保留 4MiB 不缓存上限。新增 800 节点冷读取+合并 `BenchmarkProfileReadAndMerge` paired n=7（20x）：25.79ms ±3% / 5.903MiB / 121.77k allocs → 18.39ms ±7% / 3.395MiB / 73.03k allocs（时间 **-28.68%**，内存 **-42.49%**，分配 **-40.02%**，p=0.001）。稳态无回退：cached base 100.1µ → 94.91µ ±2%，cached merge 136.9µ → 106.7µ ±2% 且内存 200.5KiB → 104.5KiB；新增 retag/raw 解码、changed-byte、加密 wire digest focused 测试；profile focused race、wrapper 全量测试、`Clash.Meta` 全量测试、桌面与 Android vet、Dart analyze、protocol/setup 96 个 Flutter 用例通过 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
