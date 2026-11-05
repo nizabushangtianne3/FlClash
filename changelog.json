@@ -2,6 +2,69 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "1.0.3",
+      "tag": "v1.0.3",
+      "date": "2026-11-05",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "8bcefff",
+              "scope": "proxies",
+              "text": "Memcopy the proxies keys per snapshot"
+            },
+            {
+              "id": "65ba30c",
+              "scope": "proxies",
+              "text": "Cache group documents for every group type"
+            },
+            {
+              "id": "e429715",
+              "scope": "proxies",
+              "text": "Cache selector documents per snapshot"
+            },
+            {
+              "id": "a251ab4",
+              "scope": "proxies",
+              "text": "Precompute the proxies answer size"
+            },
+            {
+              "id": "c980109",
+              "scope": "proxies",
+              "text": "Cache node views with the proxy snapshot"
+            },
+            {
+              "id": "d838533",
+              "scope": "proxies",
+              "text": "Encode core event batches without reflection"
+            },
+            {
+              "id": "c265d9b",
+              "scope": "proxies",
+              "text": "Sort the proxy table once per snapshot"
+            },
+            {
+              "id": "2875406",
+              "scope": "proxies",
+              "text": "Reuse connection row snapshots across resyncs"
+            },
+            {
+              "id": "4d4283a",
+              "scope": "proxies",
+              "text": "Encode the whole proxies answer into one frame"
+            },
+            {
+              "id": "fa0b02a",
+              "scope": "proxies",
+              "text": "Publish delay map views"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.2",
       "tag": "v1.0.2",
       "date": "2026-11-04",

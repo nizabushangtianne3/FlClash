@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.0.3 (2026-11-05)
+
+**Performance**
+
+- **proxies** Memcopy the proxies keys per snapshot (8bcefff)
+- **proxies** Cache group documents for every group type (65ba30c)
+- **proxies** Cache selector documents per snapshot (e429715)
+- **proxies** Precompute the proxies answer size (a251ab4)
+- **proxies** Cache node views with the proxy snapshot (c980109)
+- **proxies** Encode core event batches without reflection (d838533)
+- **proxies** Sort the proxy table once per snapshot (c265d9b)
+- **proxies** Reuse connection row snapshots across resyncs (2875406)
+- **proxies** Encode the whole proxies answer into one frame (4d4283a)
+- **proxies** Publish delay map views (fa0b02a)
+
 ## v1.0.2 (2026-11-04)
 
 **Bug Fixes**
