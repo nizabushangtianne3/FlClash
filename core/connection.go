@@ -200,12 +200,7 @@ func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 }
 
 func handleGetConnectionCount() int {
-	count := 0
-	statistic.DefaultManager.Range(func(statistic.Tracker) bool {
-		count++
-		return true
-	})
-	return count
+	return statistic.DefaultManager.Size()
 }
 
 func handleCloseConnections() {

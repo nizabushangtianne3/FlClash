@@ -24,6 +24,7 @@ func TestConnectionDeltaAnswersWhatMoved(t *testing.T) {
 	opened := handleGetConnections(ConnectionsQuery{Resync: true})
 	require.Len(t, opened.Added, 2, "a table it has not answered before is answered whole")
 	require.Equal(t, 2, opened.Count)
+	require.Equal(t, 2, handleGetConnectionCount())
 	require.Empty(t, opened.Removed)
 
 	unchanged := handleGetConnections(ConnectionsQuery{})
@@ -147,6 +148,26 @@ func BenchmarkGetConnectionsDelta(b *testing.B) {
 	}
 }
 
+func BenchmarkGetConnectionCount(b *testing.B) {
+	for _, count := range []int{100, 500} {
+		b.Run(fmt.Sprintf("connections=%d", count), func(b *testing.B) {
+			trackers := benchmarkConnectionTrackers(b, count)
+			b.Cleanup(func() {
+				for _, tracker := range trackers {
+					_ = tracker.Close()
+				}
+			})
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if got := handleGetConnectionCount(); got != count {
+					b.Fatalf("count = %d, want %d", got, count)
+				}
+			}
+		})
+	}
+}
 func BenchmarkGetConnectionsResyncFrame(b *testing.B) {
 	for _, count := range []int{100, 500} {
 		b.Run(fmt.Sprintf("connections=%d", count), func(b *testing.B) {
