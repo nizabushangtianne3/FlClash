@@ -28,19 +28,40 @@ import (
 
 var errNotExternalProvider = errors.New("not external provider")
 
-func externalProviders() map[string]cp.Provider {
-	eps := make(map[string]cp.Provider)
-	for n, p := range tunnel.ProvidersSnapshot() {
-		if p.VehicleType() != cp.Compatible {
-			eps[n] = p
+// externalProviderEntry is one candidate from either provider table. Rule wins
+// the shared-name tie, matching replacement semantics in lookupExternalProvider.
+type externalProviderEntry struct {
+	name     string
+	provider cp.Provider
+	rule     bool
+}
+
+func externalProviderEntries() []externalProviderEntry {
+	proxyProviders, ruleProviders := tunnel.ProvidersSnapshot(), tunnel.RuleProvidersSnapshot()
+	entries := make([]externalProviderEntry, 0, len(proxyProviders)+len(ruleProviders))
+	for name, provider := range proxyProviders {
+		if provider.VehicleType() != cp.Compatible {
+			entries = append(entries, externalProviderEntry{name: name, provider: provider})
 		}
 	}
-	for n, p := range tunnel.RuleProvidersSnapshot() {
-		if p.VehicleType() != cp.Compatible {
-			eps[n] = p
+	for name, provider := range ruleProviders {
+		if provider.VehicleType() != cp.Compatible {
+			entries = append(entries, externalProviderEntry{name: name, provider: provider, rule: true})
 		}
 	}
-	return eps
+	slices.SortFunc(entries, func(a, b externalProviderEntry) int {
+		if result := strings.Compare(a.name, b.name); result != 0 {
+			return result
+		}
+		if a.rule != b.rule {
+			if a.rule {
+				return -1
+			}
+			return 1
+		}
+		return 0
+	})
+	return entries
 }
 
 func lookupExternalProvider(name string) (cp.Provider, bool) {
@@ -93,15 +114,13 @@ func sideUpdateExternalProvider(p cp.Provider, data []byte) error {
 }
 
 func handleGetExternalProviders() externalProviderList {
-	providers := externalProviders()
-	names := make([]string, 0, len(providers))
-	for name := range providers {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	eps := make([]ExternalProvider, 0, len(names))
-	for _, name := range names {
-		if externalProvider, err := toExternalProvider(providers[name]); err == nil {
+	entries := externalProviderEntries()
+	eps := make([]ExternalProvider, 0, len(entries))
+	for index, entry := range entries {
+		if index > 0 && entry.name == entries[index-1].name {
+			continue
+		}
+		if externalProvider, err := toExternalProvider(entry.provider); err == nil {
 			eps = append(eps, externalProvider)
 		}
 	}

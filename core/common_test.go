@@ -249,13 +249,15 @@ func TestExternalProvidersSkipsInlineProviders(t *testing.T) {
 		},
 	)
 
-	providers := externalProviders()
+	entries := externalProviderEntries()
 
-	if _, exist := providers["inline"]; exist {
-		t.Error("a compatible provider was reported as externally updatable")
+	if len(entries) != 2 {
+		t.Fatalf("externalProviderEntries() = %d entries, want subscription and ruleset", len(entries))
 	}
-	if len(providers) != 2 {
-		t.Errorf("externalProviders() = %d entries, want subscription and ruleset", len(providers))
+	for _, entry := range entries {
+		if entry.name == "inline" {
+			t.Error("a compatible provider was reported as externally updatable")
+		}
 	}
 }
 
@@ -311,7 +313,7 @@ func TestLookupExternalProviderMatchesTheListedPrecedence(t *testing.T) {
 	if !exist {
 		t.Fatal("the shared name resolved to nothing")
 	}
-	if found != externalProviders()[shared] {
+	if found != externalProviderEntries()[0].provider {
 		t.Error("lookupExternalProvider disagrees with the list externalProviders builds")
 	}
 	if found != cp.Provider(ruleProvider) {

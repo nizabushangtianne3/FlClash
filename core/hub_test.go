@@ -658,7 +658,7 @@ func TestProxyTableReadsAreSerialisedAgainstAnApply(t *testing.T) {
 				default:
 				}
 				tunnel.AllProxies()
-				externalProviders()
+				externalProviderEntries()
 				lookupExternalProvider("subscription-0")
 			}
 		}()
