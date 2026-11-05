@@ -51,8 +51,8 @@ func TestToExternalProviderRejectsUnsupportedProvider(t *testing.T) {
 	if err == nil {
 		t.Fatal("toExternalProvider accepted a provider it cannot describe")
 	}
-	if provider != nil {
-		t.Errorf("provider = %+v, want nil alongside the error", provider)
+	if provider != (ExternalProvider{}) {
+		t.Errorf("provider = %+v, want the zero value alongside the error", provider)
 	}
 }
 

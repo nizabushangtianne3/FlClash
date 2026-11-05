@@ -54,10 +54,10 @@ func lookupExternalProvider(name string) (cp.Provider, bool) {
 	return nil, false
 }
 
-func toExternalProvider(p cp.Provider) (*ExternalProvider, error) {
+func toExternalProvider(p cp.Provider) (ExternalProvider, error) {
 	switch typed := p.(type) {
 	case *provider.ProxySetProvider:
-		return &ExternalProvider{
+		return ExternalProvider{
 			Name:             typed.Name(),
 			Type:             typed.Type().String(),
 			VehicleType:      typed.VehicleType().String(),
@@ -67,7 +67,7 @@ func toExternalProvider(p cp.Provider) (*ExternalProvider, error) {
 			SubscriptionInfo: typed.GetSubscriptionInfo(),
 		}, nil
 	case *rp.RuleSetProvider:
-		return &ExternalProvider{
+		return ExternalProvider{
 			Name:        typed.Name(),
 			Type:        typed.Type().String(),
 			VehicleType: typed.VehicleType().String(),
@@ -76,7 +76,7 @@ func toExternalProvider(p cp.Provider) (*ExternalProvider, error) {
 			Path:        typed.Vehicle().Path(),
 		}, nil
 	default:
-		return nil, errNotExternalProvider
+		return ExternalProvider{}, errNotExternalProvider
 	}
 }
 
@@ -98,7 +98,7 @@ func handleGetExternalProviders() externalProviderList {
 	eps := make([]ExternalProvider, 0, len(providers))
 	for _, p := range providers {
 		if externalProvider, err := toExternalProvider(p); err == nil {
-			eps = append(eps, *externalProvider)
+			eps = append(eps, externalProvider)
 		}
 	}
 	slices.SortFunc(eps, func(a, b ExternalProvider) int {
@@ -172,7 +172,7 @@ func handleGetExternalProvider(params NameParams) *ExternalProvider {
 	if err != nil {
 		return nil
 	}
-	return externalProvider
+	return &externalProvider
 }
 
 const (
