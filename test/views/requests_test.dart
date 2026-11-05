@@ -116,7 +116,8 @@ void main() {
             locale: const Locale('zh', 'CN'),
             child: RequestsView(
               initialFeed: initialFeed,
-              connectionsReader: () async => const [],
+              connectionsReader: ({resync = false}) async =>
+                  const ConnectionDelta(),
             ),
           ),
         ),

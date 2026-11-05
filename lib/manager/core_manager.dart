@@ -162,6 +162,7 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   @override
   void onRequestTraffic(Map<String, RequestTraffic> traffic) {
     ref.read(requestsProvider.notifier).updateTraffic(traffic);
+    ref.read(connectionsProvider.notifier).updateTraffic(traffic);
     super.onRequestTraffic(traffic);
   }
 

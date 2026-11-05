@@ -18,7 +18,7 @@ Future<bool> _isSpilled(String file) async {
 
 /// Parsed where a transport decodes them, off the UI isolate for a large one.
 const _resultModels = <CoreMethod, Object? Function(Object?)>{
-  CoreMethod.connectionList: trackerInfosOf,
+  CoreMethod.connectionList: connectionDeltaOf,
 };
 
 Map<String, Object?> withResultModel(

@@ -3,6 +3,7 @@ import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/interface.dart';
 import 'package:fl_clash/features/features.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:fl_clash/providers/app.dart';
 import 'package:fl_clash/providers/core.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/views/connection/requests.dart';
@@ -20,7 +21,11 @@ void main() {
   late ProviderContainer container;
 
   setUp(() {
-    container = ProviderContainer();
+    container = ProviderContainer(
+      overrides: [
+        coreStatusProvider.overrideWithBuild((_, _) => CoreStatus.connected),
+      ],
+    );
     globalState.container = container;
   });
 
@@ -46,9 +51,13 @@ void main() {
     );
   }
 
+  ConnectionDelta deltaOf(List<TrackerInfo> connections) {
+    return ConnectionDelta(added: connections, count: connections.length);
+  }
+
   Future<void> pumpConnections(
     WidgetTester tester, {
-    required Future<List<TrackerInfo>> Function() connectionsReader,
+    required Future<ConnectionDelta> Function({bool resync}) connectionsReader,
     bool isPageActive = true,
   }) async {
     tester.view.physicalSize = const Size(600, 800);
@@ -78,7 +87,10 @@ void main() {
   testWidgets('the live feed lazily builds every connection', (tester) async {
     final connections = buildConnections(100);
 
-    await pumpConnections(tester, connectionsReader: () async => connections);
+    await pumpConnections(
+      tester,
+      connectionsReader: ({resync = false}) async => deltaOf(connections),
+    );
     await tester.pump(const Duration(seconds: 1));
 
     final builtItems = find.byType(TrackerInfoItem).evaluate().length;
@@ -112,26 +124,29 @@ void main() {
       container = ProviderContainer(
         overrides: [
           coreHandlerProvider.overrideWithValue(CoreController.scoped(core)),
+          coreStatusProvider.overrideWithBuild((_, _) => CoreStatus.connected),
         ],
       );
       globalState.container = container;
-      var connections = buildConnections(2);
+      var closed = false;
       var readCount = 0;
 
       await pumpConnections(
         tester,
-        connectionsReader: () async {
+        connectionsReader: ({resync = false}) async {
           readCount++;
-          return connections;
+          if (closed) {
+            return const ConnectionDelta(removed: ['0'], count: 1);
+          }
+          return deltaOf(buildConnections(2));
         },
       );
       await tester.pump(const Duration(seconds: 1));
       final reads = readCount;
-
       expect(find.byTooltip('Close connection'), findsNothing);
       await tester.longPress(find.textContaining('host-0.com'));
       await tester.pumpAndSettle();
-      connections = connections.sublist(1);
+      closed = true;
       await tester.tap(find.text('Close connection'));
       await tester.pumpAndSettle();
 
@@ -154,6 +169,7 @@ void main() {
     container = ProviderContainer(
       overrides: [
         coreHandlerProvider.overrideWithValue(CoreController.scoped(core)),
+        coreStatusProvider.overrideWithBuild((_, _) => CoreStatus.connected),
       ],
     );
     globalState.container = container;
@@ -161,9 +177,9 @@ void main() {
 
     await pumpConnections(
       tester,
-      connectionsReader: () async {
+      connectionsReader: ({resync = false}) async {
         readCount++;
-        return buildConnections(2);
+        return deltaOf(buildConnections(2));
       },
     );
     await tester.pump(const Duration(seconds: 1));
@@ -173,6 +189,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Close connection'));
     await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 50));
 
     verify(() => core.closeConnection('0')).called(1);
     expect(readCount, greaterThan(reads));
@@ -186,11 +203,11 @@ void main() {
     var fails = false;
     await pumpConnections(
       tester,
-      connectionsReader: () async {
+      connectionsReader: ({resync = false}) async {
         if (fails) {
           throw Exception('core gone');
         }
-        return buildConnections(2);
+        return deltaOf(buildConnections(2));
       },
     );
     await tester.pump(const Duration(seconds: 1));
@@ -244,7 +261,8 @@ void main() {
   testWidgets('a wide table shows its whole protocol header', (tester) async {
     await pumpConnections(
       tester,
-      connectionsReader: () async => buildConnections(2),
+      connectionsReader: ({resync = false}) async =>
+          deltaOf(buildConnections(2)),
     );
     tester.view.physicalSize = const Size(1600, 900);
     await tester.pump(const Duration(seconds: 1));
@@ -260,9 +278,9 @@ void main() {
   ) async {
     var readCount = 0;
 
-    Future<List<TrackerInfo>> readConnections() async {
+    Future<ConnectionDelta> readConnections({bool resync = false}) async {
       readCount++;
-      return const [];
+      return const ConnectionDelta();
     }
 
     await pumpConnections(
@@ -324,9 +342,9 @@ void main() {
   ) async {
     var readCount = 0;
 
-    Future<List<TrackerInfo>> readConnections() async {
+    Future<ConnectionDelta> readConnections({bool resync = false}) async {
       readCount++;
-      return const [];
+      return const ConnectionDelta();
     }
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);

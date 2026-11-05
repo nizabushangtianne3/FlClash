@@ -8,6 +8,7 @@ import 'package:fl_clash/features/features.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/app.dart';
 import 'package:fl_clash/providers/core.dart';
+import 'package:fl_clash/providers/state.dart';
 import 'package:fl_clash/views/connection/requests.dart';
 import 'package:fl_clash/views/dashboard/layout.dart';
 import 'package:fl_clash/views/dashboard/style.dart';
@@ -92,6 +93,7 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
   List<TrackerInfo> connections = const [];
   var tcpCount = 0;
   var udpCount = 0;
+  ProviderSubscription<ConnectionsSnapshot>? _connections;
 
   bool get pollsConnections;
 
@@ -101,7 +103,17 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
   Duration get pollInterval => Duration(seconds: pollsConnections ? 1 : 2);
 
   @override
+  void startPolling() {
+    super.startPolling();
+    _connections ??= ref.listenManual(
+      connectionsProvider,
+      (_, snapshot) => _showConnections(snapshot),
+    );
+  }
+
+  @override
   void dispose() {
+    _connections?.close();
     connectionCount.dispose();
     super.dispose();
   }
@@ -123,20 +135,9 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
     }
     try {
       if (pollsConnections) {
-        final next = [...await _core.getConnections()];
+        await ref.read(connectionsProvider.notifier).refresh();
         if (!isCurrent()) return;
-        next.sort((a, b) => b.start.compareTo(a.start));
-        final tcp = next
-            .where((item) => item.metadata.network.toLowerCase() == 'tcp')
-            .length;
-        connectionCount.value = next.length;
-        updateWhenRouteSettled(
-          () => setState(() {
-            connections = next;
-            tcpCount = tcp;
-            udpCount = next.length - tcp;
-          }),
-        );
+        _showConnections(ref.read(connectionsProvider));
       } else {
         final count = await _core.getConnectionCount();
         if (!isCurrent()) return;
@@ -148,6 +149,31 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
         logLevel: coreFailureLogLevel(error),
       );
     }
+  }
+
+  void _showConnections(ConnectionsSnapshot snapshot) {
+    if (!mounted) {
+      return;
+    }
+    connectionCount.value = snapshot.count;
+    if (!pollsConnections) {
+      return;
+    }
+    final next = [...snapshot.connections]
+      ..sort((a, b) => b.start.compareTo(a.start));
+    var tcp = 0;
+    for (final item in next) {
+      if (item.metadata.network.toLowerCase() == 'tcp') {
+        tcp++;
+      }
+    }
+    updateWhenRouteSettled(
+      () => setState(() {
+        connections = next;
+        tcpCount = tcp;
+        udpCount = next.length - tcp;
+      }),
+    );
   }
 }
 

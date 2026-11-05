@@ -45,7 +45,7 @@ class _RecordingCoreHandler extends CoreHandlerInterface {
         'value': 42,
       },
       CoreMethod.connectionList => {
-        'connections': [
+        'added': [
           {
             'id': 'connection-1',
             'metadata': {'network': 'tcp'},
@@ -57,6 +57,8 @@ class _RecordingCoreHandler extends CoreHandlerInterface {
             'rulePayload': '',
           },
         ],
+        'removed': <String>[],
+        'count': 1,
       },
       CoreMethod.providerList => [
         {
@@ -535,7 +537,7 @@ void main() {
       ),
       const Delay(name: 'DIRECT', url: 'https://example.com', value: 42),
     );
-    expect((await handler.getConnections()).single.id, 'connection-1');
+    expect((await handler.getConnections()).added.single.id, 'connection-1');
     expect(await handler.getConnectionCount(), 3);
     expect((await handler.getExternalProviders()).single.name, 'provider-1');
     expect(

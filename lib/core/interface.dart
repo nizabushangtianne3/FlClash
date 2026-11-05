@@ -300,10 +300,11 @@ abstract class CoreHandlerInterface {
 
   Future<void> resetTraffic() => _commandUnobserved(CoreMethod.trafficReset);
 
-  Future<List<TrackerInfo>> getConnections() {
+  Future<ConnectionDelta> getConnections({bool resync = false}) {
     return _query(
       CoreMethod.connectionList,
-      (data) => data is List<TrackerInfo> ? data : trackerInfosOf(data),
+      connectionDeltaOf,
+      arguments: {'resync': resync},
     );
   }
 

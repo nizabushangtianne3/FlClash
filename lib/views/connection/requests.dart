@@ -15,8 +15,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class RequestsView extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
+  final Future<ConnectionDelta> Function({bool resync})? connectionsReader;
   final RequestFeed? initialFeed;
-  final Future<List<TrackerInfo>> Function()? connectionsReader;
 
   const RequestsView({
     super.key,
@@ -311,9 +311,9 @@ class _RecentFeedState extends State<_RecentFeed> {
 
 class _LiveFeed extends ConsumerStatefulWidget {
   final TrackerInfoListController listController;
+  final Future<ConnectionDelta> Function({bool resync})? connectionsReader;
   final RecordFilterController<TrackerInfo> filters;
   final ScrollController? scrollController;
-  final Future<List<TrackerInfo>> Function()? connectionsReader;
 
   const _LiveFeed({
     super.key,
@@ -354,30 +354,31 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
 
   @override
   Future<void> poll(PollGuard isCurrent) async {
-    final trackerInfos = await _readConnections();
+    final snapshot = await _readConnections();
     if (!isCurrent()) {
       return;
     }
-    _showConnections(trackerInfos);
+    _showConnections(snapshot);
   }
 
   Future<void> _refreshConnections() async {
-    final trackerInfos = await _readConnections();
+    final snapshot = await _readConnections();
     if (!mounted) {
       return;
     }
-    _showConnections(trackerInfos);
+    _showConnections(snapshot);
   }
 
-  Future<List<TrackerInfo>?> _readConnections() async {
+  Future<ConnectionsSnapshot?> _readConnections() async {
     try {
-      final connectionsReader = widget.connectionsReader;
-      if (connectionsReader != null) {
-        return await connectionsReader();
+      if (ref.read(coreStatusProvider) != CoreStatus.connected) {
+        return const ConnectionsSnapshot();
       }
-      return ref.read(coreStatusProvider) == CoreStatus.connected
-          ? await _core.getConnections()
-          : const [];
+      final notifier = ref.read(connectionsProvider.notifier);
+      notifier.useReader(widget.connectionsReader);
+      await notifier.refresh();
+      final snapshot = ref.read(connectionsProvider);
+      return snapshot;
     } catch (error) {
       commonPrint.log(
         'updateConnections error: $error',
@@ -387,25 +388,23 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
     }
   }
 
-  void _showConnections(List<TrackerInfo>? trackerInfos) {
+  void _showConnections(ConnectionsSnapshot? readSnapshot) {
     final readAt = DateTime.now();
+    final snapshot = readSnapshot ?? const ConnectionsSnapshot();
     if (!_loaded) {
       showFirstContent(() {
         setState(() => _loaded = true);
         // A failed read must not leave the controller's list from the last visit.
-        _applyConnections(trackerInfos ?? const [], readAt);
+        _applyConnections(snapshot, readAt);
       });
       return;
     }
-    updateWhenRouteSettled(() => _applyConnections(trackerInfos, readAt));
+    updateWhenRouteSettled(() => _applyConnections(snapshot, readAt));
   }
 
-  void _applyConnections(List<TrackerInfo>? trackerInfos, DateTime readAt) {
-    if (trackerInfos == null) {
-      return;
-    }
+  void _applyConnections(ConnectionsSnapshot snapshot, DateTime readAt) {
     widget.listController.setTrackerInfos(
-      _speedRanker.rank(trackerInfos, readAt),
+      _speedRanker.rank(snapshot.connections, readAt),
     );
     widget.filters.offer(widget.listController.value.trackerInfos);
     if (_startsAtFarEnd) {

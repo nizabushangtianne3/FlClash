@@ -165,8 +165,11 @@ void main() {
   testWidgets('a sheet switching feeds opens each at its own start', (
     tester,
   ) async {
-    when(() => core.getConnections()).thenAnswer(
-      (_) async => [for (var i = 0; i < 100; i++) _request(1000 + i)],
+    when(() => core.getConnections(resync: any(named: 'resync'))).thenAnswer(
+      (_) async => ConnectionDelta(
+        added: [for (var i = 0; i < 100; i++) _request(1000 + i)],
+        count: 100,
+      ),
     );
     final notifier = container.read(requestsProvider.notifier);
     for (var i = 0; i < 100; i++) {

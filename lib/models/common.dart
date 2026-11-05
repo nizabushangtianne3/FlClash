@@ -133,15 +133,51 @@ abstract class TrackerInfo with _$TrackerInfo {
 }
 
 /// Reads the Core's `getConnections` answer.
-List<TrackerInfo> trackerInfosOf(Object? data) {
-  final connections = data is Map ? data['connections'] : null;
-  if (connections is! List) {
-    return const [];
-  }
+///
+/// The answer carries what moved since the last one, so the host keeps the
+/// table and merges instead of being sent every row on every poll.
+class ConnectionDelta {
+  const ConnectionDelta({
+    this.added = const [],
+    this.removed = const [],
+    this.count = 0,
+  });
+
+  final List<TrackerInfo> added;
+  final List<String> removed;
+  final int count;
+}
+
+Map<String, Object?>? _typedMap(Object? value) {
+  if (value is Map<String, Object?>) return value;
+  return value is Map ? Map<String, Object?>.from(value) : null;
+}
+
+List<TrackerInfo> _addedConnections(Object? value) {
+  if (value is List<TrackerInfo>) return value;
+  if (value is! List) return const [];
   return [
-    for (final item in connections.whereType<Map>())
-      TrackerInfo.fromJson(Map<String, Object?>.from(item)),
+    for (final item in value)
+      if (item is Map) TrackerInfo.fromJson(_typedMap(item)!),
   ];
+}
+
+List<String> _removedConnections(Object? value) {
+  if (value is List<String>) return value;
+  if (value is! List) return const [];
+  return [
+    for (final item in value)
+      if (item is String) item,
+  ];
+}
+
+ConnectionDelta connectionDeltaOf(Object? data) {
+  final result = _typedMap(data);
+  return ConnectionDelta(
+    added: _addedConnections(result?['added']),
+    removed: _removedConnections(result?['removed']),
+    count: result?['count'] as int? ?? 0,
+  );
 }
 
 typedef RequestTraffic = ({int upload, int download});
