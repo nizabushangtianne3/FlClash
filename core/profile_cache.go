@@ -20,6 +20,8 @@ import (
 // digest are cached with that parse.
 const maxCachedProfileSize = 4 << 20
 
+// A snapshot is immutable once parsed; the cache publishes a complete pointer,
+// so readers that take the pointer before a refresh keep a coherent old view.
 type profileSnapshot struct {
 	digest   string
 	document *yaml.Node
@@ -30,10 +32,7 @@ type profileSnapshot struct {
 var profileCache struct {
 	mu       sync.RWMutex
 	buf      []byte
-	digest   string
-	document *yaml.Node
-	raw      *config.RawConfig
-	retag    bool
+	snapshot *profileSnapshot
 }
 
 // parseProfileSnapshot decrypts wire bytes into the document and raw config
@@ -73,20 +72,14 @@ func readProfile(path string) (*profileSnapshot, error) {
 	}
 
 	profileCache.mu.RLock()
-	cachedBuf := profileCache.buf
-	snapshot := &profileSnapshot{
-		digest:   profileCache.digest,
-		document: profileCache.document,
-		raw:      profileCache.raw,
-		retag:    profileCache.retag,
-	}
-	hit := snapshot.raw != nil && snapshot.document != nil && bytes.Equal(wire, cachedBuf)
+	cachedBuf, cached := profileCache.buf, profileCache.snapshot
+	hit := cached != nil && bytes.Equal(wire, cachedBuf)
 	profileCache.mu.RUnlock()
 	if hit {
-		return snapshot, nil
+		return cached, nil
 	}
 
-	snapshot, err = parseProfileSnapshot(wire)
+	snapshot, err := parseProfileSnapshot(wire)
 	if err != nil {
 		return nil, err
 	}
@@ -96,10 +89,7 @@ func readProfile(path string) (*profileSnapshot, error) {
 
 	profileCache.mu.Lock()
 	profileCache.buf = append([]byte(nil), wire...)
-	profileCache.digest = snapshot.digest
-	profileCache.document = snapshot.document
-	profileCache.raw = snapshot.raw
-	profileCache.retag = snapshot.retag
+	profileCache.snapshot = snapshot
 	profileCache.mu.Unlock()
 	return snapshot, nil
 }
@@ -122,9 +112,6 @@ func parseProfileDocument(buf []byte) (*yaml.Node, error) {
 func forgetProfileRaw() {
 	profileCache.mu.Lock()
 	profileCache.buf = nil
-	profileCache.digest = ""
-	profileCache.document = nil
-	profileCache.raw = nil
-	profileCache.retag = false
+	profileCache.snapshot = nil
 	profileCache.mu.Unlock()
 }
