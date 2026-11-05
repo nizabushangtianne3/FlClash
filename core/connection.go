@@ -45,6 +45,21 @@ func (d *ConnectionDelta) MarshalJSON() ([]byte, error) {
 	return d.appendJSON(make([]byte, 0, d.answerSize())), nil
 }
 
+// frameFor implements frameWriter. It writes the response envelope around the
+// rows in the buffer that already encoded them, instead of copying the answer
+// through MethodResponse reflection a second time.
+func (d *ConnectionDelta) frameFor(id string) []byte {
+	if id == "" {
+		return d.appendJSON(make([]byte, 0, d.answerSize()))
+	}
+	buf := make([]byte, 0, d.answerSize()+len(id)+32)
+	buf = append(buf, `{"id":`...)
+	buf = jsonutil.AppendString(buf, id)
+	buf = append(buf, `,"result":`...)
+	buf = d.appendJSON(buf)
+	return append(buf, '}')
+}
+
 func (d *ConnectionDelta) answerSize() int {
 	size := 96 + len(d.Removed)*40
 	for _, info := range d.Added {

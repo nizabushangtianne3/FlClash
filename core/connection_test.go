@@ -91,6 +91,7 @@ func TestConnectionDeltaAnswersWhatTheHostReads(t *testing.T) {
 	response, err := json.Marshal(MethodResponse{ID: "call-1", Result: delta})
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(response, &frame))
+	require.Equal(t, response, delta.frameFor("call-1"))
 	require.Equal(t, "call-1", frame.ID)
 
 	document := struct {
@@ -137,6 +138,28 @@ func BenchmarkGetConnectionsDelta(b *testing.B) {
 				data, err := json.Marshal(handleGetConnections(ConnectionsQuery{}))
 				if err != nil || len(data) == 0 {
 					b.Fatalf("answer: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkGetConnectionsResyncFrame(b *testing.B) {
+	for _, count := range []int{100, 500} {
+		b.Run(fmt.Sprintf("connections=%d", count), func(b *testing.B) {
+			trackers := benchmarkConnectionTrackers(b, count)
+			b.Cleanup(func() {
+				for _, tracker := range trackers {
+					_ = tracker.Close()
+				}
+			})
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				data := handleGetConnections(ConnectionsQuery{Resync: true}).frameFor("benchmark")
+				if len(data) == 0 {
+					b.Fatal("empty answer")
 				}
 			}
 		})
