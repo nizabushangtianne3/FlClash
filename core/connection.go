@@ -46,7 +46,8 @@ func (d *ConnectionDelta) MarshalJSON() ([]byte, error) {
 // through MethodResponse reflection a second time.
 func (d *ConnectionDelta) frameFor(id string) []byte {
 	if id == "" {
-		return d.appendJSON(make([]byte, 0, d.answerSize()))
+		buf := append(make([]byte, 0, d.answerSize()+24), `{"result":`...)
+		return append(d.appendJSON(buf), '}')
 	}
 	buf := make([]byte, 0, d.answerSize()+len(id)+32)
 	buf = append(buf, `{"id":`...)

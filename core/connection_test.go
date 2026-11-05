@@ -92,6 +92,9 @@ func TestConnectionDeltaAnswersWhatTheHostReads(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(response, &frame))
 	require.Equal(t, response, delta.frameFor("call-1"))
+	anonymous, err := json.Marshal(MethodResponse{Result: delta})
+	require.NoError(t, err)
+	require.Equal(t, anonymous, delta.frameFor(""))
 	require.Equal(t, "call-1", frame.ID)
 
 	document := struct {

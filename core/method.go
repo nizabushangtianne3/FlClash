@@ -196,7 +196,10 @@ var methodHandlers = map[CoreMethod]methodHandler{
 	coreInitMethod:        command(handleInit),
 	coreInitializedMethod: withoutArguments(handleInitialized),
 	coreGCMethod:          action(handleForceGC),
-	coreMemoryMethod:      withoutArguments(handleGetMemoryStats),
+	coreMemoryMethod: withoutArguments(func() *MemoryStats {
+		stats := handleGetMemoryStats()
+		return &stats
+	}),
 
 	configSetupMethod:    command(handleSetupConfig),
 	configUpdateMethod:   command(updateConfig),

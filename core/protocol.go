@@ -283,7 +283,7 @@ func (s *TrafficStats) frameFor(id string) []byte {
 	counters := [4]int64{s.Up, s.Down, s.TotalUp, s.TotalDown}
 	labels := [4]string{`"up":`, `"down":`, `"total-up":`, `"total-down":`}
 	if id == "" {
-		buf := append(make([]byte, 0, 96), `{"up":`...)
+		buf := append(make([]byte, 0, 128), `{"result":{"up":`...)
 		for i, value := range counters {
 			if i > 0 {
 				buf = append(buf, ',')
@@ -312,6 +312,30 @@ type MemoryStats struct {
 	HeapIdle     uint64 `json:"heap-idle"`
 	StackInuse   uint64 `json:"stack-inuse"`
 	RuntimeOther uint64 `json:"runtime-other"`
+}
+
+// frameFor implements frameWriter. Memory is polled while the dashboard is
+// visible, so the five counters are written directly rather than copied through
+// response reflection.
+func (s *MemoryStats) frameFor(id string) []byte {
+	counters := [5]uint64{s.Rss, s.HeapInuse, s.HeapIdle, s.StackInuse, s.RuntimeOther}
+	labels := [5]string{`"rss":`, `"heap-inuse":`, `"heap-idle":`, `"stack-inuse":`, `"runtime-other":`}
+	buf := make([]byte, 0, 144)
+	if id != "" {
+		buf = append(buf, `{"id":`...)
+		buf = jsonutil.AppendString(buf, id)
+		buf = append(buf, `,"result":{`...)
+	} else {
+		buf = append(buf, `{"result":{`...)
+	}
+	for i, value := range counters {
+		if i > 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, labels[i]...)
+		buf = strconv.AppendUint(buf, value, 10)
+	}
+	return append(buf, '}', '}')
 }
 
 type ExternalProvider struct {
