@@ -41,6 +41,10 @@ class ProxiesAction extends _$ProxiesAction {
 
   Timer? _delayFlushTimer;
 
+  Timer? _delayPersistTimer;
+
+  static const _delayPersistInterval = Duration(seconds: 2);
+
   final Map<String, String> _pendingSelectedRollback = {};
   final Map<String, String> _appliedSelected = {};
   final Map<String, int> _appliedSelectedIntent = {};
@@ -55,7 +59,10 @@ class ProxiesAction extends _$ProxiesAction {
 
   @override
   void build() {
-    ref.onDispose(() => _delayFlushTimer?.cancel());
+    ref.onDispose(() {
+      _delayFlushTimer?.cancel();
+      _delayPersistTimer?.cancel();
+    });
     ref.listen(coreStatusProvider, (_, next) {
       if (next != CoreStatus.connected) {
         cancelDelayTests();
@@ -95,6 +102,24 @@ class ProxiesAction extends _$ProxiesAction {
     _delayFlushTimer ??= Timer(renderThrottleDuration, _flushDelayResults);
   }
 
+  @visibleForTesting
+  Duration delayPersistInterval = _delayPersistInterval;
+
+  void _scheduleDelayPersist() {
+    // A save rewrites the whole preferences store, so a long delay test
+    // coalesces them instead of paying one per render tick.
+    _delayPersistTimer ??= Timer(delayPersistInterval, () {
+      _delayPersistTimer = null;
+      _persistDelaysNow();
+    });
+  }
+
+  void _persistDelaysNow() {
+    _delayPersistTimer?.cancel();
+    _delayPersistTimer = null;
+    unawaited(preferences.saveDelayMap(ref.read(delayDataSourceProvider)));
+  }
+
   void _flushDelayResults() {
     _delayFlushTimer?.cancel();
     _delayFlushTimer = null;
@@ -102,7 +127,7 @@ class ProxiesAction extends _$ProxiesAction {
       final delays = _bufferedDelays.values;
       _bufferedDelays = {};
       ref.read(delayDataSourceProvider.notifier).setDelays(delays);
-      unawaited(preferences.saveDelayMap(ref.read(delayDataSourceProvider)));
+      _scheduleDelayPersist();
     }
     if (_bufferedStarts.isNotEmpty || _bufferedFinishes.isNotEmpty) {
       final started = _bufferedStarts;
@@ -720,6 +745,7 @@ class ProxiesAction extends _$ProxiesAction {
     } finally {
       _delayTestJobs.remove(job);
       _flushDelayResults();
+      _persistDelaysNow();
       final abandoned = job.held.toList();
       job.held.clear();
       pending.apply(

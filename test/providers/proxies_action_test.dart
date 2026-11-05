@@ -20,9 +20,33 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:mocktail/mocktail.dart';
 import 'package:riverpod/riverpod.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 import '../helpers/preferences.dart';
 import '../helpers/test_profiles.dart';
+
+/// Counts whole-store writes through the platform seam, so a test can tell a
+/// coalesced persist from one per flush.
+class _CountingPreferencesStore extends InMemorySharedPreferencesStore {
+  _CountingPreferencesStore() : super.withData(const {});
+
+  int delayMapWrites = 0;
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) {
+    if (key.endsWith(delayMapKey)) {
+      delayMapWrites++;
+    }
+    return super.setValue(valueType, key, value);
+  }
+}
+
+Future<_CountingPreferencesStore> _spyPreferences() async {
+  final store = _CountingPreferencesStore();
+  SharedPreferencesStorePlatform.instance = store;
+  await preferences.rebind();
+  return store;
+}
 
 class MockCoreHandlerInterface extends Mock implements CoreHandlerInterface {}
 
@@ -846,6 +870,46 @@ void main() {
       await Future<void>.delayed(renderThrottleDuration * 2);
 
       expect(container.read(delayDataSourceProvider)[_testUrl], {'HK-01': 80});
+    });
+
+    test(
+      'persists the delay map once for flushes inside the persist window',
+      () async {
+        final store = await _spyPreferences();
+        final container = _delayContainer(buildContainer);
+        final action = actionOf(container);
+
+        action.setDelay(const Delay(name: 'HK-01', url: _testUrl, value: 120));
+        await Future<void>.delayed(renderThrottleDuration);
+        action.setDelay(const Delay(name: 'HK-01', url: _testUrl, value: 80));
+        await Future<void>.delayed(const Duration(milliseconds: 2100));
+
+        expect(
+          store.delayMapWrites,
+          1,
+          reason:
+              'a save rewrites the whole store, so flushes inside the '
+              'persist window must coalesce into one write',
+        );
+        expect(container.read(delayDataSourceProvider)[_testUrl], {
+          'HK-01': 80,
+        });
+      },
+    );
+
+    test('persists the delay map as soon as a test batch settles', () async {
+      when(() => core.asyncTestDelay(_testUrl, 'HK-01', any())).thenAnswer(
+        (_) async => const Delay(name: 'HK-01', url: _testUrl, value: 128),
+      );
+      final store = await _spyPreferences();
+      final container = _delayContainer(buildContainer);
+
+      await actionOf(container).proxyDelayTest(_proxy);
+      // The persist is fire-and-forget; let its store write settle.
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      expect(store.delayMapWrites, 1);
+      expect(container.read(delayDataSourceProvider)[_testUrl]?['HK-01'], 128);
     });
 
     test('shares an in-flight delay probe across overlapping runs', () async {
