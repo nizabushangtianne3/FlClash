@@ -1997,7 +1997,7 @@ final class ConnectionsProvider
   }
 }
 
-String _$connectionsHash() => r'd4ed3b4f66ba7730411d1d6d2a986a84eda14b8b';
+String _$connectionsHash() => r'176446d570134ce254a0670b7915068525f114ec';
 
 abstract class _$Connections extends $Notifier<ConnectionsSnapshot> {
   ConnectionsSnapshot build();

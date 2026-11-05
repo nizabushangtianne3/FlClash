@@ -13,14 +13,10 @@ import (
 	"github.com/metacubex/mihomo/tunnel/statistic"
 )
 
-func handleGetTraffic(params TrafficParams) Traffic {
+func handleGetTrafficStats(params TrafficParams) *TrafficStats {
 	up, down := statistic.DefaultManager.NowTraffic(params.OnlyProxy)
-	return Traffic{Up: up, Down: down}
-}
-
-func handleGetTotalTraffic(params TrafficParams) Traffic {
-	up, down := statistic.DefaultManager.TotalTraffic(params.OnlyProxy)
-	return Traffic{Up: up, Down: down}
+	totalUp, totalDown := statistic.DefaultManager.TotalTraffic(params.OnlyProxy)
+	return &TrafficStats{Up: up, Down: down, TotalUp: totalUp, TotalDown: totalDown}
 }
 
 func handleResetTraffic() {

@@ -283,7 +283,7 @@ void main() {
       final response = await Service().invokeMethod(
         const CoreMethodCall(
           id: '7',
-          method: CoreMethod.trafficCurrent,
+          method: CoreMethod.trafficStats,
           arguments: true,
         ),
       );
@@ -292,7 +292,7 @@ void main() {
           json.decode(calls.single.arguments as String) as Map<String, Object?>;
       expect(calls.single.method, 'invokeMethod');
       expect(sent['id'], '7');
-      expect(sent['method'], CoreMethod.trafficCurrent.wireName);
+      expect(sent['method'], CoreMethod.trafficStats.wireName);
       expect(
         sent['arguments'],
         isTrue,
@@ -348,7 +348,7 @@ void main() {
 
       await expectLater(
         Service().invokeMethod(
-          const CoreMethodCall(method: CoreMethod.trafficCurrent),
+          const CoreMethodCall(method: CoreMethod.trafficStats),
         ),
         throwsA(
           isA<CoreMethodException>().having(
@@ -372,7 +372,7 @@ void main() {
       );
 
       final response = await Service().invokeMethod(
-        const CoreMethodCall(id: '1', method: CoreMethod.trafficCurrent),
+        const CoreMethodCall(id: '1', method: CoreMethod.trafficStats),
       );
 
       expect(response.error, isNotNull);

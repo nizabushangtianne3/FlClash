@@ -3,6 +3,7 @@ package com.follow.clash.service.models
 import com.follow.clash.common.GlobalState
 import com.follow.clash.core.Core
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 
 private val gson = Gson()
 
@@ -30,9 +31,18 @@ private val Long.formatBytes: String
 val Traffic.speedText: String
     get() = "${up.formatBytes}/s↑  ${down.formatBytes}/s↓"
 
+data class TrafficStats(
+    val up: Long,
+    val down: Long,
+    @SerializedName("total-up") val totalUp: Long,
+    @SerializedName("total-down") val totalDown: Long,
+)
+
+fun TrafficStats.speedText(): String = "${up.formatBytes}/s↑  ${down.formatBytes}/s↓"
+
 fun Core.getSpeedTrafficText(onlyStatisticsProxy: Boolean): String {
     return runCatching {
-        gson.fromJson(getTraffic(onlyStatisticsProxy), Traffic::class.java).speedText
+        gson.fromJson(getTrafficStats(onlyStatisticsProxy), TrafficStats::class.java).speedText()
     }.onFailure { error ->
         GlobalState.log("Unable to read traffic: $error")
     }.getOrDefault("")

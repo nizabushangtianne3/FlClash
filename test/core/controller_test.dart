@@ -309,22 +309,15 @@ void main() {
   });
 
   group('traffic methods', () {
-    test('getTraffic delegates structured traffic', () async {
-      when(
-        () => mock.getTraffic(false),
-      ).thenAnswer((_) async => const Traffic(up: 1, down: 2));
-      final result = await controller.getTraffic(false);
-      expect(result.up, 1);
-      expect(result.down, 2);
-    });
-
-    test('getTotalTraffic delegates structured traffic', () async {
-      when(
-        () => mock.getTotalTraffic(false),
-      ).thenAnswer((_) async => const Traffic(up: 3, down: 4));
-      final result = await controller.getTotalTraffic(false);
-      expect(result.up, 3);
-      expect(result.down, 4);
+    test('getTrafficStats delegates structured traffic', () async {
+      const stats = TrafficStats(
+        now: Traffic(up: 1, down: 2),
+        total: Traffic(up: 3, down: 4),
+      );
+      when(() => mock.getTrafficStats(false)).thenAnswer((_) async => stats);
+      final result = await controller.getTrafficStats(false);
+      expect(result.now.up, 1);
+      expect(result.total.down, 4);
     });
 
     test('getMemoryStats delegates the structured stats', () async {

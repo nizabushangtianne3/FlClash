@@ -32,10 +32,12 @@
     "result": null
   },
   "structuredResponse": {
-    "id": "traffic.current#contract",
+    "id": "traffic.stats#contract",
     "result": {
       "up": 12,
-      "down": 34
+      "down": 34,
+      "total-up": 56,
+      "total-down": 78
     }
   },
   "spilledResponse": {

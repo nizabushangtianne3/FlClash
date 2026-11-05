@@ -587,6 +587,23 @@ extension TrafficExt on Traffic {
   num get speed => up + down;
 }
 
+/// One polling answer for both the dashboard rate and cumulative counters.
+class TrafficStats {
+  const TrafficStats({required this.now, required this.total});
+
+  factory TrafficStats.fromJson(Map<String, Object?> json) {
+    Traffic counter(String upKey, String downKey) =>
+        Traffic.fromJson({'up': json[upKey] ?? 0, 'down': json[downKey] ?? 0});
+    return TrafficStats(
+      now: counter('up', 'down'),
+      total: counter('total-up', 'total-down'),
+    );
+  }
+
+  final Traffic now;
+  final Traffic total;
+}
+
 @freezed
 abstract class TrafficShow with _$TrafficShow {
   const factory TrafficShow({required String value, required String unit}) =

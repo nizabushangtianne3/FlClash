@@ -84,59 +84,42 @@ void main() {
       container
           .read(appSettingProvider.notifier)
           .update((state) => state.copyWith(onlyStatisticsProxy: true));
-      when(
-        () => core.getTraffic(true),
-      ).thenAnswer((_) async => const Traffic(up: 10, down: 20));
-      when(
-        () => core.getTotalTraffic(true),
-      ).thenAnswer((_) async => const Traffic(up: 100, down: 200));
+      const stats = TrafficStats(
+        now: Traffic(up: 10, down: 20),
+        total: Traffic(up: 100, down: 200),
+      );
+      when(() => core.getTrafficStats(true)).thenAnswer((_) async => stats);
 
       await container.read(commonActionProvider.notifier).updateTraffic();
 
-      expect(container.read(trafficsProvider).list.last.up, 10);
-      expect(container.read(trafficsProvider).list.last.down, 20);
-      expect(
-        container.read(totalTrafficProvider),
-        const Traffic(up: 100, down: 200),
-      );
-      verify(() => core.getTraffic(true)).called(1);
-      verify(() => core.getTotalTraffic(true)).called(1);
+      expect(container.read(trafficsProvider).list.last, stats.now);
+      expect(container.read(totalTrafficProvider), stats.total);
+      verify(() => core.getTrafficStats(true)).called(1);
     });
 
-    test('swallows a core failure and leaves the total untouched', () async {
+    test('swallows a core failure and leaves both values untouched', () async {
       final container = buildContainer();
       final before = container.read(totalTrafficProvider);
-      when(() => core.getTraffic(any())).thenThrow(StateError('core down'));
+      final trafficCount = container.read(trafficsProvider).list.length;
+      when(
+        () => core.getTrafficStats(any()),
+      ).thenThrow(StateError('core down'));
 
       await expectLater(
         container.read(commonActionProvider.notifier).updateTraffic(),
         completes,
       );
       expect(container.read(totalTrafficProvider), before);
-    });
-
-    test('does not record a total when only the total call fails', () async {
-      final container = buildContainer();
-      final before = container.read(totalTrafficProvider);
-      when(
-        () => core.getTraffic(any()),
-      ).thenAnswer((_) async => const Traffic(up: 1, down: 2));
-      when(() => core.getTotalTraffic(any())).thenThrow(StateError('boom'));
-
-      await container.read(commonActionProvider.notifier).updateTraffic();
-
-      expect(container.read(trafficsProvider).list.last.up, 1);
-      expect(container.read(totalTrafficProvider), before);
+      expect(container.read(trafficsProvider).list, hasLength(trafficCount));
     });
 
     test(
       'drops concurrent in-flight updates while one is in progress',
       () async {
         final container = buildContainer();
-        final completer = Completer<Traffic>();
-        when(() => core.getTraffic(any())).thenAnswer((_) => completer.future);
+        final completer = Completer<TrafficStats>();
         when(
-          () => core.getTotalTraffic(any()),
+          () => core.getTrafficStats(any()),
         ).thenAnswer((_) => completer.future);
 
         final first = container
@@ -147,11 +130,15 @@ void main() {
             .updateTraffic();
 
         await expectLater(second, completes);
-        completer.complete(const Traffic(up: 5, down: 10));
+        completer.complete(
+          const TrafficStats(
+            now: Traffic(up: 5, down: 10),
+            total: Traffic(up: 50, down: 100),
+          ),
+        );
         await first;
 
-        verify(() => core.getTraffic(any())).called(1);
-        verify(() => core.getTotalTraffic(any())).called(1);
+        verify(() => core.getTrafficStats(any())).called(1);
       },
     );
   });

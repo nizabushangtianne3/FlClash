@@ -91,7 +91,7 @@ void main() {
     'getExternalProviders': () => core.getExternalProviders(),
     'watchRoute': () => core.watchRoute(true),
     'validateProxies': () => core.validateProxies(const [{}]),
-    'getTraffic': () => core.getTraffic(false),
+    'getTrafficStats': () => core.getTrafficStats(false),
   };
 
   group('a query that answers nothing fails instead of defaulting', () {

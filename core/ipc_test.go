@@ -474,7 +474,7 @@ func TestSendMessageBatchDoesNotDoubleEncodeArguments(t *testing.T) {
 }
 
 func TestHandleMethodCallReportsMissingArguments(t *testing.T) {
-	frame := handleMethodCall(&MethodCall{ID: "3", Method: trafficCurrentMethod})
+	frame := handleMethodCall(&MethodCall{ID: "3", Method: trafficStatsMethod})
 
 	var envelope struct {
 		Error *MethodError `json:"error"`

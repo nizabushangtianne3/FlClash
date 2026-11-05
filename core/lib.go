@@ -318,14 +318,9 @@ func hasEventListener() bool {
 	return listening.Load()
 }
 
-func GetTotalTraffic(onlyStatisticsProxy bool) string {
-	defer recoverExport("getTotalTraffic")
-	return marshalResult(handleGetTotalTraffic(TrafficParams{OnlyProxy: onlyStatisticsProxy}))
-}
-
-func GetTraffic(onlyStatisticsProxy bool) string {
-	defer recoverExport("getTraffic")
-	return marshalResult(handleGetTraffic(TrafficParams{OnlyProxy: onlyStatisticsProxy}))
+func GetTrafficStats(onlyStatisticsProxy bool) string {
+	defer recoverExport("getTrafficStats")
+	return marshalResult(handleGetTrafficStats(TrafficParams{OnlyProxy: onlyStatisticsProxy}))
 }
 
 func marshalResult(value any) string {

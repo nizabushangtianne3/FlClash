@@ -227,8 +227,7 @@ var methodHandlers = map[CoreMethod]methodHandler{
 	ruleSetCompileMethod:   withFallible(handleCompileRuleSet),
 	geoUpdateMethod:        command(handleUpdateGeoData),
 
-	trafficCurrentMethod:     withArguments(handleGetTraffic),
-	trafficTotalMethod:       withArguments(handleGetTotalTraffic),
+	trafficStatsMethod:       withArguments(handleGetTrafficStats),
 	trafficResetMethod:       action(handleResetTraffic),
 	connectionListMethod:     withArguments(handleGetConnections),
 	connectionCountMethod:    withoutArguments(handleGetConnectionCount),

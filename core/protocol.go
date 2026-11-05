@@ -1,9 +1,11 @@
 package core
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/provider"
+	"github.com/metacubex/mihomo/common/jsonutil"
 	P "github.com/metacubex/mihomo/component/process"
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
@@ -51,8 +53,7 @@ const (
 	ruleSetCompileMethod   CoreMethod = "ruleSet.compile"
 	geoUpdateMethod        CoreMethod = "geo.update"
 
-	trafficCurrentMethod     CoreMethod = "traffic.current"
-	trafficTotalMethod       CoreMethod = "traffic.total"
+	trafficStatsMethod       CoreMethod = "traffic.stats"
 	trafficResetMethod       CoreMethod = "traffic.reset"
 	connectionListMethod     CoreMethod = "connection.list"
 	connectionCountMethod    CoreMethod = "connection.count"
@@ -268,17 +269,41 @@ type Delay struct {
 	Value int32  `json:"value"`
 }
 
-type Traffic struct {
-	Up   int64 `json:"up"`
-	Down int64 `json:"down"`
-}
-
 // TrafficStats is one IPC for the rate + cumulative counters the host polls.
 type TrafficStats struct {
 	Up        int64 `json:"up"`
 	Down      int64 `json:"down"`
 	TotalUp   int64 `json:"total-up"`
 	TotalDown int64 `json:"total-down"`
+}
+
+// frameFor implements frameWriter. Traffic is polled every second, so the four
+// counters are written directly rather than copied through response reflection.
+func (s *TrafficStats) frameFor(id string) []byte {
+	counters := [4]int64{s.Up, s.Down, s.TotalUp, s.TotalDown}
+	labels := [4]string{`"up":`, `"down":`, `"total-up":`, `"total-down":`}
+	if id == "" {
+		buf := append(make([]byte, 0, 96), `{"up":`...)
+		for i, value := range counters {
+			if i > 0 {
+				buf = append(buf, ',')
+			}
+			buf = strconv.AppendInt(buf, value, 10)
+		}
+		return append(buf, '}')
+	}
+	buf := make([]byte, 0, 128+len(id))
+	buf = append(buf, `{"id":`...)
+	buf = jsonutil.AppendString(buf, id)
+	buf = append(buf, `,"result":{`...)
+	for i, value := range counters {
+		if i > 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, labels[i]...)
+		buf = strconv.AppendInt(buf, value, 10)
+	}
+	return append(buf, '}', '}')
 }
 
 type MemoryStats struct {

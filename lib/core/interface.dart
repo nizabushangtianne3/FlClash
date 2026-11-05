@@ -282,18 +282,10 @@ abstract class CoreHandlerInterface {
     return _command(CoreMethod.geoUpdate, arguments: {'type': type});
   }
 
-  Future<Traffic> getTraffic(bool onlyProxy) {
+  Future<TrafficStats> getTrafficStats(bool onlyProxy) {
     return _query(
-      CoreMethod.trafficCurrent,
-      _model(Traffic.fromJson),
-      arguments: {'only-proxy': onlyProxy},
-    );
-  }
-
-  Future<Traffic> getTotalTraffic(bool onlyProxy) {
-    return _query(
-      CoreMethod.trafficTotal,
-      _model(Traffic.fromJson),
+      CoreMethod.trafficStats,
+      (data) => TrafficStats.fromJson(data as Map<String, Object?>),
       arguments: {'only-proxy': onlyProxy},
     );
   }

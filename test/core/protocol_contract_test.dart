@@ -37,8 +37,12 @@ class _RecordingCoreHandler extends CoreHandlerInterface {
     calls[method] = arguments;
     return switch (method) {
       CoreMethod.coreInitialized => true,
-      CoreMethod.trafficCurrent ||
-      CoreMethod.trafficTotal => {'up': 12, 'down': 34},
+      CoreMethod.trafficStats => {
+        'up': 12,
+        'down': 34,
+        'total-up': 56,
+        'total-down': 78,
+      },
       CoreMethod.proxyTestDelay => {
         'name': 'DIRECT',
         'url': 'https://example.com',
@@ -267,7 +271,7 @@ void main() {
       ),
     );
     await handler.clearEffect(42);
-    await handler.getTraffic(true);
+    await handler.getTrafficStats(true);
     await handler.closeConnection('connection-1');
     await handler.updateGeoData('GeoIp');
 
@@ -308,7 +312,7 @@ void main() {
       'timeout': 8000,
     });
     expect(handler.calls[CoreMethod.profileClearEffect], {'profile-id': 42});
-    expect(handler.calls[CoreMethod.trafficCurrent], {'only-proxy': true});
+    expect(handler.calls[CoreMethod.trafficStats], {'only-proxy': true});
     expect(handler.calls[CoreMethod.connectionClose], {'id': 'connection-1'});
     expect(handler.calls[CoreMethod.geoUpdate], {'type': 'GeoIp'});
   });
@@ -522,11 +526,9 @@ void main() {
   test('core interface converts structured method results', () async {
     final handler = _RecordingCoreHandler();
 
-    expect(await handler.getTraffic(false), const Traffic(up: 12, down: 34));
-    expect(
-      await handler.getTotalTraffic(false),
-      const Traffic(up: 12, down: 34),
-    );
+    final traffic = await handler.getTrafficStats(false);
+    expect(traffic.now, const Traffic(up: 12, down: 34));
+    expect(traffic.total, const Traffic(up: 56, down: 78));
     expect(
       await handler.testDelay(
         const TestDelayParams(
