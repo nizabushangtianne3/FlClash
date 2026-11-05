@@ -230,7 +230,11 @@ class Bootstrap {
 
   /// Android's exit only finishes the activity, so Dart keeps running after
   /// [SystemAction.handleExit] returns and must not go on to start the app.
+  /// Android first installs skip the startup disclaimer; it stays in Tools.
   Future<bool> _handlerDisclaimer() async {
+    if (Platform.isAndroid) {
+      return true;
+    }
     final acceptedVersion = _container.read(
       appSettingProvider.select((state) => state.acceptedDisclaimerVersion),
     );
