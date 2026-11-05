@@ -16,8 +16,10 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/metacubex/mihomo/adapter/provider"
+	"github.com/metacubex/mihomo/common/jsonutil"
 	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/constant"
 	cp "github.com/metacubex/mihomo/constant/provider"
@@ -91,7 +93,7 @@ func sideUpdateExternalProvider(p cp.Provider, data []byte) error {
 	}
 }
 
-func handleGetExternalProviders() []ExternalProvider {
+func handleGetExternalProviders() externalProviderList {
 	providers := externalProviders()
 	eps := make([]ExternalProvider, 0, len(providers))
 	for _, p := range providers {
@@ -103,6 +105,62 @@ func handleGetExternalProviders() []ExternalProvider {
 		return cmp.Compare(a.Name, b.Name)
 	})
 	return eps
+}
+
+type externalProviderList []ExternalProvider
+
+// frameFor implements frameWriter. The resources screen reads the complete
+// list, so each provider and its counters are written directly instead of
+// copied through response reflection.
+func (l externalProviderList) frameFor(id string) []byte {
+	buf := make([]byte, 0, len(l)*256+64)
+	if id != "" {
+		buf = append(buf, `{"id":`...)
+		buf = jsonutil.AppendString(buf, id)
+		buf = append(buf, `,"result":`...)
+	} else {
+		buf = append(buf, `{"result":`...)
+	}
+	if len(l) == 0 {
+		buf = append(buf, '[', ']')
+		return append(buf, '}')
+	}
+	buf = append(buf, '[')
+	for index := range l {
+		if index > 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, `{"name":`...)
+		buf = jsonutil.AppendString(buf, l[index].Name)
+		buf = append(buf, `,"type":`...)
+		buf = jsonutil.AppendString(buf, l[index].Type)
+		buf = append(buf, `,"vehicle-type":`...)
+		buf = jsonutil.AppendString(buf, l[index].VehicleType)
+		buf = append(buf, `,"count":`...)
+		buf = strconv.AppendInt(buf, int64(l[index].Count), 10)
+		buf = append(buf, `,"path":`...)
+		buf = jsonutil.AppendString(buf, l[index].Path)
+		buf = append(buf, `,"update-at":"`...)
+		buf = l[index].UpdateAt.AppendFormat(buf, time.RFC3339Nano)
+		buf = append(buf, '"')
+		if l[index].SubscriptionInfo == nil {
+			buf = append(buf, `,"subscription-info":null`...)
+			buf = append(buf, '}')
+			continue
+		}
+		info := l[index].SubscriptionInfo
+		buf = append(buf, `,"subscription-info":{"Upload":`...)
+		buf = strconv.AppendInt(buf, info.Upload, 10)
+		buf = append(buf, `,"Download":`...)
+		buf = strconv.AppendInt(buf, info.Download, 10)
+		buf = append(buf, `,"Total":`...)
+		buf = strconv.AppendInt(buf, info.Total, 10)
+		buf = append(buf, `,"Expire":`...)
+		buf = strconv.AppendInt(buf, info.Expire, 10)
+		buf = append(buf, '}')
+		buf = append(buf, '}')
+	}
+	return append(buf, ']', '}')
 }
 
 func handleGetExternalProvider(params NameParams) *ExternalProvider {
