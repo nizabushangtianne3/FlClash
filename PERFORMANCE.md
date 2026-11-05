@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-06
-- FlClash main：`032239b5`
-- Clash.Meta main：`3dc11ca55`
+- FlClash main：`794a7101`
+- Clash.Meta main：`4289e66a3`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次，账本当前共 79 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次，账本当前共 80 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -137,6 +137,7 @@
 | Profile 快照指针发布 | -（仅 wrapper） | `cd6d0fff` | 统一 snapshot 后每次缓存命中仍新建指针并拷贝 digest/document/raw/retag 四个字段；cache 改为发布不可变 `*profileSnapshot`，命中直接返回旧指针，refresh 只整体替换指针，简化缓存字段并消除命中拷贝。800 节点 paired n=7：cached merge 103.7µ ±2% / 104.5KiB / 58 allocs → 101.9µ ±1% / 104.4KiB / 57 allocs（时间 **-1.77%**，p=0.001）；cached base 时间 91.62µ ±2% → 91.06µ ±1% 在噪声内（p=0.097），分配 14 → 13（**-7.14%**，p=0.004）；profile focused race、wrapper 全量测试、`Clash.Meta` 全量测试、桌面与 Android vet、Dart analyze 通过 |
 | 连接计数直达 Size | `3dc11ca55` | `f8f8c965` | 仪表盘只看数量时 `connection.count` 仍通过 `Manager.Range` 遍历每个连接；Manager 暴露 `connections.Size()`，wrapper 直接读并发 map 的分段计数，不再逐行回调。`BenchmarkGetConnectionCount` paired n=7：100 行 875.4ns ±7% → 6.333ns ±1%（**-99.28%**），500 行 5.335µ ±2% / 3B → 6.301ns ±1% / 0B（时间 **-99.88%**，内存 **-100%**；两组 p=0.001）；新增 live tracker 计数 focused 测试，connection focused race、wrapper 全量测试、`Clash.Meta` 全量测试、桌面与 Android vet 通过 |
 | 连接计数单帧编码 | -（仅 wrapper） | `032239b5` | Size 直达后 `connection.count` 仍返回裸 int，完整 dispatch 走 `MethodResponse` 反射；新增 `connectionCount.frameFor` 直写一个数字 envelope，并保持与 `MethodResponse` 字节等价。`BenchmarkConnectionCountDispatch` paired n=7：100 行 613.6ns ±1% / 176B / 5 allocs → 78.33ns ±3% / 48B / 1 alloc（时间 **-87.23%**，内存 **-72.73%**，分配 **-80.00%**）；500 行 642.2ns ±2% / 184B / 6 allocs → 100.4ns ±7% / 56B / 2 allocs（时间 **-84.37%**，内存 **-69.57%**，分配 **-66.67%**；两组 p=0.001）；新增有/无 ID 字节等价 focused 测试，connection focused race、wrapper 全量测试、桌面与 Android vet、Dart analyze、protocol/dashboard/connections 39 个 Flutter 用例通过 |
+| 流量总量单轮 stripe | `4289e66a3` | `794a7101` | `TotalTraffic` 原先调用两个 helper，各自完整扫描 32 个 counter stripe；合并为 `totalPair` 一轮成对读取 upload/download，proxy 与 direct 由同一 helper 分支选择，并删除仅旧路径使用的独立 proxy helper。`BenchmarkTrafficPoll` paired n=7：511.5ns ±2% / 177B / 3 allocs → 487.4ns ±1% / 177B / 3 allocs（时间 **-4.71%**，p=0.001）；同轮 `BenchmarkMemoryStatsDispatch` 215.8ns ±3% → 214.3ns ±1% 无显著变化（p=0.068）；traffic focused race、wrapper 全量测试、`Clash.Meta` 全量测试、桌面与 Android vet 通过 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
