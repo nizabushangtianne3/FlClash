@@ -123,6 +123,13 @@
 | 规则匹配 plain 段线性扫描 | `BenchmarkMatchPlainRulesBeforeIndexedHit` 重测（2026-11-05）：plain=5000 37.1–38.0µs/匹配、0 allocs，与账本 2026-11-03 记录的 ~40µs 一致；索引路径 44–162ns/0 allocs（exact/suffix/IP 各基准） | 生产 profile 的 plain 规则通常几十条（每条 ~7.4ns），病态 5000 条属极端配置；按判别键建桶要重写首条命中语义，维持原拒绝结论 |
 | 隧道 UDP 每包路径 | `BenchmarkHandleUDPConnExistingFlow` ~43ns/0 allocs、`BenchmarkPacketSenderSend/ready` ~48ns/0 allocs、flow key ~3ns（2026-11-05 重测） | 前续轮次已把每包路径压到纳秒级零分配，无可再削的分配或拷贝；P4 剩余仅首包 outbound dial 生命周期 |
 | Rust IPC 帧层与 outbox | 代码走查：`frame::read` 单次精确长度读取+单次分配，outbox 突发合并单写（`drain_into` 256KB 上限），事件批量已在 Go 侧合并成帧 | 拷贝最小形状，无单帧重复拷贝或多余分配可削；不做基准（控制面帧不构成热点） |
+| 子模块未合并分支 `codex/perf-trojan-writeback-01a15f94`（6 提交） | `git cherry` 全部为 `+`，但 `BenchmarkSingPacketWriteBack` 在 main 实测 17.8–18.1ns/0B/0 allocs、`BenchmarkTrojanPacketWriteBack` 1.68–1.74ns/0B/0 allocs——与其基准报告的"优化后"数字持平 | 该分支是已合并 clean 孪生分支的旧迭代，patch-id 不同但功能等价已落地；合并只会重复/冲突，拒绝 |
+| 子模块未合并分支 `codex/faster-proxy-failover`（+28） | 其 `perf: reuse a resolved fallback group pick`（`ac5eb766f`）引入的 `fallbackSelection`+10s TTL 在 main 已有等价实现（main 版改用单调时钟，更好）；其余为改选语义的 feature 提交 | 性能部分已被 main 覆盖，语义部分属产品决策非本轮范围；不合并 |
+| 子模块未合并分支 `codex/refactor-Rn1-bingbu01`（+10） | 唯一 perf 提交 `perf(sudoku): route UoT datagrams through AddrPort` 针对 sudoku 入站——FlClash 不使用该入站；其余为测试重试鲁棒性与 CI 记录 | 非 FlClash 流量面；测试提交不属性能范围；不合并 |
+| sniffer 每连接路径 | `BenchmarkSniffDomain` 281–294ns/688B/2 allocs；sniff 日志守卫路径 0.44ns/0 allocs（守卫关闭时无条件构造为 163ns/3 allocs，生产恒走守卫） | 每连接一次 TLS ClientHello 解析，成本在解析本身；日志已守卫；不动 |
+| statistic 记账路径 | `BenchmarkManagerPushStriped` 2.22–2.25ns/0 allocs、`ManagerSnapshot` 100/500 行 1 alloc、`NewTCPTracker` 隔离 2 allocs（前轮钉住） | 全部饱和；不动 |
+| 组健康检查 | `GroupBase.healthCheck` 每 provider 一个 goroutine 并行，成本在 provider 的 HTTP 探测网络等待 | 网络主导，wrapper/Go 侧无分配热点；不动 |
+| DNS 查询事件路径 | `newDnsQuery` 走查：`TrimSuffix` 零分配、答案串为 UI 必需、事件进批量直写编码（见 d838533e 行） | 每查询仅答案串本身分配，形状已最小；不动 |
 
 ### 稳定统计与统计链路
 
