@@ -117,8 +117,7 @@ func mergeProfileBase(base *SetupBase) (*yaml.Node, error) {
 	if buf, err = age.DecryptBytes(buf); err != nil {
 		return nil, fmt.Errorf("decrypt config error: %w", err)
 	}
-	retag := bytes.Contains(buf, []byte("short-id"))
-	profileDocument, err := readProfileDocument(buf)
+	profileDocument, retag, err := readProfileDocument(buf)
 	if err != nil {
 		return nil, err
 	}

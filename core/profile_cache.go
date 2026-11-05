@@ -25,6 +25,7 @@ var profileDocumentCache struct {
 	mu       sync.RWMutex
 	buf      []byte
 	document *yaml.Node
+	retag    bool
 }
 
 // One entry holds the last profile read: the host opens a profile, previews it
@@ -75,32 +76,39 @@ func sha256Sum(buf []byte) []byte {
 	return sum[:]
 }
 
-// readProfileDocument parses the profile document, reusing the parse when the
-// bytes are unchanged. Comparing the wire bytes is cheaper than hashing every
-// repeated merge and gives the same exact-change guarantee.
-func readProfileDocument(buf []byte) (*yaml.Node, error) {
+// readProfileDocument parses the profile document and reports whether its wire
+// bytes contain short-id. Reusing the parse and classification avoids hashing
+// and scanning an unchanged profile on every repeated merge.
+func readProfileDocument(buf []byte) (*yaml.Node, bool, error) {
 	if len(buf) > maxCachedProfileDocumentSize {
-		return parseProfileDocument(buf)
+		document, err := parseProfileDocument(buf)
+		if err != nil {
+			return nil, false, err
+		}
+		return document, bytes.Contains(buf, []byte("short-id")), nil
 	}
 
 	profileDocumentCache.mu.RLock()
 	cachedBuf := profileDocumentCache.buf
 	cached := profileDocumentCache.document
 	hit := cached != nil && bytes.Equal(buf, cachedBuf)
+	cachedRetag := profileDocumentCache.retag
 	profileDocumentCache.mu.RUnlock()
 	if hit {
-		return cached, nil
+		return cached, cachedRetag, nil
 	}
 
 	document, err := parseProfileDocument(buf)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
+	retag := bytes.Contains(buf, []byte("short-id"))
 	profileDocumentCache.mu.Lock()
 	profileDocumentCache.buf = append([]byte(nil), buf...)
 	profileDocumentCache.document = document
+	profileDocumentCache.retag = retag
 	profileDocumentCache.mu.Unlock()
-	return document, nil
+	return document, retag, nil
 }
 
 func parseProfileDocument(buf []byte) (*yaml.Node, error) {
