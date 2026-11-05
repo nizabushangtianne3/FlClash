@@ -28,6 +28,24 @@ type proxiesFrame struct {
 	} `json:"result"`
 }
 
+func TestGroupProjectionFollowsTheNameListWithoutSameSnapshot(t *testing.T) {
+	group := proxyGroup(t, "group", "", "node-a", "node-b")
+	proxies := map[string]C.Proxy{"group": group, "node-a": namedProxy("node-a"), "node-b": namedProxy("node-b")}
+	tunnel.UpdateProxies(proxies, nil)
+	t.Cleanup(func() { tunnel.UpdateProxies(nil, nil) })
+
+	config.SetProxyNameList([]string{"group", "node-a", "node-b"})
+	first := handleGetProxies().names
+	require.Equal(t, []string{"group"}, first)
+
+	config.SetProxyNameList([]string{"node-b", "group"})
+	second := handleGetProxies().names
+	require.Equal(t, []string{"group"}, second)
+
+	config.SetProxyNameList([]string{"node-a", "group", "node-b"})
+	third := handleGetProxies().names
+	require.Equal(t, []string{"group"}, third)
+}
 func decodeProxiesFrame(t *testing.T, frame []byte) proxiesFrame {
 	t.Helper()
 	var decoded proxiesFrame

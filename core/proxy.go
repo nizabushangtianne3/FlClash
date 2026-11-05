@@ -85,15 +85,41 @@ func proxyGroupNames(
 	return names
 }
 
+// The group projection depends on both the tunnel snapshot and the host's
+// configured name list. Cache that exact pair so a steady dashboard does not
+// rebuild and reallocate the all-list on every read.
+type groupProjectionCache struct {
+	snapshot any
+	source   []string
+	names    []string
+}
+
+var groupProjection atomic.Pointer[groupProjectionCache]
+
+func sameProxySnapshot(left, right any) bool {
+	return reflect.ValueOf(left).Pointer() == reflect.ValueOf(right).Pointer()
+}
+
 func handleGetProxies() *proxiesAnswer {
 	proxies := tunnel.AllProxies()
+	source := config.GetProxyNameList()
 
-	names := proxyGroupNames(config.GetProxyNameList(), func(name string) (constant.AdapterType, bool) {
+	if cache := groupProjection.Load(); cache != nil &&
+		sameProxySnapshot(cache.snapshot, proxies) && slices.Equal(source, cache.source) {
+		return &proxiesAnswer{proxies: proxies, names: cache.names}
+	}
+
+	names := proxyGroupNames(source, func(name string) (constant.AdapterType, bool) {
 		p, ok := proxies[name]
 		if !ok || p == nil {
 			return 0, false
 		}
 		return p.Type(), true
+	})
+	groupProjection.Store(&groupProjectionCache{
+		snapshot: proxies,
+		source:   slices.Clone(source),
+		names:    names,
 	})
 
 	return &proxiesAnswer{proxies: proxies, names: names}
