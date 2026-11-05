@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04/11-05 持续重构轮次，账本当前共 71 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04/11-05 持续重构轮次，账本当前共 72 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -129,6 +129,7 @@
 | 内存统计单帧编码 | -（仅 wrapper） | `0a06c46c` | `MemoryStats` 实现 `frameWriter`，仪表盘 2s 轮询不再走 `MethodResponse` 反射，并顺带修正 `frameFor` 空 ID envelope 的通用契约。`BenchmarkMemoryStatsDispatch` paired n=7：977.6ns ±1% / 400B / 6 allocs → 205.6ns ±1% / 192B / 2 allocs（时间 **-78.97%**，内存 **-52.00%**，分配 **-66.67%**，p=0.001）；`frameFor` 与 `MethodResponse` 输出做字节级等价测试；wrapper 全量测试、桌面/Android vet、memory/connection focused race 通过 |
 | 外部 Provider 列表单帧编码 | -（仅 wrapper） | `8a9681b5` | `externalProviderList` 实现 `frameWriter`，资源页 100 个规则 Provider 一次读取不再走 `MethodResponse` 反射；直写 name/type/vehicle/count/path/update-at/subscription-info，字符串走统一安全 JSON 编码，时间保持 RFC3339Nano。`BenchmarkProviderListDispatch` paired n=7：120.65µs ±2% / 54.91KiB / 118 allocs → 77.83µs ±1% / 57.34KiB / 113 allocs（时间 **-35.49%**，分配 **-4.24%**，p=0.001；内存 +4.42% 为一次预分配帧的权衡）；有/无 ID、Unicode 与转义路径做字节级等价测试；wrapper 全量测试、桌面/Android vet、provider focused race 通过 |
 | Provider 列表值构造 | -（仅 wrapper） | `9817f0e8` | `toExternalProvider` 直接返回值，列表不再为每个 Provider 构造堆指针再解引用复制。同基准叠加 paired n=7：77.83µs ±1% / 57.34KiB / 113 allocs → 71.53µs ±1% / 46.40KiB / 13 allocs（时间 **-8.10%**，内存 **-19.08%**，分配 **-88.50%**，p=0.001）；单 Provider 详情仍按需返回指针；provider focused race、wrapper 全量测试、桌面/Android vet 通过 |
+| 路由轮询零分配 scratch | -（仅 wrapper） | `a2c6a388` | 路由 5s 稳态轮询不再每轮新建 picks/provider-versions 两个 map 和 group-name slice，改用 route tracker 持有的 scratch map 并与正式 map 交换；group picks 和 provider 版本均在 scratch 中比对，未变化不发布。200 组 `BenchmarkRefreshRouteVersions` paired n=7：45.13µ ±2% / 21.85KiB / 15 allocs → 22.84µ ±3% / 0B / 0 allocs（时间 **-49.39%**，内存/分配 **-100%**，p=0.001）；新增 scratch 轮询追踪 group 改选的 focused 测试，route/rule focused race 通过，wrapper 全量测试、桌面/Android vet 通过 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
