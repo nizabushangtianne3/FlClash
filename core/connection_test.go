@@ -24,7 +24,7 @@ func TestConnectionDeltaAnswersWhatMoved(t *testing.T) {
 	opened := handleGetConnections(ConnectionsQuery{Resync: true})
 	require.Len(t, opened.Added, 2, "a table it has not answered before is answered whole")
 	require.Equal(t, 2, opened.Count)
-	require.Equal(t, 2, handleGetConnectionCount())
+	require.Equal(t, connectionCount(2), handleGetConnectionCount())
 	require.Empty(t, opened.Removed)
 
 	unchanged := handleGetConnections(ConnectionsQuery{})
@@ -161,7 +161,7 @@ func BenchmarkGetConnectionCount(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if got := handleGetConnectionCount(); got != count {
+				if got := int(handleGetConnectionCount()); got != count {
 					b.Fatalf("count = %d, want %d", got, count)
 				}
 			}
@@ -184,6 +184,41 @@ func BenchmarkGetConnectionsResyncFrame(b *testing.B) {
 				data := handleGetConnections(ConnectionsQuery{Resync: true}).frameFor("benchmark")
 				if len(data) == 0 {
 					b.Fatal("empty answer")
+				}
+			}
+		})
+	}
+}
+
+func TestConnectionCountFrameMatchesTheEnvelope(t *testing.T) {
+	first := newConnectionDeltaTracker(t, &C.Metadata{NetWork: C.TCP, Host: "count.example.com"})
+	defer func() { _ = first.Close() }()
+
+	count := handleGetConnectionCount()
+	withID, err := json.Marshal(MethodResponse{ID: "call-1", Result: count})
+	require.NoError(t, err)
+	require.Equal(t, withID, count.frameFor("call-1"))
+	anonymous, err := json.Marshal(MethodResponse{Result: count})
+	require.NoError(t, err)
+	require.Equal(t, anonymous, count.frameFor(""))
+}
+
+func BenchmarkConnectionCountDispatch(b *testing.B) {
+	for _, count := range []int{100, 500} {
+		b.Run(fmt.Sprintf("connections=%d", count), func(b *testing.B) {
+			trackers := benchmarkConnectionTrackers(b, count)
+			b.Cleanup(func() {
+				for _, tracker := range trackers {
+					_ = tracker.Close()
+				}
+			})
+			call := &MethodCall{ID: "benchmark", Method: connectionCountMethod}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if data := handleMethodCall(call); len(data) == 0 {
+					b.Fatal("empty count answer")
 				}
 			}
 		})

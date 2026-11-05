@@ -199,8 +199,25 @@ func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 	return delta
 }
 
-func handleGetConnectionCount() int {
-	return statistic.DefaultManager.Size()
+// connectionCount writes its own one-value envelope, so a dashboard that only
+// polls the number of live rows skips MethodResponse reflection.
+type connectionCount int
+
+func (count connectionCount) frameFor(id string) []byte {
+	buf := make([]byte, 0, len(id)+32)
+	if id != "" {
+		buf = append(buf, `{"id":`...)
+		buf = jsonutil.AppendString(buf, id)
+		buf = append(buf, `,"result":`...)
+	} else {
+		buf = append(buf, `{"result":`...)
+	}
+	buf = strconv.AppendInt(buf, int64(count), 10)
+	return append(buf, '}')
+}
+
+func handleGetConnectionCount() connectionCount {
+	return connectionCount(statistic.DefaultManager.Size())
 }
 
 func handleCloseConnections() {
