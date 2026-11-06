@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-07
-- FlClash main：`886b37e4`
+- FlClash main：`232df2b9`
 - Clash.Meta main：`47244368e`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -179,6 +179,7 @@
 | `show`/`showTime` 固定字段拼接 + 本地时间快路径 | -（仅 wrapper） | 本轮提交 | `show`/`showTime` 不再 `toLocal().toString().substring(...)`，改为手工拼日期和 ` HH:mm:ss`；已是本地时间不再触发 `toLocal()`。新增 `test/common/datetime_slices_benchmark_test.dart`：JIT n=7（local+UTC 的 show/showTime 共 4,000,000 次）均值 9.43ms/中位 9.38ms → 均值 8.55ms/中位 8.56ms（均值 **-9.29%**，中位 **-8.72%**）；`test/common/datetime_test.dart`、`test/widgets/connection_item_test.dart`、`test/views/requests_test.dart`、`test/views/dns_queries_view_test.dart`、`test/views/dashboard/service_status_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | 托盘超大组选中项缓存索引 | -（仅 wrapper） | 本轮提交 | `visibleTrayProxies` 不再每组线性扫全部节点找选中；超大组按 `Group` 缓存 name->Proxy 索引（后出现同名覆盖，保持原逻辑），只取前 `maxTrayProxiesPerGroup`（有选中则给选中留位）。`test/common/visible_tray_benchmark_test.dart` JIT n=7（5000 节点 ×20000 次）：perCallUs 均值 54.14 / 中位 54 → 1 / 1（该基准按整数 µs 输出，降幅按该分辨率约 **-98%**；实际已远低于 1µs 量级）；`test/common/compute_test.dart`、`test/common/tray_test.dart`、`test/common/tray_lifecycle_test.dart`、`test/manager/tray_manager_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | 超大组选中节点解析改成员名缓存 | -（仅 wrapper） | 本轮提交 | `Group` 新增 `containsMemberName`，`selectedProxyName` 不再为了判断 selected/live/stored 各自扫全组；组成员名沿用已有 `Expando<Set<String>>`（空组仍 false，`_isMember` 的空组语义不变）。新增 `test/providers/selected_proxy_name_benchmark_test.dart`：JIT n=7（2000 节点 ×2000 次 refresh）总耗时均值 281.50ms/中位 283.28ms → 209.11ms/208.83ms（均值 **-25.72%**，中位 **-26.28%**）；`test/providers/state_derived_test.dart`、`test/providers/proxies_action_test.dart`、`test/widgets/proxies_list_test.dart`、`test/widgets/proxies_tab_test.dart`、`test/views/proxies_list_test.dart`、`test/views/dashboard/proxy_groups_card_test.dart`、`test/common/compute_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
+| keyed 列表批量出队索引前移 | -（仅 wrapper） | 本轮提交 | `FixedList._dropIndexedHead` 不再对该 map 同时 `removeWhere` + `updateAll` 两个回调遍历，改为一次 `entries` 遍历：收集越界 key、原地前移剩余 index，最后删除越界 key。`test/common/fixed_append_benchmark_test.dart` 新增 keyed 场景（1600×120，20000 批）：JIT n=7 perBatchUs 均值 12.86/中位 13 → 均值 11.29/中位 11（均值 **-12.21%**，中位 **-15.38%**）；`test/common/fixed_test.dart`、`test/providers/app_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 

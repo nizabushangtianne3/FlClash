@@ -136,8 +136,18 @@ class FixedList<T> {
     if (indexes == null) {
       return;
     }
-    indexes.removeWhere((key, index) => index < dropped);
-    indexes.updateAll((key, index) => index - dropped);
+    final removed = <Object>[];
+    for (final entry in indexes.entries) {
+      final index = entry.value;
+      if (index < dropped) {
+        removed.add(entry.key);
+      } else {
+        indexes[entry.key] = index - dropped;
+      }
+    }
+    for (final key in removed) {
+      indexes.remove(key);
+    }
   }
 
   void _indexKey(int index, T item) {
