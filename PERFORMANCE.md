@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-06
-- FlClash main：`1ae9f60d`
-- Clash.Meta main：`4289e66a3`
+- FlClash main：`af90abdd`
+- Clash.Meta main：`47244368e`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次，账本当前共 86 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次，账本当前共 93 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -144,6 +144,18 @@
 | Route 组投影缓存 | -（仅 wrapper） | `1ae9f60d` | 路由稳态轮询每次重复读取配置名单、查 tunnel map、判断组类型并断言 `pickableGroup`；改为按 `(tunnel snapshot, name-list 内容)` 缓存解析后的 `routeGroup`，每轮只读各组的 `Now()` 和 provider version。200 组 `BenchmarkRefreshRouteVersions` paired n=7：23.72µ ±2% / 0B / 0 allocs → 13.46µ ±4% / 0B / 0 allocs（时间 **-43.26%**，p=0.001）；新增配置名单变更和 fallback 投影 focused 测试，route focused race、wrapper 全量测试、桌面与 Android vet 通过 |
 | Proxy 快照精确容量 | -（仅 wrapper） | `8c38a98c` | `answerSize` 原先按节点名长度 +32、每组 +320 粗估，大表 frame 多次 `growslice`；snapshot 构建时已持有静态 keySpan/nodeView，现在直接累计它们的实际长度、all 列表 JSON 长度和每组 768B 缓存文档 scaffold。200 组 +1000 节点 paired n=7：urltest 138.7µ ±2% / 276.8KiB / 6 allocs → 121.3µ ±5% / 228.6KiB / 4 allocs（时间 **-12.52%**，内存 **-17.40%**，分配 **-33.33%**，p=0.001）；selector 121.5µ ±16% → 112.8µ ±39% 无显著时间变化（p=0.073），但内存 **-17.42%**、分配 `4 → 3`（p=0.001）；proxy focused race、wrapper 全量测试、桌面与 Android vet 通过 |
 | Proxy 组名投影缓存 | -（仅 wrapper） | `0c3069a3` | 大表稳态读取每次仍调用 `proxyGroupNames` 遍历配置名单并分配投影；改为按 `(tunnel snapshot, name-list 内容)` 缓存不可变投影，名单克隆入键避免同底层数组原地修改误命中。200 组 +1000 节点 paired n=7：selector 110.4µ ±12% / 227.5KiB / 3 allocs → 91.55µ ±21% / 224.1KiB / 2 allocs（时间 **-17.09%**，p=0.026；内存 **-1.49%**、分配 **-33.33%**，p=0.001）；urltest 125.0µ ±8% / 228.7KiB / 5 allocs → 110.5µ ±2% / 225.1KiB / 3 allocs（时间 **-11.62%**，内存 **-1.54%**，分配 **-40.00%**，p=0.001）；新增名单变更/顺序变更投影 focused 测试，proxy focused race、wrapper 全量测试、桌面与 Android vet 通过 |
+
+### 2026-11-06 发布修复轮次
+
+| 优化 | 子模块提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| Core 高频 feed 帧内合并 | - | `af90abdd` | logs/request/DNS/traffic 在 `renderThrottleDuration` 内合并为一次 provider 提交；request/DNS 计数按批累加，后台生命周期在事件入口过滤。`core_manager` 20 个用例全绿 |
+| 未变化连接保留实例身份 | - | `af90abdd` | `TrackerSpeedRanker` 以 id 缓存上一轮输出，速度未变时回传同一 `TrackerInfo`，避免下游把排序结果当作新连接；focused 测试钉住实例身份 |
+| 流量采样窗口不跳写 | - | `af90abdd` | 删除相同速率采样去重，`FixedList` 每次入队，旧峰值随窗口滚动退出；desktop peak focused 测试通过 |
+| 超时隐藏只认真实组选择 | - | `af90abdd` | 非 computed group 不再把缺省第一项伪装成选择；全组超时时保留整组，URLTest 仍保留 `now` 指定的核心选择；focused 测试通过 |
+| Linux 启动跳过设备信息探测 | - | `af90abdd` | `System.init` 在 Linux 直接返回，不再调用桌面设备信息路径；`system` focused 测试通过 |
+| Glyph path 缓存 | `0abe1b9` | `af90abdd` | `GlyphShape` 缓存 `Path`，同形状重复绘制不再重建路径；`prism_ui` 355 个测试全绿 |
+| 侧栏标签动画减少 Text 重建 | `0abe1b9` | `af90abdd` | 行 `Text` 保存在 State 中，动画帧只更新 `Opacity`，标签内容/样式不变时不重建；sidebar 15 个用例全绿 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
