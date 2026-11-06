@@ -314,6 +314,7 @@
 | Provider 帧按 512B/条预分配 | 60.49µ ±2% / 48.15KiB / 14 allocs → 69.01µ ±1% / 77.52KiB / 14 allocs（时间 **+14.08%**，内存 **+61.01%**）；撤销，原增长路径更优。 |
 | CoreManager feed flush 双缓冲交换 | 新增 `test/manager/core_manager_feed_benchmark_test.dart`（JIT，200 批，每批 400 log+120 request+240 DNS+200 traffic）实测：原 `from + clear` 每批 1081/1100/1082/1161µs，双缓冲换 buffer 每次都要清空旧队列，1149/1159/1242µs（**+6~12%**）。新空队列分配/清空不被 feed provider 的 `FixedList.appendAll` 拷贝规避抵消，撤销并保留原拷贝形状。 |
 | `SearchQuery.matchesText` 单 term 直接 `contains` | DNS 搜索文本缓存后，`test/models/dns_query_search_benchmark_test.dart` n=7：73.41ms/中位 73.18ms → 74.25ms/中位 73.64ms（时间 +1.15%/+0.62%，在噪声内无收益）。`terms.every(text.contains)` 已无每行字段构造成本，直接分支无可再省；撤销。 |
+| TrackerSpeedRanker scratch TypedData 复用 | `test/features/tracker_speed_ranker_benchmark_test.dart` JIT n=7：均值 8.37ms/中位 8.24ms → 8.36ms/中位 8.26ms（时间 -0.11%/+0.22%，无收益，且新增重复初始化代码）。Dart 对小型 TypedData 分配成本低，节省的分配被 fillRange/清理抵消；撤销，保留已落地的 int32 索引与 positions map 复用。 |
 
 ## 4. 当前验证矩阵
 
