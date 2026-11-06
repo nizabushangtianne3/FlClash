@@ -10,6 +10,9 @@ import 'clash_config.dart';
 import 'profile.dart';
 
 String _decodedOrSelf(String text) {
+  if (!text.contains('%')) {
+    return text;
+  }
   try {
     return Uri.decodeComponent(text);
   } on ArgumentError {

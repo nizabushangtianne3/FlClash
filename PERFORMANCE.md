@@ -3,7 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-06
-- FlClash main：`af90abdd`
+- 最近核对日期：2026-11-07
+- FlClash main：`43109cd3`
 - Clash.Meta main：`47244368e`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -163,6 +164,12 @@
 |---|---|---|---|
 | 延迟排序状态与触发收敛 | - | 本轮提交 | 恢复超时/其他失败/未测试的旧优先级，并在同延迟时把嵌套分组排在叶子前；删除无调用的 debounce 入口和已无使用方的 `DelayState`。同时移除延迟测试完成后的重复 `sortNum -> updateGroups` 全量 Core 拉取，完成批次只做一次本地排序。`computeSort`、`sortGroupsTask`、`app_manager`、`proxies_action` 118 个测试与 Dart analyze 全绿 |
 
+### 2026-11-07 持续重构轮次
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| DNS 服务器引用无 `%` 免解码 | -（仅 wrapper） | 本轮提交 | `_decodedOrSelf` 先查 `contains('%')`，无百分号时直接返回原文，不再每台服务器调用一次 `Uri.decodeComponent`；`test/models/references_benchmark_test.dart` JIT n=11（100k 个 `ts://...#dialer`）：均值 52.99ms → 47.80ms（-9.8%），中位 53.37ms → 47.14ms（**-11.67%**）；`test/models/references_test.dart`、`test/manager/core_manager_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
+
 ### 2026-11-05 测量记录（审计后刻意未动）
 
 | 位置 | 测量 | 结论 |
@@ -302,6 +309,7 @@
 | packetSender Done 延迟创建 | paired benchstat：首包 367.5ns/1376B/4 allocs → 473.9ns/1696B/5 allocs（时间 +28.95%，内存 +23.26%）；lazy 路径复杂度无收益，已撤销。 |
 | Provider 精确 answerSize 预分配 | `StringLen` 逐字段扫描后 paired n=7：60.49µ ±2% → 79.07µ ±10%（**+30.72%**），内存/分配不变；撤销，扩容比扫描便宜。 |
 | Provider 帧按 512B/条预分配 | 60.49µ ±2% / 48.15KiB / 14 allocs → 69.01µ ±1% / 77.52KiB / 14 allocs（时间 **+14.08%**，内存 **+61.01%**）；撤销，原增长路径更优。 |
+| CoreManager feed flush 双缓冲交换 | 新增 `test/manager/core_manager_feed_benchmark_test.dart`（JIT，200 批，每批 400 log+120 request+240 DNS+200 traffic）实测：原 `from + clear` 每批 1081/1100/1082/1161µs，双缓冲换 buffer 每次都要清空旧队列，1149/1159/1242µs（**+6~12%**）。新空队列分配/清空不被 feed provider 的 `FixedList.appendAll` 拷贝规避抵消，撤销并保留原拷贝形状。 |
 
 ## 4. 当前验证矩阵
 
