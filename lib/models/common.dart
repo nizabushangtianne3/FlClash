@@ -668,6 +668,15 @@ extension GroupsExt on List<Group> {
 extension GroupExt on Group {
   String get realNow => now ?? '';
 
+  bool containsMemberName(String proxyName) {
+    if (all.isEmpty) {
+      return false;
+    }
+    return (_groupMemberNames[this] ??= {
+      for (final proxy in all) proxy.name,
+    }).contains(proxyName);
+  }
+
   String getCurrentSelectedName(String proxyName) {
     if (type.isComputedSelected) {
       return realNow.isNotEmpty ? realNow : proxyName;
@@ -687,9 +696,7 @@ extension GroupExt on Group {
     if (all.isEmpty) {
       return true;
     }
-    return (_groupMemberNames[this] ??= {
-      for (final proxy in all) proxy.name,
-    }).contains(proxyName);
+    return containsMemberName(proxyName);
   }
 }
 

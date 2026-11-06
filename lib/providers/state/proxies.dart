@@ -285,7 +285,7 @@ String? selectedProxyName(Ref ref, String groupName) {
   }
 
   bool hasMember(String name) =>
-      name.isNotEmpty && group.all.any((proxy) => proxy.name == name);
+      name.isNotEmpty && group.containsMemberName(name);
   if (group.type == GroupType.LoadBalance || group.type == GroupType.Relay) {
     return hasMember(group.realNow) ? group.realNow : '';
   }
@@ -293,31 +293,13 @@ String? selectedProxyName(Ref ref, String groupName) {
   final stored = proxyName ?? '';
   final selected = group.getCurrentSelectedName(stored);
   final live = group.realNow;
-  var hasSelected = false;
-  var hasLive = false;
-  var hasStored = false;
-  for (final proxy in group.all) {
-    final name = proxy.name;
-    if (selected.isNotEmpty && name == selected) {
-      hasSelected = true;
-    }
-    if (live.isNotEmpty && name == live) {
-      hasLive = true;
-    }
-    if (stored.isNotEmpty && name == stored) {
-      hasStored = true;
-    }
-    if (hasSelected && hasLive && hasStored) {
-      break;
-    }
-  }
-  if (hasSelected) {
+  if (hasMember(selected)) {
     return selected;
   }
-  if (hasLive) {
+  if (hasMember(live)) {
     return live;
   }
-  if (hasStored) {
+  if (hasMember(stored)) {
     return stored;
   }
   if (stored.isEmpty) {
