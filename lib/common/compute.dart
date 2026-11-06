@@ -11,6 +11,11 @@ int _delaySortPriority(int delay) => switch (delay) {
   _ => 3,
 };
 
+// Delay sort packs per-proxy state: low 2 bits are priority, group bit marks a
+// nested group.
+const _priorityMask = 0x03;
+const _groupFlag = 0x04;
+
 List<Group> computeSort({
   required List<Group> groups,
   required ProxiesSortType sortType,
@@ -44,27 +49,33 @@ List<Group> computeSort({
   List<Proxy> sortOfDelay(List<Proxy> proxies, String testUrl) {
     final count = proxies.length;
     final delays = Int64List(count);
-    final groupFlags = Uint8List(count);
+    final flags = Uint8List(count);
     for (var index = 0; index < count; index++) {
       final realState = realStateFor(proxies[index].name);
       final stateTestUrl = realState.testUrl.takeFirstValid([testUrl]);
-      delays[index] = delayMap[stateTestUrl]?[realState.proxyName] ?? 0;
-      groupFlags[index] = realState.group ? 1 : 0;
+      final delay = delayMap[stateTestUrl]?[realState.proxyName] ?? 0;
+      delays[index] = delay;
+      flags[index] =
+          _delaySortPriority(delay) | (realState.group ? _groupFlag : 0);
     }
 
     int compareDelayStates(int left, int right) {
       final leftDelay = delays[left];
       final rightDelay = delays[right];
-      final leftPriority = _delaySortPriority(leftDelay);
-      final rightPriority = _delaySortPriority(rightDelay);
+      final leftFlags = flags[left];
+      final rightFlags = flags[right];
+      final leftPriority = leftFlags & _priorityMask;
+      final rightPriority = rightFlags & _priorityMask;
       if (leftPriority != rightPriority) {
         return leftPriority.compareTo(rightPriority);
       }
       if (leftDelay != rightDelay) {
         return leftDelay.compareTo(rightDelay);
       }
-      if (groupFlags[left] != groupFlags[right]) {
-        return groupFlags[right].compareTo(groupFlags[left]);
+      final leftGroup = leftFlags & _groupFlag;
+      final rightGroup = rightFlags & _groupFlag;
+      if (leftGroup != rightGroup) {
+        return rightGroup.compareTo(leftGroup);
       }
       return left.compareTo(right);
     }
