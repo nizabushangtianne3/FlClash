@@ -160,23 +160,32 @@ const _unprobeableProxyTypes = {
 bool isUnprobeableProxyType(String type) =>
     _unprobeableProxyTypes.contains(type);
 
+final _trayProxiesByName = Expando<Map<String, Proxy>>();
+
 List<Proxy> visibleTrayProxies(Group group, String? selectedName) {
   final all = group.all;
   if (all.length <= maxTrayProxiesPerGroup) {
     return all;
   }
 
+  final String? wanted = selectedName;
   final others = <Proxy>[];
   Proxy? selected;
-  for (final proxy in all) {
-    if (proxy.name == selectedName) {
-      selected = proxy;
-    } else if (others.length < maxTrayProxiesPerGroup) {
-      others.add(proxy);
-    }
+  if (wanted != null) {
+    // A group is immutable, so a name index survives the next tray refresh.
+    selected = (_trayProxiesByName[group] ??= {
+      for (final proxy in all) proxy.name: proxy,
+    })[wanted];
   }
-  if (selected != null && others.length == maxTrayProxiesPerGroup) {
-    others.removeLast();
+  final limit = maxTrayProxiesPerGroup - (selected == null ? 0 : 1);
+  for (final proxy in all) {
+    if (proxy.name == wanted) {
+      continue;
+    }
+    if (others.length >= limit) {
+      break;
+    }
+    others.add(proxy);
   }
   return selected == null ? others : [selected, ...others];
 }

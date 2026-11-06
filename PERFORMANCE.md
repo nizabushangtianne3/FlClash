@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-07
-- FlClash main：`34e77375`
+- FlClash main：`8c01d948`
 - Clash.Meta main：`47244368e`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -177,6 +177,7 @@
 | Group 成员名单缓存 | -（仅 wrapper） | 本轮提交 | `_isMember` 不再每次 `all.any` 线性扫成员；`Group` 不变，成员名按对象缓存为 `Set<String>`，空组仍直接通过。新增 `test/models/group_selected_member_benchmark_test.dart`：JIT n=7（1000 成员 ×10000 次选中判定）均值 63.75ms/中位 63.83ms → 均值 13.05ms/中位 12.88ms（均值 **-79.52%**，中位 **-79.82%**）；`test/common/compute_test.dart`、`test/providers/proxies_action_test.dart`、`test/views/proxies_list_test.dart`、`test/widgets/proxies_list_test.dart`、`test/widgets/proxies_tab_test.dart`、`test/views/dashboard/proxy_groups_card_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | `showFull` 固定字段拼接 + 本地时间快路径 | -（仅 wrapper） | 本轮提交 | `showFull` 不再 `toLocal().toString().substring(0,19)`，改为对本地/UTC 时间手工按字段 `padLeft` 拼接；已是本地时间的日志不再触发 `toLocal()` 包装。新增 `test/common/datetime_show_full_benchmark_test.dart`（UTC 1,000,000 次）与 `test/core/event_dispatch_benchmark_test.dart`（本地日志事件）：JIT n=7 隔离基准均值 4.41ms/中位 4.40ms → 4.25ms/4.26ms（均值 **-3.67%**，中位 **-3.32%**），事件 log dispatch 均值 5.187µs/中位 5.181µs → 5.023µs/5.014µs（均值 **-3.16%**，中位 **-3.22%**）；`test/common/datetime_test.dart`、`test/core/event_test.dart`、`test/widgets/connection_item_test.dart`、`test/views/requests_test.dart`、`test/views/dns_queries_view_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | `show`/`showTime` 固定字段拼接 + 本地时间快路径 | -（仅 wrapper） | 本轮提交 | `show`/`showTime` 不再 `toLocal().toString().substring(...)`，改为手工拼日期和 ` HH:mm:ss`；已是本地时间不再触发 `toLocal()`。新增 `test/common/datetime_slices_benchmark_test.dart`：JIT n=7（local+UTC 的 show/showTime 共 4,000,000 次）均值 9.43ms/中位 9.38ms → 均值 8.55ms/中位 8.56ms（均值 **-9.29%**，中位 **-8.72%**）；`test/common/datetime_test.dart`、`test/widgets/connection_item_test.dart`、`test/views/requests_test.dart`、`test/views/dns_queries_view_test.dart`、`test/views/dashboard/service_status_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
+| 托盘超大组选中项缓存索引 | -（仅 wrapper） | 本轮提交 | `visibleTrayProxies` 不再每组线性扫全部节点找选中；超大组按 `Group` 缓存 name->Proxy 索引（后出现同名覆盖，保持原逻辑），只取前 `maxTrayProxiesPerGroup`（有选中则给选中留位）。`test/common/visible_tray_benchmark_test.dart` JIT n=7（5000 节点 ×20000 次）：perCallUs 均值 54.14 / 中位 54 → 1 / 1（该基准按整数 µs 输出，降幅按该分辨率约 **-98%**；实际已远低于 1µs 量级）；`test/common/compute_test.dart`、`test/common/tray_test.dart`、`test/common/tray_lifecycle_test.dart`、`test/manager/tray_manager_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
