@@ -70,6 +70,22 @@ class RecordSorter<T> {
     final shown = reverse ? items.reversed.toList() : items;
     final keys = [for (final item in shown) sortKey(item)];
     final direction = sort.descending ? -1 : 1;
+    var ordered = true;
+    for (var index = 1; index < shown.length; index++) {
+      final compared = keys[index - 1].compareTo(keys[index]);
+      if (compared == 0) {
+        continue;
+      }
+      if (direction * compared > 0) {
+        ordered = false;
+        break;
+      }
+    }
+    if (ordered) {
+      _source = items;
+      _sortedBy = sort;
+      return _sorted = items;
+    }
     // Sorting indexes keeps ties in their shown order; collection's
     // mergeSort is stable too but measured over ten times slower.
     final order = List.generate(shown.length, (index) => index)
