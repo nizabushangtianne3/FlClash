@@ -11,6 +11,7 @@
 
 **Bug Fixes**
 
+- **core** Retry URLTest callers after reset (4c3589b)
 - **ui** Release page buttons immediately (f6754cf)
 - **core** Protect singledo call storage (2eb058d)
 - **ui** Release button press immediately (0117327)

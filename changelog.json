@@ -36,6 +36,11 @@
           "type": "fix",
           "entries": [
             {
+              "id": "4c3589b",
+              "scope": "core",
+              "text": "Retry URLTest callers after reset"
+            },
+            {
               "id": "f6754cf",
               "scope": "ui",
               "text": "Release page buttons immediately"
