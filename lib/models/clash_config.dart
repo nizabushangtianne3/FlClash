@@ -1869,6 +1869,7 @@ abstract class Rule with _$Rule {
 }
 
 final _rulePayloadErrors = Expando<Object>();
+final _ruleRawValues = Expando<String>();
 final _noRulePayloadError = Object();
 
 extension RuleExt on Rule {
@@ -1944,7 +1945,9 @@ extension RuleExt on Rule {
     }
   }
 
-  String get rawValue {
+  String get rawValue => _ruleRawValues[this] ??= _rawValue;
+
+  String get _rawValue {
     final content = realContent;
     final target = realTarget;
     return [
