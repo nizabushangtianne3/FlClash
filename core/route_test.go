@@ -351,6 +351,8 @@ func TestRouteVersionsScratchFollowsAGroupPick(t *testing.T) {
 
 func TestRouteVersionsPollLeavesRuleSetsToTheirEvent(t *testing.T) {
 	recordRoutes(t)
+	isRunning.Store(true)
+	t.Cleanup(func() { isRunning.Store(false) })
 	rp.SetTunnel(tunnel.Tunnel)
 	ruleSet := rp.NewRuleSetProvider(
 		"ruleset", cp.Domain, cp.YamlRule, 0,
@@ -363,18 +365,31 @@ func TestRouteVersionsPollLeavesRuleSetsToTheirEvent(t *testing.T) {
 	withTunnelProviders(t, nil, map[string]cp.RuleProvider{"ruleset": ruleSet})
 	before := handleWatchRoute(true, 0).CoreEpoch
 
+	// Hold the reset path while the poll runs, so the debounced rule-set event
+	// cannot race the assertion on a loaded runner.
+	selectMu.Lock()
 	if _, _, err := ruleSet.SideUpdate([]byte("payload:\n  - example.org\n")); err != nil {
+		selectMu.Unlock()
 		t.Fatalf("SideUpdate: %v", err)
 	}
 
 	refreshRouteVersions()
 	if got := routeState().CoreEpoch; got != before {
+		selectMu.Unlock()
 		t.Errorf("epoch = %d after the poll, want rule sets left to their update event", got)
+		return
 	}
+	selectMu.Unlock()
 
-	bumpRouteEpoch()
-	if got := routeState().CoreEpoch; got != before+1 {
-		t.Errorf("epoch = %d after the full refresh, want the swap to be structural", got)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if got := routeState().CoreEpoch; got == before+1 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("epoch = %d after the update event, want %d", routeState().CoreEpoch, before+1)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
