@@ -656,6 +656,7 @@ abstract class Group with _$Group {
 }
 
 final _groupsByName = Expando<Map<String, Group>>();
+final _groupMemberNames = Expando<Set<String>>();
 
 extension GroupsExt on List<Group> {
   /// Indexed once per list, so a list must not change after its first lookup.
@@ -682,8 +683,14 @@ extension GroupExt on Group {
   }
 
   /// A saved pick outlives a subscription update that renames or drops it.
-  bool _isMember(String proxyName) =>
-      all.isEmpty || all.any((proxy) => proxy.name == proxyName);
+  bool _isMember(String proxyName) {
+    if (all.isEmpty) {
+      return true;
+    }
+    return (_groupMemberNames[this] ??= {
+      for (final proxy in all) proxy.name,
+    }).contains(proxyName);
+  }
 }
 
 @freezed
