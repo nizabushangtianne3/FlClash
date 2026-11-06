@@ -2,9 +2,8 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-06
 - 最近核对日期：2026-11-07
-- FlClash main：`5a059392`
+- FlClash main：`ccc73282`
 - Clash.Meta main：`47244368e`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -172,6 +171,7 @@
 | Rule payloadError 结果缓存 | -（仅 wrapper） | 本轮提交 | `Rule` 不可变，`payloadError` 结果按对象缓存；用 `Expando<Object>` + `_noRulePayloadError` sentinel 区分“合法未报错”和“未缓存”，避免 `Expando<RulePayloadError?>` 的 null 语义。`test/models/rule_benchmark_test.dart` JIT n=7（100k 次合法 `DST_PORT`）：均值 34.19ms / 中位 34.16ms → 均值 6.28ms / 中位 6.27ms（**-81.64%**），单次调用 0.342µs → 0.063µs；`test/models/rule_test.dart`、`test/features/custom_rule_form_test.dart`、`test/features/rule_dialog_test.dart`、`test/providers/custom_state_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | TrackerSpeedRanker 索引缓冲改 32 位并复用 positions map | -（仅 wrapper） | 本轮提交 | rank/order/bucket/cursor/head/tail/next 索引全部落在 int32，`traffic` 保留 Int64 以容纳累计字节；`_positions` 从每次新建 map 改为复用 clear，empty 分支同步清理。`test/features/tracker_speed_ranker_benchmark_test.dart` JIT n=7（10k 连接 ×20 snapshot）：均值 9.23ms → 8.29ms（**-10.16%**），中位 9.43ms → 8.32ms（**-11.80%**）；`test/features/tracker_speed_ranker_test.dart`、`test/views/connections_test.dart`、`test/views/dashboard/connections_table_test.dart`、`test/widgets/connection_item_test.dart`、`test/widgets/connections_view_test.dart`、`test/views/dashboard/connection_stats_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | DNS 查询搜索文本按对象缓存 | -（仅 wrapper） | 本轮提交 | `DnsQueriesState.list` 给 `whereMatches` 传入 `Expando<String>`，和 `TrackerInfosState` 一致；`DnsQuery` 不可变，query state 每次键入都换对象，但 DNS 查询对象保持在缓存中命中，不再为每次过滤重建 `searchFields` 并 join/lower。新增 `test/models/dns_query_search_benchmark_test.dart`：JIT n=7（10k DNS 查询 ×50 次过滤）：均值 312.62ms → 73.41ms（**-76.51%**），中位 310.15ms → 73.18ms（**-76.41%**）；`test/views/dns_queries_view_test.dart`、`test/views/dns_view_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
+| DNS 查询 tags 直连产出 | -（仅 wrapper） | 本轮提交 | `tags` 不再先构造 `RecordFilter` 列表再取值，直接按 initiator/cache/rcode 顺序产出标签；`resultFilters` 仍保留给 facet。新增 `test/models/dns_query_cold_search_benchmark_test.dart`（首次见到的查询，30×3k）：JIT n=7 基线均值 139.71ms/中位 136.54ms → 均值 133.34ms/中位 133.87ms（均值 **-4.56%**，中位 **-1.95%**）；`test/views/dns_queries_view_test.dart`、`test/views/dns_view_test.dart`、`test/common/filter_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
@@ -313,6 +313,7 @@
 | Provider 精确 answerSize 预分配 | `StringLen` 逐字段扫描后 paired n=7：60.49µ ±2% → 79.07µ ±10%（**+30.72%**），内存/分配不变；撤销，扩容比扫描便宜。 |
 | Provider 帧按 512B/条预分配 | 60.49µ ±2% / 48.15KiB / 14 allocs → 69.01µ ±1% / 77.52KiB / 14 allocs（时间 **+14.08%**，内存 **+61.01%**）；撤销，原增长路径更优。 |
 | CoreManager feed flush 双缓冲交换 | 新增 `test/manager/core_manager_feed_benchmark_test.dart`（JIT，200 批，每批 400 log+120 request+240 DNS+200 traffic）实测：原 `from + clear` 每批 1081/1100/1082/1161µs，双缓冲换 buffer 每次都要清空旧队列，1149/1159/1242µs（**+6~12%**）。新空队列分配/清空不被 feed provider 的 `FixedList.appendAll` 拷贝规避抵消，撤销并保留原拷贝形状。 |
+| `SearchQuery.matchesText` 单 term 直接 `contains` | DNS 搜索文本缓存后，`test/models/dns_query_search_benchmark_test.dart` n=7：73.41ms/中位 73.18ms → 74.25ms/中位 73.64ms（时间 +1.15%/+0.62%，在噪声内无收益）。`terms.every(text.contains)` 已无每行字段构造成本，直接分支无可再省；撤销。 |
 
 ## 4. 当前验证矩阵
 

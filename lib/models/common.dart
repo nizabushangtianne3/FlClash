@@ -362,16 +362,21 @@ abstract class DnsQuery with _$DnsQuery {
 }
 
 extension DnsQueryExt on DnsQuery {
+  List<String> get tags {
+    final initiator = this.initiator;
+    return [
+      type,
+      if (initiator != null) initiator.label,
+      if (cached) currentAppLocalizations.cache,
+      if (hasFailureRcode) rcode,
+    ];
+  }
+
   bool get hasFailureRcode => rcode.isNotEmpty && rcode != 'NOERROR';
 
   bool get isFailed => error.isNotEmpty || hasFailureRcode;
 
   String get summary => error.isNotEmpty ? error : answers.join(', ');
-
-  List<String> get tags => [
-    type,
-    for (final filter in resultFilters) filter.value,
-  ];
 
   List<RecordFilter> get resultFilters {
     final initiator = this.initiator;
