@@ -36,6 +36,11 @@
           "type": "fix",
           "entries": [
             {
+              "id": "55e8cf8",
+              "scope": "ui",
+              "text": "Restore persisted delay results on cold start"
+            },
+            {
               "id": "4c3589b",
               "scope": "core",
               "text": "Retry URLTest callers after reset"
