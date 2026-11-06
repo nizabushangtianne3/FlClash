@@ -36,6 +36,11 @@
           "type": "fix",
           "entries": [
             {
+              "id": "2e88bad",
+              "scope": "setup",
+              "text": "Keep delay results across full setup"
+            },
+            {
               "id": "55e8cf8",
               "scope": "ui",
               "text": "Restore persisted delay results on cold start"
@@ -85,6 +90,76 @@
         {
           "type": "perf",
           "entries": [
+            {
+              "id": "b27ff7c",
+              "scope": "fixed",
+              "text": "Shift keyed batch indexes in one pass"
+            },
+            {
+              "id": "232df2b",
+              "scope": "proxies",
+              "text": "Resolve selected proxy by cached members"
+            },
+            {
+              "id": "0a3641c",
+              "scope": "proxies",
+              "text": "Cache tray selected proxy"
+            },
+            {
+              "id": "8c01d94",
+              "scope": "datetime",
+              "text": "Format date slices without toString"
+            },
+            {
+              "id": "f703051",
+              "scope": "datetime",
+              "text": "Format full timestamps without toString"
+            },
+            {
+              "id": "8f33b80",
+              "scope": "proxies",
+              "text": "Cache group member names"
+            },
+            {
+              "id": "3b6ef8f",
+              "scope": "proxies",
+              "text": "Precompute delay sort state flags"
+            },
+            {
+              "id": "db0a190",
+              "scope": "dns",
+              "text": "Build search fields as one list"
+            },
+            {
+              "id": "03c23f2",
+              "scope": "dns",
+              "text": "Build query tags without filters"
+            },
+            {
+              "id": "ccc7328",
+              "scope": "dns",
+              "text": "Cache query search text per object"
+            },
+            {
+              "id": "5a05939",
+              "scope": "connections",
+              "text": "Shrink speed ranker index buffers"
+            },
+            {
+              "id": "6a1f96f",
+              "scope": "models",
+              "text": "Cache rule payload validation"
+            },
+            {
+              "id": "e47e1db",
+              "scope": "models",
+              "text": "Scan DNS server fragment without split"
+            },
+            {
+              "id": "618a7eb",
+              "scope": "models",
+              "text": "Skip DNS server decoding without percent"
+            },
             {
               "id": "af90abd",
               "scope": "ui",

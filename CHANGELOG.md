@@ -11,6 +11,7 @@
 
 **Bug Fixes**
 
+- **setup** Keep delay results across full setup (2e88bad)
 - **ui** Restore persisted delay results on cold start (55e8cf8)
 - **core** Retry URLTest callers after reset (4c3589b)
 - **ui** Release page buttons immediately (f6754cf)
@@ -23,6 +24,20 @@
 
 **Performance**
 
+- **fixed** Shift keyed batch indexes in one pass (b27ff7c)
+- **proxies** Resolve selected proxy by cached members (232df2b)
+- **proxies** Cache tray selected proxy (0a3641c)
+- **datetime** Format date slices without toString (8c01d94)
+- **datetime** Format full timestamps without toString (f703051)
+- **proxies** Cache group member names (8f33b80)
+- **proxies** Precompute delay sort state flags (3b6ef8f)
+- **dns** Build search fields as one list (db0a190)
+- **dns** Build query tags without filters (03c23f2)
+- **dns** Cache query search text per object (ccc7328)
+- **connections** Shrink speed ranker index buffers (5a05939)
+- **models** Cache rule payload validation (6a1f96f)
+- **models** Scan DNS server fragment without split (e47e1db)
+- **models** Skip DNS server decoding without percent (618a7eb)
 - **ui** Batch feeds and preserve render state (af90abd)
 - **route** Cache group projection (1ae9f60)
 - **providers** Encode entries directly (103b4ba)
