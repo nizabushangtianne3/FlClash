@@ -193,6 +193,29 @@ void main() {
     container.read(initProvider.notifier).value = true;
   }
 
+  group('fullSetup', () {
+    test('keeps persisted delay results and force applies', () async {
+      markInitialized();
+      container
+          .read(delayDataSourceProvider.notifier)
+          .setDelay(
+            const Delay(name: 'HK', url: 'https://delay.test', value: 42),
+          );
+
+      expect(
+        await container.read(setupActionProvider.notifier).fullSetup(),
+        isTrue,
+      );
+
+      expect(
+        container.read(delayDataSourceProvider)['https://delay.test']!['HK'],
+        42,
+      );
+      expect(action.applyProfileCalls, 1);
+      expect(action.appliedForce, [true]);
+    });
+  });
+
   group('setRunning gating', () {
     test('ignores a start request before initialization completes', () async {
       await container.read(setupActionProvider.notifier).setRunning(true);

@@ -75,7 +75,8 @@ class SetupAction extends _$SetupAction {
   Future<bool> fullSetup() async {
     if (!ref.read(initProvider)) return true;
     ref.read(proxiesActionProvider.notifier).cancelDelayTests();
-    ref.read(delayDataSourceProvider.notifier).value = {};
+    // Delay results persist across profile switches; cancelling a run must not
+    // blank the rows while the Core keeps the measurements on disk.
     final setupResult = applyProfile(force: true);
     ref.read(logsProvider.notifier).value = FixedList(maxLogsLength);
     ref.read(requestsProvider.notifier).value = FixedList(
