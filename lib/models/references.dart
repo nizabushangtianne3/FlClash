@@ -23,6 +23,7 @@ String _decodedOrSelf(String text) {
 }
 
 const _proxyHostSchemes = {'ts', 'tailscale', 'et', 'easytier'};
+const _ampersand = 0x26;
 
 (int, int)? _proxyHostRange(String head) {
   final separator = head.indexOf('://');
@@ -53,10 +54,18 @@ List<String> dnsServerProxies(String server) {
   final head = hash < 0 ? server : server.substring(0, hash);
   String? dialer;
   if (hash >= 0) {
-    for (final part in _decodedOrSelf(server.substring(hash + 1)).split('&')) {
+    final decodedFragment = _decodedOrSelf(server.substring(hash + 1));
+    var partStart = 0;
+    for (var index = 0; index <= decodedFragment.length; index++) {
+      if (index < decodedFragment.length &&
+          decodedFragment.codeUnitAt(index) != _ampersand) {
+        continue;
+      }
+      final part = decodedFragment.substring(partStart, index);
       if (!part.contains('=')) {
         dialer = part;
       }
+      partStart = index + 1;
     }
   }
   return [

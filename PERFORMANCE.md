@@ -168,7 +168,7 @@
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
-| DNS 服务器引用无 `%` 免解码 | -（仅 wrapper） | 本轮提交 | `_decodedOrSelf` 先查 `contains('%')`，无百分号时直接返回原文，不再每台服务器调用一次 `Uri.decodeComponent`；`test/models/references_benchmark_test.dart` JIT n=11（100k 个 `ts://...#dialer`）：均值 52.99ms → 47.80ms（-9.8%），中位 53.37ms → 47.14ms（**-11.67%**）；`test/models/references_test.dart`、`test/manager/core_manager_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
+| DNS 服务器引用无 `%` 免解码 + fragment 免 split 列表 | -（仅 wrapper） | 本轮提交 | `_decodedOrSelf` 先查 `contains('%')`，无百分号直接返回；fragment 解码后按 code unit 扫描 `&`，不再为常见单段 fragment 分配 `split` 列表。`test/models/references_benchmark_test.dart` JIT n=11（100k 个 `ts://...#dialer`）：基线均值 52.98ms/中位 53.37ms → 均值 43.64ms/中位 42.84ms（均值 **-17.65%**，中位 **-19.73%**，单次调用 0.530µs → 0.428µs 量级）；`test/models/references_test.dart`、`test/manager/core_manager_test.dart`、`dart analyze --fatal-infos` 全绿 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
