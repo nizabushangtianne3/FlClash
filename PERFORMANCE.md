@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-07
-- FlClash main：`8c01d948`
+- FlClash main：`0a3641c4`
 - Clash.Meta main：`47244368e`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -322,6 +322,7 @@
 | `SearchQuery.matchesText` 单 term 直接 `contains` | DNS 搜索文本缓存后，`test/models/dns_query_search_benchmark_test.dart` n=7：73.41ms/中位 73.18ms → 74.25ms/中位 73.64ms（时间 +1.15%/+0.62%，在噪声内无收益）。`terms.every(text.contains)` 已无每行字段构造成本，直接分支无可再省；撤销。 |
 | TrackerSpeedRanker scratch TypedData 复用 | `test/features/tracker_speed_ranker_benchmark_test.dart` JIT n=7：均值 8.37ms/中位 8.24ms → 8.36ms/中位 8.26ms（时间 -0.11%/+0.22%，无收益，且新增重复初始化代码）。Dart 对小型 TypedData 分配成本低，节省的分配被 fillRange/清理抵消；撤销，保留已落地的 int32 索引与 positions map 复用。 |
 | `CoreEventManager` request/DNS filter 内联 | `test/core/event_dispatch_benchmark_test.dart` JIT n=7：request 均值 2.621µs/中位 2.624µs → 2.669µs/2.650µs（**+1.84%/+1.00%**），log 均值 5.023µs/中位 5.014µs → 5.081µs/5.081µs（**+1.15%/+1.34%**）。单个 listener 下手写双层过滤比 `_filterFor` + `.any` 更慢，无收益；撤销。 |
+| `FixedList.updateByKey` 改 `entries` 循环 | `test/providers/requests_update_benchmark_test.dart` JIT n=7：perBatchUs 均值 31.57/中位 32 → 31.71/32（**+0.44%/0%**）。省掉的 `forEach` 闭包被 `entries` 入口迭代抵消，无收益；撤销，保留原 `Map.forEach` 形状。 |
 
 ## 4. 当前验证矩阵
 
