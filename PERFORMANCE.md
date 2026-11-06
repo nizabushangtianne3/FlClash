@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-07
-- FlClash main：`32a5034c`
+- FlClash main：`3f1dd778`
 - Clash.Meta main：`47244368e`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -181,6 +181,7 @@
 | 超大组选中节点解析改成员名缓存 | -（仅 wrapper） | 本轮提交 | `Group` 新增 `containsMemberName`，`selectedProxyName` 不再为了判断 selected/live/stored 各自扫全组；组成员名沿用已有 `Expando<Set<String>>`（空组仍 false，`_isMember` 的空组语义不变）。新增 `test/providers/selected_proxy_name_benchmark_test.dart`：JIT n=7（2000 节点 ×2000 次 refresh）总耗时均值 281.50ms/中位 283.28ms → 209.11ms/208.83ms（均值 **-25.72%**，中位 **-26.28%**）；`test/providers/state_derived_test.dart`、`test/providers/proxies_action_test.dart`、`test/widgets/proxies_list_test.dart`、`test/widgets/proxies_tab_test.dart`、`test/views/proxies_list_test.dart`、`test/views/dashboard/proxy_groups_card_test.dart`、`test/common/compute_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | keyed 列表批量出队索引前移 | -（仅 wrapper） | 本轮提交 | `FixedList._dropIndexedHead` 不再对该 map 同时 `removeWhere` + `updateAll` 两个回调遍历，改为一次 `entries` 遍历：收集越界 key、原地前移剩余 index，最后删除越界 key。`test/common/fixed_append_benchmark_test.dart` 新增 keyed 场景（1600×120，20000 批）：JIT n=7 perBatchUs 均值 12.86/中位 13 → 均值 11.29/中位 11（均值 **-12.21%**，中位 **-15.38%**）；`test/common/fixed_test.dart`、`test/providers/app_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | `Rule.rawValue` 按对象缓存 raw 字符串 | -（仅 wrapper） | 本轮提交 | `Rule` 不可变，`rawValue` 用 `Expando<String>` 按对象缓存；仍拆出 `_rawValue` 保留原序列化逻辑，`searchFields`/编码/解码都复用同一字符串。新增 `test/models/rule_raw_value_benchmark_test.dart`：JIT n=7（100000 次 `DOMAIN-SUFFIX,example.com,DIRECT,no-resolve`）均值 29.34ms/中位 29.32ms → 4.00ms/3.94ms（均值 **-86.37%**，中位 **-86.55%**）；`test/models/rule_test.dart`、`test/features/custom_rule_form_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
+| 排序无变化时免建组表 | -（仅 wrapper） | 本轮提交 | `_sortGroups` 不再先整表复制再全表比较；逐个组计算下一个组，只有真正变化时才懒拷 `List.of(groups)` 并覆盖该下标，无变化直接返回原表。删除只服务旧实现的 `_sameGroups`。`test/common/compute_sort_delay_benchmark_test.dart` 新增已有序场景：JIT n=7（100 组 ×1000 次）均值 34.32ms/中位 33.95ms → 31.65ms/31.49ms（均值 **-7.80%**，中位 **-7.25%**）；`test/common/compute_test.dart` 现有“无变化保持组实例身份/重复排序保持 identity”全绿，`test/providers/proxies_action_test.dart` 与 `dart analyze --fatal-infos` 通过 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 

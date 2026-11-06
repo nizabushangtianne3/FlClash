@@ -108,14 +108,19 @@ List<Group> _sortGroups(
   List<Group> groups,
   List<Proxy> Function(Group group) sortAll,
 ) {
-  final sortedGroups = [
-    for (final group in groups)
-      if (group.all.length <= 1)
-        group
-      else
-        _withSortedAll(group, sortAll(group)),
-  ];
-  return _sameGroups(sortedGroups, groups) ? groups : sortedGroups;
+  List<Group>? sortedGroups;
+  for (var index = 0; index < groups.length; index++) {
+    final group = groups[index];
+    final next = group.all.length <= 1
+        ? group
+        : _withSortedAll(group, sortAll(group));
+    if (identical(next, group)) {
+      continue;
+    }
+    sortedGroups ??= List.of(groups, growable: true);
+    sortedGroups[index] = next;
+  }
+  return sortedGroups ?? groups;
 }
 
 List<Proxy> _sortByName(Group group) {
@@ -135,13 +140,6 @@ Group _withSortedAll(Group group, List<Proxy> sorted) {
 bool _sameOrder(List<Proxy> sorted, List<Proxy> proxies) {
   for (var i = 0; i < proxies.length; i++) {
     if (sorted[i].name != proxies[i].name) return false;
-  }
-  return true;
-}
-
-bool _sameGroups(List<Group> sorted, List<Group> groups) {
-  for (var i = 0; i < groups.length; i++) {
-    if (sorted[i] != groups[i]) return false;
   }
   return true;
 }

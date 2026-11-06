@@ -59,4 +59,53 @@ void main() {
       'totalUs=${stopwatch.elapsedMicroseconds}',
     );
   });
+
+  test('sorting already delayed groups keeps the list', () {
+    const groups = 100;
+    const attempts = 1000;
+    const testUrl = 'http://delay.test';
+    final sortedGroups = [
+      for (var group = 0; group < groups; group++)
+        Group(
+          name: 'group-$group',
+          type: GroupType.Selector,
+          all: const [
+            Proxy(name: 'fast', type: 'ss'),
+            Proxy(name: 'slow', type: 'ss'),
+          ],
+        ),
+    ];
+    final delayMap = <String, Map<String, int?>>{
+      testUrl: const {'fast': 50, 'slow': 500},
+    };
+
+    for (var i = 0; i < 10; i++) {
+      computeSort(
+        groups: sortedGroups,
+        sortType: ProxiesSortType.delay,
+        delayMap: delayMap,
+        selectedMap: const {},
+        defaultTestUrl: testUrl,
+      );
+    }
+
+    final stopwatch = Stopwatch()..start();
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      final sorted = computeSort(
+        groups: sortedGroups,
+        sortType: ProxiesSortType.delay,
+        delayMap: delayMap,
+        selectedMap: const {},
+        defaultTestUrl: testUrl,
+      );
+      if (!identical(sorted, sortedGroups)) {
+        fail('an already sorted group list must be kept');
+      }
+    }
+    stopwatch.stop();
+    stdout.writeln(
+      'computeSortDelaySorted groups=$groups attempts=$attempts '
+      'totalUs=${stopwatch.elapsedMicroseconds}',
+    );
+  });
 }
