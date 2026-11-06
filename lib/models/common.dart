@@ -421,6 +421,7 @@ final dnsQueryFacets = <RecordFacet<DnsQuery>>[
 ];
 
 final _dnsQueryFilteredLists = Expando<List<DnsQuery>>();
+final _dnsQuerySearchTexts = Expando<String>();
 
 extension DnsQueriesStateExt on DnsQueriesState {
   bool get isSearching => SearchQuery(query).isNotEmpty;
@@ -431,7 +432,11 @@ extension DnsQueriesStateExt on DnsQueriesState {
       return dnsQueries;
     }
     return _dnsQueryFilteredLists[this] ??= dnsQueries
-        .whereMatches(searchQuery, (dnsQuery) => dnsQuery.searchFields)
+        .whereMatches(
+          searchQuery,
+          (dnsQuery) => dnsQuery.searchFields,
+          texts: _dnsQuerySearchTexts,
+        )
         .toList();
   }
 }
