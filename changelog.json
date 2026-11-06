@@ -36,6 +36,16 @@
           "type": "fix",
           "entries": [
             {
+              "id": "f6754cf",
+              "scope": "ui",
+              "text": "Release page buttons immediately"
+            },
+            {
+              "id": "2eb058d",
+              "scope": "core",
+              "text": "Protect singledo call storage"
+            },
+            {
               "id": "0117327",
               "scope": "ui",
               "text": "Release button press immediately"
@@ -59,22 +69,17 @@
               "id": "63aaf6d",
               "scope": "access",
               "text": "Keep selections a filter hides"
-            },
-            {
-              "id": "2eb058d",
-              "scope": "core",
-              "text": "Protect singledo call storage"
-            },
-            {
-              "id": "f6754cf",
-              "scope": "ui",
-              "text": "Release page buttons immediately"
             }
           ]
         },
         {
           "type": "perf",
           "entries": [
+            {
+              "id": "af90abd",
+              "scope": "ui",
+              "text": "Batch feeds and preserve render state"
+            },
             {
               "id": "1ae9f60",
               "scope": "route",

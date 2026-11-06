@@ -11,16 +11,17 @@
 
 **Bug Fixes**
 
+- **ui** Release page buttons immediately (f6754cf)
+- **core** Protect singledo call storage (2eb058d)
 - **ui** Release button press immediately (0117327)
 - **android** Skip startup disclaimer (f2c230d)
 - **editor** Show loaded file immediately (6896fae)
 - **core** Auto-select leaves an unusable first node at once (7d5db7e)
 - **access** Keep selections a filter hides (63aaf6d)
-- **core** Protect singledo call storage (2eb058d)
-- **ui** Release page buttons immediately (f6754cf)
 
 **Performance**
 
+- **ui** Batch feeds and preserve render state (af90abd)
 - **route** Cache group projection (1ae9f60)
 - **providers** Encode entries directly (103b4ba)
 - **proxies** Cache group projection (0c3069a)
