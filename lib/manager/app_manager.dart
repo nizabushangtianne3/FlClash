@@ -13,11 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-typedef ProxiesRefreshState = ({
-  bool isProxies,
-  int sortNum,
-  ProxiesSortType sortType,
-});
+typedef ProxiesRefreshState = ({bool isProxies, ProxiesSortType sortType});
 
 /// Leaving the page needs no rebuild; entering or a sort change does.
 @visibleForTesting
@@ -30,7 +26,6 @@ bool needsProxiesRefresh(
   }
   return !(previous.isProxies &&
       !next.isProxies &&
-      previous.sortNum == next.sortNum &&
       previous.sortType == next.sortType);
 }
 

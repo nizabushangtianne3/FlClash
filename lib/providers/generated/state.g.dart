@@ -3083,11 +3083,11 @@ final needUpdateGroupsProvider = NeedUpdateGroupsProvider._();
 final class NeedUpdateGroupsProvider
     extends
         $FunctionalProvider<
-          ({bool isProxies, int sortNum, ProxiesSortType sortType}),
-          ({bool isProxies, int sortNum, ProxiesSortType sortType}),
-          ({bool isProxies, int sortNum, ProxiesSortType sortType})
+          ({bool isProxies, ProxiesSortType sortType}),
+          ({bool isProxies, ProxiesSortType sortType}),
+          ({bool isProxies, ProxiesSortType sortType})
         >
-    with $Provider<({bool isProxies, int sortNum, ProxiesSortType sortType})> {
+    with $Provider<({bool isProxies, ProxiesSortType sortType})> {
   NeedUpdateGroupsProvider._()
     : super(
         from: null,
@@ -3104,29 +3104,30 @@ final class NeedUpdateGroupsProvider
 
   @$internal
   @override
-  $ProviderElement<({bool isProxies, int sortNum, ProxiesSortType sortType})>
-  $createElement($ProviderPointer pointer) => $ProviderElement(pointer);
+  $ProviderElement<({bool isProxies, ProxiesSortType sortType})> $createElement(
+    $ProviderPointer pointer,
+  ) => $ProviderElement(pointer);
 
   @override
-  ({bool isProxies, int sortNum, ProxiesSortType sortType}) create(Ref ref) {
+  ({bool isProxies, ProxiesSortType sortType}) create(Ref ref) {
     return needUpdateGroups(ref);
   }
 
   /// {@macro riverpod.override_with_value}
   Override overrideWithValue(
-    ({bool isProxies, int sortNum, ProxiesSortType sortType}) value,
+    ({bool isProxies, ProxiesSortType sortType}) value,
   ) {
     return $ProviderOverride(
       origin: this,
       providerOverride:
-          $SyncValueProvider<
-            ({bool isProxies, int sortNum, ProxiesSortType sortType})
-          >(value),
+          $SyncValueProvider<({bool isProxies, ProxiesSortType sortType})>(
+            value,
+          ),
     );
   }
 }
 
-String _$needUpdateGroupsHash() => r'90b7cb35c96bda157cf436e32f251e58721ef757';
+String _$needUpdateGroupsHash() => r'41ebef9eee72fe14d0b71f5d65dcc4fb5c8f7440';
 
 @ProviderFor(navigationItemsState)
 final navigationItemsStateProvider = NavigationItemsStateProvider._();

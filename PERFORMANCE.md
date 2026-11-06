@@ -157,6 +157,12 @@
 | Glyph path 缓存 | `0abe1b9` | `af90abdd` | `GlyphShape` 缓存 `Path`，同形状重复绘制不再重建路径；`prism_ui` 355 个测试全绿 |
 | 侧栏标签动画减少 Text 重建 | `0abe1b9` | `af90abdd` | 行 `Text` 保存在 State 中，动画帧只更新 `Opacity`，标签内容/样式不变时不重建；sidebar 15 个用例全绿 |
 
+### 2026-11-06 延迟排序精简
+
+| 优化 | 子模块提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 延迟排序状态与触发收敛 | - | 本轮提交 | 恢复超时/其他失败/未测试的旧优先级，并在同延迟时把嵌套分组排在叶子前；删除无调用的 debounce 入口和已无使用方的 `DelayState`。同时移除延迟测试完成后的重复 `sortNum -> updateGroups` 全量 Core 拉取，完成批次只做一次本地排序。`computeSort`、`sortGroupsTask`、`app_manager`、`proxies_action` 118 个测试与 Dart analyze 全绿 |
+
 ### 2026-11-05 测量记录（审计后刻意未动）
 
 | 位置 | 测量 | 结论 |

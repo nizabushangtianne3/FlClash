@@ -49,7 +49,7 @@ void main() {
         selectedMap: {},
       );
       expect(state.proxyName, 'proxy-a');
-      expect(state.group, true);
+      expect(state.group, false);
     });
 
     test('resolves single-hop chain via selectedMap', () {
@@ -273,8 +273,66 @@ void main() {
       expect(result.single.all.map((proxy) => proxy.name).toList(), [
         'fast',
         'slow',
-        'timeout',
         'untested',
+        'timeout',
+      ]);
+    });
+
+    test('delay sorting ranks timeouts before other failed measurements', () {
+      const group = Group(
+        name: 'mixed',
+        type: GroupType.Selector,
+        all: [
+          Proxy(name: 'failed', type: 'ss'),
+          Proxy(name: 'timeout', type: 'ss'),
+          Proxy(name: 'untested', type: 'ss'),
+        ],
+      );
+      final result = computeSort(
+        groups: [group],
+        sortType: ProxiesSortType.delay,
+        delayMap: {
+          'http://test.com': {'failed': -2, 'timeout': -1},
+        },
+        selectedMap: {},
+        defaultTestUrl: 'http://test.com',
+      );
+
+      expect(result.single.all.map((proxy) => proxy.name).toList(), [
+        'untested',
+        'timeout',
+        'failed',
+      ]);
+    });
+
+    test('delay sorting puts equal-delay groups before leaf members', () {
+      const group = Group(
+        name: 'outer',
+        type: GroupType.Selector,
+        all: [
+          Proxy(name: 'leaf', type: 'ss'),
+          Proxy(name: 'nested', type: 'Selector'),
+        ],
+      );
+      const nested = Group(
+        name: 'nested',
+        type: GroupType.Selector,
+        now: 'nested-leaf',
+        all: [Proxy(name: 'nested-leaf', type: 'ss')],
+      );
+      final result = computeSort(
+        groups: [group, nested],
+        sortType: ProxiesSortType.delay,
+        delayMap: {
+          'http://test.com': {'leaf': 50, 'nested-leaf': 50},
+        },
+        selectedMap: {},
+        defaultTestUrl: 'http://test.com',
+      );
+
+      expect(result.first.all.map((proxy) => proxy.name).toList(), [
+        'nested',
+        'leaf',
       ]);
     });
 

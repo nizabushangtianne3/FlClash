@@ -346,15 +346,12 @@ String _searchTextOf(Proxy proxy) {
 }
 
 @riverpod
-({bool isProxies, int sortNum, ProxiesSortType sortType}) needUpdateGroups(
-  Ref ref,
-) {
+({bool isProxies, ProxiesSortType sortType}) needUpdateGroups(Ref ref) {
   final isProxies = ref.watch(
     currentPageLabelProvider.select((state) => state == PageLabel.proxies),
   );
-  final sortNum = ref.watch(sortNumProvider);
   final sortType = ref.watch(
     proxiesStyleSettingProvider.select((state) => state.sortType),
   );
-  return (isProxies: isProxies, sortNum: sortNum, sortType: sortType);
+  return (isProxies: isProxies, sortType: sortType);
 }

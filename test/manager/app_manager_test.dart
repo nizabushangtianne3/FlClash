@@ -5,10 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   ProxiesRefreshState state({
     bool isProxies = false,
-    int sortNum = 0,
     ProxiesSortType sortType = ProxiesSortType.none,
   }) {
-    return (isProxies: isProxies, sortNum: sortNum, sortType: sortType);
+    return (isProxies: isProxies, sortType: sortType);
   }
 
   test('refreshes the tree when entering the proxies page', () {
@@ -16,7 +15,6 @@ void main() {
   });
 
   test('refreshes the tree for sort changes made off the page', () {
-    expect(needsProxiesRefresh(state(sortNum: 1), state(sortNum: 2)), isTrue);
     expect(
       needsProxiesRefresh(
         state(sortType: ProxiesSortType.name),

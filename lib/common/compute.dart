@@ -4,6 +4,13 @@ import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 
+int _delaySortPriority(int delay) => switch (delay) {
+  > 0 => 0,
+  0 => 1,
+  delayTimedOutValue => 2,
+  _ => 3,
+};
+
 List<Group> computeSort({
   required List<Group> groups,
   required ProxiesSortType sortType,
@@ -34,42 +41,30 @@ List<Group> computeSort({
     );
   }
 
-  List<Proxy> sortOfDelay({
-    required List<Group> groups,
-    required List<Proxy> proxies,
-    required DelayMap delayMap,
-    required Map<String, String> selectedMap,
-    required String testUrl,
-  }) {
-    if (delayMap.isEmpty) {
-      return proxies;
-    }
+  List<Proxy> sortOfDelay(List<Proxy> proxies, String testUrl) {
     final count = proxies.length;
     final delays = Int64List(count);
+    final groupFlags = Uint8List(count);
     for (var index = 0; index < count; index++) {
       final realState = realStateFor(proxies[index].name);
       final stateTestUrl = realState.testUrl.takeFirstValid([testUrl]);
       delays[index] = delayMap[stateTestUrl]?[realState.proxyName] ?? 0;
+      groupFlags[index] = realState.group ? 1 : 0;
     }
 
     int compareDelayStates(int left, int right) {
       final leftDelay = delays[left];
       final rightDelay = delays[right];
-      final leftPriority = leftDelay > 0
-          ? 0
-          : leftDelay < 0
-          ? 1
-          : 2;
-      final rightPriority = rightDelay > 0
-          ? 0
-          : rightDelay < 0
-          ? 1
-          : 2;
+      final leftPriority = _delaySortPriority(leftDelay);
+      final rightPriority = _delaySortPriority(rightDelay);
       if (leftPriority != rightPriority) {
         return leftPriority.compareTo(rightPriority);
       }
       if (leftDelay != rightDelay) {
         return leftDelay.compareTo(rightDelay);
+      }
+      if (groupFlags[left] != groupFlags[right]) {
+        return groupFlags[right].compareTo(groupFlags[left]);
       }
       return left.compareTo(right);
     }
@@ -92,11 +87,8 @@ List<Group> computeSort({
 
   return _sortGroups(groups, (group) {
     return sortOfDelay(
-      groups: groups,
-      proxies: group.all,
-      delayMap: delayMap,
-      selectedMap: selectedMap,
-      testUrl: group.testUrl.takeFirstValid([defaultTestUrl]),
+      group.all,
+      group.testUrl.takeFirstValid([defaultTestUrl]),
     );
   });
 }
@@ -286,10 +278,10 @@ SelectedProxyState _resolveRealSelectedProxyState(
   if (cached != null) return cached;
   final groupIndex = groupsByName ?? _indexGroups(groups);
   final group = groupIndex[state.proxyName];
-  final newState = state.copyWith(group: true);
   if (group == null) {
-    return cache[state.proxyName] = newState;
+    return cache[state.proxyName] = state;
   }
+  final newState = state.copyWith(group: true);
   final currentSelectedName = group.getCurrentSelectedName(
     selectedMap[newState.proxyName] ?? '',
   );

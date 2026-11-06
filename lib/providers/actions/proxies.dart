@@ -144,22 +144,6 @@ class ProxiesAction extends _$ProxiesAction {
     debouncer.call(FunctionTag.updateGroups, updateGroups, duration: duration);
   }
 
-  /// Re-sort existing groups with the current delay map — no Core getProxies.
-  /// Used after latency tests when sortType is delay.
-  void resortGroupsByDelayDebounce([Duration? duration]) {
-    final sortType = ref.read(
-      proxiesStyleSettingProvider.select((state) => state.sortType),
-    );
-    if (sortType != ProxiesSortType.delay) {
-      return;
-    }
-    debouncer.call(
-      FunctionTag.updateDelay,
-      resortGroupsByDelay,
-      duration: duration,
-    );
-  }
-
   Future<void> resortGroupsByDelay() {
     final active = _activeDelaySort;
     if (active != null) {
