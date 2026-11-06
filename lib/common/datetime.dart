@@ -64,7 +64,14 @@ extension DateTimeExtension on DateTime {
   }
 
   String get showFull {
-    return toLocal().toString().substring(0, 19);
+    final local = isUtc ? toLocal() : this;
+    final year = local.year.toString().padLeft(4, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    final second = local.second.toString().padLeft(2, '0');
+    return '$year-$month-$day $hour:$minute:$second';
   }
 
   String get showTime {
