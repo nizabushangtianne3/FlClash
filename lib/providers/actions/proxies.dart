@@ -84,12 +84,6 @@ class ProxiesAction extends _$ProxiesAction {
     ref.read(pendingDelayTestsProvider.notifier).clear();
   }
 
-  void invalidateDelayTests() {
-    cancelDelayTests();
-    ref.read(delayDataSourceProvider.notifier).value = {};
-    unawaited(preferences.clearDelayMap());
-  }
-
   void resetSelectionState() {
     _pendingSelectedRollback.clear();
     _appliedSelected.clear();

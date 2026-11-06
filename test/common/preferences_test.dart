@@ -146,14 +146,6 @@ void main() {
       await store.setString(delayMapKey, '[]');
       expect(await preferences.getDelayMap(), isNull);
     });
-
-    test('clears the stored map', () async {
-      await preferences.saveDelayMap({
-        'https://a.test': {'hk': 42},
-      });
-      await preferences.clearDelayMap();
-      expect(await preferences.getDelayMap(), isNull);
-    });
   });
 
   test('clearPreferences empties every stored key', () async {

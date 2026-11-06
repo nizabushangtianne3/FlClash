@@ -209,11 +209,6 @@ class Preferences {
     await preferences?.setString(delayMapKey, json.encode(delayMap));
   }
 
-  Future<void> clearDelayMap() async {
-    final preferences = await _store.value;
-    await preferences?.remove(delayMapKey);
-  }
-
   Future<BootRecord?> getBootRecord() async {
     try {
       final sharedPreferencesIns = await _store.value;

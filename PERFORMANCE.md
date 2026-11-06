@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-07
-- FlClash main：`ccc73282`
+- FlClash main：`3b6ef8fd`
 - Clash.Meta main：`47244368e`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -173,6 +173,7 @@
 | DNS 查询搜索文本按对象缓存 | -（仅 wrapper） | 本轮提交 | `DnsQueriesState.list` 给 `whereMatches` 传入 `Expando<String>`，和 `TrackerInfosState` 一致；`DnsQuery` 不可变，query state 每次键入都换对象，但 DNS 查询对象保持在缓存中命中，不再为每次过滤重建 `searchFields` 并 join/lower。新增 `test/models/dns_query_search_benchmark_test.dart`：JIT n=7（10k DNS 查询 ×50 次过滤）：均值 312.62ms → 73.41ms（**-76.51%**），中位 310.15ms → 73.18ms（**-76.41%**）；`test/views/dns_queries_view_test.dart`、`test/views/dns_view_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | DNS 查询标签字段单列表产出 | -（仅 wrapper） | 本轮提交 | `_appendTags` 直接向目标列表追加 type/initiator/cache/rcode；`tags` 与 `searchFields` 共用它，`searchFields` 不再展开 `tags` 列表，首轮过滤每行只建一个结果列表，`resultFilters` 仍保留给 facet。`test/models/dns_query_cold_search_benchmark_test.dart`（首次见到的查询，30×3k）JIT n=7：基线均值 139.71ms/中位 136.54ms → 均值 129.45ms/中位 128.93ms（均值 **-7.34%**，中位 **-5.57%**）；`test/views/dns_queries_view_test.dart`、`test/views/dns_view_test.dart`、`test/common/filter_test.dart`、`test/models/dns_override_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | 延迟排序预打包优先级/分组位 | -（仅 wrapper） | 本轮提交 | `computeSort` 的延迟比较不再每次调用 `_delaySortPriority`，预先把「低 2 位优先级 + 分组位」打进一个 `Uint8List`；排序/有序检查只做位读取。新增 `test/common/compute_sort_delay_benchmark_test.dart`：JIT n=7（1000 节点 ×100 次排序）均值 45.81ms/中位 45.37ms → 均值 44.29ms/中位 43.93ms（均值 **-3.31%**，中位 **-3.18%**）；`test/common/compute_test.dart` 37 个用例与 `dart analyze --fatal-infos` 全绿 |
+| 无调用延迟失效入口清理 | -（仅 wrapper） | 本轮提交 | 删除无调用方的 `ProxiesAction.invalidateDelayTests()`、随之无调用方的 `Preferences.clearDelayMap()` 与只覆盖该方法的测试；延迟持久化仍由保存链路和启动恢复走。`test/common/preferences_test.dart`、`test/providers/proxies_action_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
