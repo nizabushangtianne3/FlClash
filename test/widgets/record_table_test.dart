@@ -58,5 +58,22 @@ void main() {
       ), reverse: true);
       expect(sorted, items);
     });
+
+    test('a reversed unsorted list sorts its source list the other way', () {
+      final items = <int>[3, 1, 2];
+      final sorter = RecordSorter<int>();
+
+      final asc = sorter.sort(items, _columns((item) => item), (
+        columnId: 'id',
+        descending: false,
+      ), reverse: true);
+      expect(asc, [3, 2, 1]);
+
+      final desc = sorter.sort(items, _columns((item) => item), (
+        columnId: 'id',
+        descending: true,
+      ), reverse: true);
+      expect(desc, [1, 2, 3]);
+    });
   });
 }

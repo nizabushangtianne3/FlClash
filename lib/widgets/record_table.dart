@@ -67,18 +67,30 @@ class RecordSorter<T> {
     if (identical(_source, items) && _sortedBy == sort) {
       return _sorted;
     }
-    final shown = reverse ? items.reversed.toList() : items;
-    final keys = [for (final item in shown) sortKey(item)];
+    final keys = [for (final item in items) sortKey(item)];
     final direction = sort.descending ? -1 : 1;
     var ordered = true;
-    for (var index = 1; index < shown.length; index++) {
-      final compared = keys[index - 1].compareTo(keys[index]);
-      if (compared == 0) {
-        continue;
+    if (reverse) {
+      for (var index = items.length - 2; index >= 0; index--) {
+        final compared = keys[index + 1].compareTo(keys[index]);
+        if (compared == 0) {
+          continue;
+        }
+        if (direction * compared > 0) {
+          ordered = false;
+          break;
+        }
       }
-      if (direction * compared > 0) {
-        ordered = false;
-        break;
+    } else {
+      for (var index = 1; index < items.length; index++) {
+        final compared = keys[index - 1].compareTo(keys[index]);
+        if (compared == 0) {
+          continue;
+        }
+        if (direction * compared > 0) {
+          ordered = false;
+          break;
+        }
       }
     }
     if (ordered) {
@@ -86,17 +98,18 @@ class RecordSorter<T> {
       _sortedBy = sort;
       return _sorted = items;
     }
+    final sourceDirection = reverse ? -direction : direction;
     // Sorting indexes keeps ties in their shown order; collection's
     // mergeSort is stable too but measured over ten times slower.
-    final order = List.generate(shown.length, (index) => index)
+    final order = List.generate(items.length, (index) => index)
       ..sort((a, b) {
         final compared = keys[a].compareTo(keys[b]);
-        return compared != 0 ? direction * compared : a - b;
+        return compared != 0 ? sourceDirection * compared : a - b;
       });
-    final sorted = [for (final index in order) shown[index]];
+    final sorted = [for (final index in order) items[index]];
     _source = items;
     _sortedBy = sort;
-    return _sorted = reverse ? sorted.reversed.toList() : sorted;
+    return _sorted = sorted;
   }
 }
 

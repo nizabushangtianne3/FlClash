@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-07
-- FlClash main：`17f33ed8`
+- FlClash main：`6ca032e3`
 - Clash.Meta main：`47244368e`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -183,6 +183,7 @@
 | `Rule.rawValue` 按对象缓存 raw 字符串 | -（仅 wrapper） | 本轮提交 | `Rule` 不可变，`rawValue` 用 `Expando<String>` 按对象缓存；仍拆出 `_rawValue` 保留原序列化逻辑，`searchFields`/编码/解码都复用同一字符串。新增 `test/models/rule_raw_value_benchmark_test.dart`：JIT n=7（100000 次 `DOMAIN-SUFFIX,example.com,DIRECT,no-resolve`）均值 29.34ms/中位 29.32ms → 4.00ms/3.94ms（均值 **-86.37%**，中位 **-86.55%**）；`test/models/rule_test.dart`、`test/features/custom_rule_form_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | 排序无变化时免建组表 | -（仅 wrapper） | 本轮提交 | `_sortGroups` 不再先整表复制再全表比较；逐个组计算下一个组，只有真正变化时才懒拷 `List.of(groups)` 并覆盖该下标，无变化直接返回原表。删除只服务旧实现的 `_sameGroups`。`test/common/compute_sort_delay_benchmark_test.dart` 新增已有序场景：JIT n=7（100 组 ×1000 次）均值 34.32ms/中位 33.95ms → 31.65ms/31.49ms（均值 **-7.80%**，中位 **-7.25%**）；`test/common/compute_test.dart` 现有“无变化保持组实例身份/重复排序保持 identity”全绿，`test/providers/proxies_action_test.dart` 与 `dart analyze --fatal-infos` 通过 |
 | 已有序表格免建 order/结果列表 | -（仅 wrapper） | 本轮提交 | `RecordSorter.sort` 在生成 `keys` 后先按方向判断当前显示顺序是否已有序；已有序直接把原 items 作为排序结果并写入缓存，不再生成 `order` 和 `sorted` 两个列表，`reverse` 场景同样成立。新增 `test/widgets/record_sorter_benchmark_test.dart` 与恢复 `test/widgets/record_table_test.dart` 行为测试：JIT n=7（10000 行 ×1000 次已有序）均值 1007.75ms/中位 1006.95ms → 185.98ms/185.36ms（均值 **-81.54%**，中位 **-81.59%**）；`test/widgets/record_table_test.dart`、`test/views/dashboard/connection_stats_test.dart`、`test/widgets/connections_view_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
+| 反向表格排序直接排源列表 | -（仅 wrapper） | 本轮提交 | `reverse` 时不再生成 `items.reversed` 显示列表，再排序后二次 `reversed` 回源列表；改为对 `items` 直接排序并把方向取反，已有序检查也改成从尾部向前比较。新增反向乱序基准：JIT n=7（10000 行 ×1000 次 reverse 乱序）均值 2676.83ms/中位 2689.97ms → 2340.38ms/2327.76ms（均值 **-12.57%**，中位 **-13.47%**）；`test/widgets/record_table_test.dart` 新增“反向未有序时源列表反向排序”“升降序覆盖”，`test/views/dashboard/connection_stats_test.dart`、`test/widgets/connections_view_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
