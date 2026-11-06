@@ -60,7 +60,10 @@ extension DateTimeExtension on DateTime {
   }
 
   String get show {
-    return toLocal().toString().substring(0, 10);
+    final local = isUtc ? toLocal() : this;
+    return '${local.year.toString().padLeft(4, '0')}-'
+        '${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')}';
   }
 
   String get showFull {
@@ -75,7 +78,10 @@ extension DateTimeExtension on DateTime {
   }
 
   String get showTime {
-    return toLocal().toString().substring(10, 19);
+    final local = isUtc ? toLocal() : this;
+    return ' ${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}:'
+        '${local.second.toString().padLeft(2, '0')}';
   }
 }
 
