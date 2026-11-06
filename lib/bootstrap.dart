@@ -101,7 +101,10 @@ class Bootstrap {
       config = config.copyWith(patchClashConfig: patchClashConfig);
       await preferences.saveConfig(config);
     }
+    final delayMap =
+        await preferences.getDelayMap() ?? const <String, Map<String, int?>>{};
     final appState = AppState(
+      delayMap: delayMap,
       brightness: WidgetsBinding.instance.platformDispatcher.platformBrightness,
       version: version,
       viewSize: Size.zero,
