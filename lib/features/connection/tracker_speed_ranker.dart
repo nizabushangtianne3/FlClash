@@ -31,13 +31,13 @@ class TrackerSpeedRanker {
 
   final _samples = <String, _SpeedSample>{};
   final _outputs = <String, TrackerInfo>{};
-  var _positions = const <String, int>{};
+  final _positions = <String, int>{};
 
   List<TrackerInfo> rank(List<TrackerInfo> trackerInfos, DateTime now) {
     if (trackerInfos.isEmpty) {
       _samples.clear();
       _outputs.clear();
-      _positions = const {};
+      _positions.clear();
       return trackerInfos;
     }
     final count = trackerInfos.length;
@@ -53,7 +53,7 @@ class TrackerSpeedRanker {
     // All idle: sort by traffic once, then keep the resulting order stable.
     var anyActive = false;
     final traffic = Int64List(count);
-    final positions = Int64List(count);
+    final positions = Int32List(count);
     for (var index = 0; index < count; index++) {
       final trackerInfo = trackerInfos[index];
       final sample = samples[index];
@@ -79,7 +79,7 @@ class TrackerSpeedRanker {
       return _ranked(trackerInfos, samples, order, count);
     }
 
-    final buckets = Int64List(count);
+    final buckets = Int32List(count);
     var maxBucket = 0;
     for (var index = 0; index < count; index++) {
       final rankSpeed = samples[index].rankSpeed;
@@ -92,17 +92,20 @@ class TrackerSpeedRanker {
     // Counting-sort current rows by their previous rank. Rows are unique in the
     // common case; only equal positions (mostly new rows) need the exact
     // traffic/start/id tie-break.
-    final positionCounts = Int64List(count + 1);
+    final positionCounts = Int32List(count + 1);
     for (var index = 0; index < count; index++) {
       positionCounts[positions[index]]++;
     }
-    final positionStarts = Int64List(count + 3);
+    final positionStarts = Int32List(count + 3);
     for (var position = 0; position <= count; position++) {
       positionStarts[position + 1] =
           positionStarts[position] + positionCounts[position];
     }
-    final positionOrder = List<int>.filled(count, -1, growable: false);
-    final positionCursors = Int64List(count + 1);
+    final positionOrder = Int32List(count);
+    final positionCursors = Int32List(count + 1);
+    for (var index = 0; index < count; index++) {
+      positionOrder[index] = -1;
+    }
     for (var index = 0; index < count; index++) {
       final position = positions[index];
       positionOrder[positionStarts[position] + positionCursors[position]++] =
@@ -132,9 +135,9 @@ class TrackerSpeedRanker {
       }
     }
 
-    final bucketHeads = Int64List(maxBucket + 1);
-    final bucketTails = Int64List(maxBucket + 1);
-    final nextIndices = Int64List(count);
+    final bucketHeads = Int32List(maxBucket + 1);
+    final bucketTails = Int32List(maxBucket + 1);
+    final nextIndices = Int32List(count);
     for (var index = 0; index < maxBucket + 1; index++) {
       bucketHeads[index] = -1;
     }
@@ -151,7 +154,10 @@ class TrackerSpeedRanker {
       bucketTails[bucket] = index;
     }
 
-    final order = List<int>.filled(count, -1, growable: false);
+    final order = Int32List(count);
+    for (var index = 0; index < count; index++) {
+      order[index] = -1;
+    }
     var cursor = 0;
     for (var bucket = maxBucket; bucket >= 0; bucket--) {
       var source = bucketHeads[bucket];
@@ -214,9 +220,10 @@ class TrackerSpeedRanker {
     for (final trackerInfo in ranked) {
       _outputs[trackerInfo.id] = trackerInfo;
     }
-    _positions = {
-      for (var index = 0; index < count; index++) ranked[index].id: index,
-    };
+    _positions.clear();
+    for (var index = 0; index < count; index++) {
+      _positions[ranked[index].id] = index;
+    }
     return ranked;
   }
 
