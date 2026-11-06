@@ -1868,6 +1868,9 @@ abstract class Rule with _$Rule {
   factory Rule.fromJson(Map<String, Object?> json) => _$RuleFromJson(json);
 }
 
+final _rulePayloadErrors = Expando<Object>();
+final _noRulePayloadError = Object();
+
 extension RuleExt on Rule {
   Rule autoOrder(Rule rule, String? a, String? b) {
     final newRule = rule.order?.isNotEmpty != true
@@ -1891,6 +1894,19 @@ extension RuleExt on Rule {
     };
   }
 
+  RulePayloadError? get payloadError {
+    // An Expando of the error itself would treat a cached legal rule as a miss.
+    final cached = _rulePayloadErrors[this];
+    if (cached != null) {
+      return identical(cached, _noRulePayloadError)
+          ? null
+          : cached as RulePayloadError;
+    }
+    final error = _resolvePayloadError();
+    _rulePayloadErrors[this] = error ?? _noRulePayloadError;
+    return error;
+  }
+
   String? targetErrorTip(String invalidSubRuleTip, String invalidPolicyTip) {
     return switch (ruleAction == RuleAction.SUB_RULE) {
       true => invalidSubRuleTip,
@@ -1898,9 +1914,7 @@ extension RuleExt on Rule {
     };
   }
 
-  /// The core rejects the whole config over one of these, taking the profile
-  /// down with it, so they are caught before the rule can be saved.
-  RulePayloadError? get payloadError {
+  RulePayloadError? _resolvePayloadError() {
     final payload = realContent?.trim() ?? '';
     if (payload.isEmpty) {
       return null;

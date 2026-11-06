@@ -4,7 +4,7 @@
 
 - 最近核对日期：2026-11-06
 - 最近核对日期：2026-11-07
-- FlClash main：`43109cd3`
+- FlClash main：`e47e1dbf`
 - Clash.Meta main：`47244368e`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -169,6 +169,7 @@
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
 | DNS 服务器引用无 `%` 免解码 + fragment 免 split 列表 | -（仅 wrapper） | 本轮提交 | `_decodedOrSelf` 先查 `contains('%')`，无百分号直接返回；fragment 解码后按 code unit 扫描 `&`，不再为常见单段 fragment 分配 `split` 列表。`test/models/references_benchmark_test.dart` JIT n=11（100k 个 `ts://...#dialer`）：基线均值 52.98ms/中位 53.37ms → 均值 43.64ms/中位 42.84ms（均值 **-17.65%**，中位 **-19.73%**，单次调用 0.530µs → 0.428µs 量级）；`test/models/references_test.dart`、`test/manager/core_manager_test.dart`、`dart analyze --fatal-infos` 全绿 |
+| Rule payloadError 结果缓存 | -（仅 wrapper） | 本轮提交 | `Rule` 不可变，`payloadError` 结果按对象缓存；用 `Expando<Object>` + `_noRulePayloadError` sentinel 区分“合法未报错”和“未缓存”，避免 `Expando<RulePayloadError?>` 的 null 语义。`test/models/rule_benchmark_test.dart` JIT n=7（100k 次合法 `DST_PORT`）：均值 34.19ms / 中位 34.16ms → 均值 6.28ms / 中位 6.27ms（**-81.64%**），单次调用 0.342µs → 0.063µs；`test/models/rule_test.dart`、`test/features/custom_rule_form_test.dart`、`test/features/rule_dialog_test.dart`、`test/providers/custom_state_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
