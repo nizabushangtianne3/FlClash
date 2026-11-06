@@ -362,14 +362,24 @@ abstract class DnsQuery with _$DnsQuery {
 }
 
 extension DnsQueryExt on DnsQuery {
-  List<String> get tags {
+  void _appendTags(List<String> target) {
+    target.add(type);
     final initiator = this.initiator;
-    return [
-      type,
-      if (initiator != null) initiator.label,
-      if (cached) currentAppLocalizations.cache,
-      if (hasFailureRcode) rcode,
-    ];
+    if (initiator != null) {
+      target.add(initiator.label);
+    }
+    if (cached) {
+      target.add(currentAppLocalizations.cache);
+    }
+    if (hasFailureRcode) {
+      target.add(rcode);
+    }
+  }
+
+  List<String> get tags {
+    final tags = <String>[];
+    _appendTags(tags);
+    return tags;
   }
 
   bool get hasFailureRcode => rcode.isNotEmpty && rcode != 'NOERROR';
@@ -389,14 +399,16 @@ extension DnsQueryExt on DnsQuery {
     ];
   }
 
-  List<String> get searchFields => [
-    domain,
-    ...tags,
-    rcode,
-    upstream,
-    error,
-    ...answers,
-  ];
+  List<String> get searchFields {
+    final fields = <String>[];
+    fields.add(domain);
+    _appendTags(fields);
+    fields.add(rcode);
+    fields.add(upstream);
+    fields.add(error);
+    fields.addAll(answers);
+    return fields;
+  }
 }
 
 @freezed
