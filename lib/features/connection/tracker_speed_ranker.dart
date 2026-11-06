@@ -30,11 +30,13 @@ class TrackerSpeedRanker {
   static const _smoothing = 0.5;
 
   final _samples = <String, _SpeedSample>{};
+  final _outputs = <String, TrackerInfo>{};
   var _positions = const <String, int>{};
 
   List<TrackerInfo> rank(List<TrackerInfo> trackerInfos, DateTime now) {
     if (trackerInfos.isEmpty) {
       _samples.clear();
+      _outputs.clear();
       _positions = const {};
       return trackerInfos;
     }
@@ -196,7 +198,8 @@ class TrackerSpeedRanker {
   ) {
     final ranked = List<TrackerInfo>.generate(count, (index) {
       final source = order[index];
-      final trackerInfo = trackerInfos[source];
+      final trackerInfo =
+          _outputs[trackerInfos[source].id] ?? trackerInfos[source];
       final sample = samples[source];
       if (trackerInfo.uploadSpeed == sample.uploadSpeed &&
           trackerInfo.downloadSpeed == sample.downloadSpeed) {
@@ -207,6 +210,10 @@ class TrackerSpeedRanker {
         downloadSpeed: sample.downloadSpeed,
       );
     });
+    _outputs.clear();
+    for (final trackerInfo in ranked) {
+      _outputs[trackerInfo.id] = trackerInfo;
+    }
     _positions = {
       for (var index = 0; index < count; index++) ranked[index].id: index,
     };

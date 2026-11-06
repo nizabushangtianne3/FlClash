@@ -48,6 +48,7 @@ class System {
 
   Future<int> init({String? operatingSystem}) async {
     final os = operatingSystem ?? Platform.operatingSystem;
+    if (os == 'linux') return 0;
     final BaseDeviceInfo deviceInfo;
     try {
       deviceInfo = await deviceInfoLoader();

@@ -214,7 +214,8 @@ List<Group> computeHideTimeout({
   return groups.map((group) {
     final groupTestUrl = group.testUrl.takeFirstValid([defaultTestUrl]);
     final groupWithNow = groupsByName[group.name] ?? group;
-    final selectedName = groupWithNow.getCurrentSelectedName(
+    final selectedName = _coreSelectedName(
+      groupWithNow,
       selectedMap[group.name] ?? '',
     );
     final visible = group.all.where((proxy) {
@@ -241,6 +242,20 @@ List<Group> computeHideTimeout({
         ? group
         : group.copyWith(all: visible.isEmpty ? group.all : visible);
   }).toList();
+}
+
+String _coreSelectedName(Group group, String storedName) {
+  if (group.type.isComputedSelected) {
+    return group.realNow;
+  }
+  if (storedName.isNotEmpty &&
+      group.all.any((proxy) => proxy.name == storedName)) {
+    return storedName;
+  }
+  final now = group.realNow;
+  return now.isNotEmpty && group.all.any((proxy) => proxy.name == now)
+      ? now
+      : '';
 }
 
 SelectedProxyState computeRealSelectedProxyState(

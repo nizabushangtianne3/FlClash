@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/core.dart';
@@ -27,6 +28,18 @@ class CoreManager extends ConsumerStatefulWidget {
 class _CoreContainerState extends ConsumerState<CoreManager>
     with CoreEventListener {
   CoreController get _core => ref.read(coreHandlerProvider);
+
+  final _logs = ListQueue<Log>();
+  final _requests = <TrackerInfo>[];
+  final _dnsQueries = <DnsQuery>[];
+  final _traffic = <String, RequestTraffic>{};
+  Timer? _feedTimer;
+
+  @override
+  bool get wantsRequestEvents => ref.read(appVisibleProvider);
+
+  @override
+  bool get wantsDnsEvents => ref.read(appVisibleProvider);
 
   @override
   Widget build(BuildContext context) {
@@ -111,6 +124,7 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   @override
   void dispose() {
     coreEventManager.removeListener(this);
+    _feedTimer?.cancel();
     super.dispose();
   }
 
@@ -126,7 +140,6 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   void onLog(Log log) {
-    ref.read(logsProvider.notifier).add(log);
     if (log.logLevel == LogLevel.error) {
       throttler.call(
         FunctionTag.coreErrorNotifier,
@@ -135,6 +148,8 @@ class _CoreContainerState extends ConsumerState<CoreManager>
         fire: true,
       );
     }
+    _logs.add(log);
+    _scheduleFeedFlush();
     super.onLog(log);
   }
 
@@ -154,23 +169,61 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   void onRequest(TrackerInfo trackerInfo) async {
-    ref.read(requestsProvider.notifier).addRequest(trackerInfo);
-    ref.read(requestCountProvider.notifier).update((count) => count + 1);
+    _requests.add(trackerInfo);
+    _scheduleFeedFlush();
     super.onRequest(trackerInfo);
   }
 
   @override
   void onRequestTraffic(Map<String, RequestTraffic> traffic) {
-    ref.read(requestsProvider.notifier).updateTraffic(traffic);
-    ref.read(connectionsProvider.notifier).updateTraffic(traffic);
+    _traffic.addAll(traffic);
+    _scheduleFeedFlush();
     super.onRequestTraffic(traffic);
   }
 
   @override
   void onDns(DnsQuery dnsQuery) {
-    ref.read(dnsQueriesProvider.notifier).addQuery(dnsQuery);
-    ref.read(dnsQueryCountProvider.notifier).update((count) => count + 1);
+    _dnsQueries.add(dnsQuery);
+    _scheduleFeedFlush();
     super.onDns(dnsQuery);
+  }
+
+  void _scheduleFeedFlush() {
+    _feedTimer ??= Timer(renderThrottleDuration, _flushFeeds);
+  }
+
+  void _flushFeeds() {
+    _feedTimer = null;
+    if (!mounted) {
+      return;
+    }
+    final logs = ListQueue<Log>.from(_logs);
+    _logs.clear();
+    final requests = List<TrackerInfo>.from(_requests);
+    _requests.clear();
+    final dnsQueries = List<DnsQuery>.from(_dnsQueries);
+    _dnsQueries.clear();
+    final traffic = Map<String, RequestTraffic>.from(_traffic);
+    _traffic.clear();
+    if (logs.isNotEmpty) {
+      ref.read(logsProvider.notifier).addAll(logs);
+    }
+    if (requests.isNotEmpty) {
+      ref.read(requestsProvider.notifier).addRequests(requests);
+      ref
+          .read(requestCountProvider.notifier)
+          .update((count) => count + requests.length);
+    }
+    if (traffic.isNotEmpty) {
+      ref.read(requestsProvider.notifier).updateTraffic(traffic);
+      ref.read(connectionsProvider.notifier).updateTraffic(traffic);
+    }
+    if (dnsQueries.isNotEmpty) {
+      ref.read(dnsQueriesProvider.notifier).addQueries(dnsQueries);
+      ref
+          .read(dnsQueryCountProvider.notifier)
+          .update((count) => count + dnsQueries.length);
+    }
   }
 
   @override
