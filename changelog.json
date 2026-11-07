@@ -4,7 +4,7 @@
     {
       "version": "1.0.3",
       "tag": "v1.0.3",
-      "date": "2026-11-06",
+      "date": "2026-11-08",
       "prerelease": false,
       "groups": [
         {
@@ -90,6 +90,121 @@
         {
           "type": "perf",
           "entries": [
+            {
+              "id": "b671d7e",
+              "scope": "proxies",
+              "text": "Read a group delay table once per group"
+            },
+            {
+              "id": "eb9396a",
+              "scope": "proxies",
+              "text": "Resolve a group only when the delay test names one"
+            },
+            {
+              "id": "0088dc1",
+              "scope": "proxies",
+              "text": "Read a leaf delay instead of resolving it to itself"
+            },
+            {
+              "id": "9e4b55b",
+              "scope": "proxies",
+              "text": "Drop the dead selection resolve while hiding timeouts"
+            },
+            {
+              "id": "c3ac9b9",
+              "scope": "filters",
+              "text": "Select the offered values instead of sorting them all"
+            },
+            {
+              "id": "cec1335",
+              "scope": "filters",
+              "text": "Count single-value facets without a list per row"
+            },
+            {
+              "id": "5f10bb8",
+              "scope": "table",
+              "text": "Resolve a row text style and shape once per table"
+            },
+            {
+              "id": "6656f49",
+              "scope": "table",
+              "text": "Hold a row menu until what it reads changes"
+            },
+            {
+              "id": "655954e",
+              "scope": "datetime",
+              "text": "Keep the local reading and text of a Core timestamp"
+            },
+            {
+              "id": "61eb7a3",
+              "scope": "dashboard",
+              "text": "Hold the card table columns per width and locale"
+            },
+            {
+              "id": "46898fc",
+              "scope": "models",
+              "text": "Cache the row text a grouped table reads per row"
+            },
+            {
+              "id": "51686dc",
+              "scope": "dashboard",
+              "text": "Count the live feed protocols without a lower-case copy"
+            },
+            {
+              "id": "1638e7a",
+              "scope": "service",
+              "text": "Snapshot event listeners"
+            },
+            {
+              "id": "921da82",
+              "scope": "icons",
+              "text": "Compact names without regex replaceAll"
+            },
+            {
+              "id": "04fabbb",
+              "scope": "icons",
+              "text": "Cache compact icon names for matching"
+            },
+            {
+              "id": "e6d0906",
+              "scope": "strings",
+              "text": "Detect svg without url parsing"
+            },
+            {
+              "id": "c38f029",
+              "scope": "strings",
+              "text": "Defer single-value split allocation"
+            },
+            {
+              "id": "00ced42",
+              "scope": "proxies",
+              "text": "Avoid lists when hiding no timeouts"
+            },
+            {
+              "id": "9fa0f63",
+              "scope": "proxies",
+              "text": "Cache hide-timeout member checks"
+            },
+            {
+              "id": "1ba44e3",
+              "scope": "table",
+              "text": "Sort reversed view in place"
+            },
+            {
+              "id": "6ca032e",
+              "scope": "table",
+              "text": "Keep ordered sort result"
+            },
+            {
+              "id": "17f33ed",
+              "scope": "proxies",
+              "text": "Keep group list when sorting is unchanged"
+            },
+            {
+              "id": "3f1dd77",
+              "scope": "rules",
+              "text": "Cache raw rule values"
+            },
             {
               "id": "b27ff7c",
               "scope": "fixed",

@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.3 (2026-11-06)
+## v1.0.3 (2026-11-08)
 
 **Features**
 
@@ -24,6 +24,29 @@
 
 **Performance**
 
+- **proxies** Read a group delay table once per group (b671d7e)
+- **proxies** Resolve a group only when the delay test names one (eb9396a)
+- **proxies** Read a leaf delay instead of resolving it to itself (0088dc1)
+- **proxies** Drop the dead selection resolve while hiding timeouts (9e4b55b)
+- **filters** Select the offered values instead of sorting them all (c3ac9b9)
+- **filters** Count single-value facets without a list per row (cec1335)
+- **table** Resolve a row text style and shape once per table (5f10bb8)
+- **table** Hold a row menu until what it reads changes (6656f49)
+- **datetime** Keep the local reading and text of a Core timestamp (655954e)
+- **dashboard** Hold the card table columns per width and locale (61eb7a3)
+- **models** Cache the row text a grouped table reads per row (46898fc)
+- **dashboard** Count the live feed protocols without a lower-case copy (51686dc)
+- **service** Snapshot event listeners (1638e7a)
+- **icons** Compact names without regex replaceAll (921da82)
+- **icons** Cache compact icon names for matching (04fabbb)
+- **strings** Detect svg without url parsing (e6d0906)
+- **strings** Defer single-value split allocation (c38f029)
+- **proxies** Avoid lists when hiding no timeouts (00ced42)
+- **proxies** Cache hide-timeout member checks (9fa0f63)
+- **table** Sort reversed view in place (1ba44e3)
+- **table** Keep ordered sort result (6ca032e)
+- **proxies** Keep group list when sorting is unchanged (17f33ed)
+- **rules** Cache raw rule values (3f1dd77)
 - **fixed** Shift keyed batch indexes in one pass (b27ff7c)
 - **proxies** Resolve selected proxy by cached members (232df2b)
 - **proxies** Cache tray selected proxy (0a3641c)
