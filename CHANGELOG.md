@@ -4,6 +4,7 @@
 
 **Features**
 
+- **disclaimer** Start every platform without the consent gate (dfb4d57)
 - **connections** Merged requests and connections; quick edit lists (52b975f)
 - **ui** iOS 27 transitions, press and text selection; smoother pages (bb47f2c)
 - **update** Download and install updates in the app (b8f84b3)

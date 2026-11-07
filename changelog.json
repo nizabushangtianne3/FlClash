@@ -11,6 +11,11 @@
           "type": "feat",
           "entries": [
             {
+              "id": "dfb4d57",
+              "scope": "disclaimer",
+              "text": "Start every platform without the consent gate"
+            },
+            {
               "id": "52b975f",
               "scope": "connections",
               "text": "Merged requests and connections; quick edit lists"
