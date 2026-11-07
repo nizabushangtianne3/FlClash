@@ -135,6 +135,15 @@ void main() {
 
       expect(trackerInfo.title, 'example.com');
       expect(trackerInfo.progressText, 'Browser(501)');
+
+      final other = trackerInfo.copyWith(
+        rule: 'DOMAIN-SUFFIX',
+        rulePayload: 'example.com',
+        metadata: const Metadata(network: 'tcp', process: 'Browser'),
+      );
+      expect(other.progressText, 'Browser');
+      expect(other.ruleText, 'DOMAIN-SUFFIX(example.com)');
+      expect(trackerInfo.ruleText, 'MATCH');
     });
   });
 

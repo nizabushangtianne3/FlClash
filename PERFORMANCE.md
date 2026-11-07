@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-07
-- FlClash main：`c0e610a8`
-- Clash.Meta main：`47244368e`
+- FlClash main：`e711b10f`
+- Clash.Meta main：`1ad9b1a8a`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -190,7 +190,7 @@
 | SVG 类型判断免 URI 解析/整串 lowercase | -（仅 wrapper） | 本轮提交 | `StringExtension.isSvg` 对非 data URI 不再 `Uri.tryParse(path).toLowerCase().endsWith`；改为按 query/fragment 切出路径尾部，直接定位最后一个 `.` 并按 codeUnit 大小写不敏感比较 `svg`。`test/common/string_benchmark_test.dart` 新增 SVG URL 场景：JIT n=7（100000 个带 `?v=` 的 CDN 图标 URL）均值 41.875ms/中位 42.172ms → 9.582ms/9.692ms（均值 **-77.12%**，中位 **-77.02%**，单次调用 0.419µs → 0.096µs）；`test/common/string_test.dart`、`test/views/icon_picker_view_test.dart`、`test/widgets/target_icon_test.dart`、`test/providers/icon_sets_action_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | 图标名匹配不再拷贝名字列表、压缩名按对象缓存 | -（仅 wrapper） | 本轮提交 | `matchIconNames` 改收 `List<IconSetIcon>`，图标选择器不再为每次键入把整个图标表拷成 `List<String>`；`IconSetIcon.compactName` 按对象缓存 `fileStem` 的压缩结果，主线程重复匹配时不再对每张图重复 `toLowerCase + replaceAll`；isolate 输入也直接发图标对象。新增 `test/models/icon_name_match_benchmark_test.dart`：JIT n=7（5000 图标 ×100 次匹配+排序）均值 284.00ms/中位 283.59ms → 54.75ms/54.75ms（均值 **-80.72%**，中位 **-80.69%**，单次匹配排序 2.84ms → 0.547ms）；新增 `test/models/icon_name_match_test.dart` 覆盖评分、忽略无拉丁名字符、按 URL 去重排序，`test/views/icon_picker_view_test.dart`、`test/widgets/target_icon_test.dart`、`test/providers/icon_sets_action_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | 图标名压缩 codeUnit 直筛 | -（仅 wrapper） | 本轮提交 | `_compactIconName` 不再 `toLowerCase().replaceAll(RegExp)`；先扫描 codeUnit 记录是否有大写/非字母数字，无字符直接返回空串、全小写字母数字直接返回原串，否则用 `StringBuffer` 只追加小写 ASCII 字母和数字。新增 `test/models/icon_name_cold_match_benchmark_test.dart`：JIT n=7（5000 个新对象 ×100 次冷匹配）均值 492.74ms/中位 479.50ms → 401.28ms/393.45ms（均值 **-18.56%**，中位 **-17.96%**，单次 4.927ms → 4.013ms）；`test/models/icon_name_match_test.dart`、`test/views/icon_picker_view_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
-| 实时连接表协议统计免 lowercase 拷贝 | -（仅 wrapper） | 本轮提交 | `liveProtocolSplit` 抽出为顶层函数并改用 `StringExtension.equalsIgnoreCase`：先比长度，再逐 codeUnit 做 ASCII 大小写不敏感比较，不再为每行 `metadata.network.toLowerCase()` 分配字符串；feed 仍保持原有 copy+sort。新增 `test/views/dashboard/connections_feed_benchmark_test.dart`：JIT n=7（300 行 ×2000 次 counter-only 更新）均值 20.16µs/中位 19.93µs → 13.09µs/13.06µs（均值 **-35.10%**，中位 **-35.00%**，单次更新省 ~7.1µs）；`test/common/string_test.dart` 新增 3 个 `equalsIgnoreCase` 用例（含 ASCII-only 折叠语义），`test/views/dashboard/connections_table_test.dart` 新增混合大小写协议计数与 traffic 更新后顺序不变用例（`TCP`/`Udp` → TCP 12 / UDP 8），`test/views/connections_test.dart`、`test/views/requests_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
+| TrackerInfo 行文本按对象缓存 | -（仅 wrapper） | 本轮提交 | `ruleText`/`progressText` 改为按对象 `Expando<String>` 缓存（`TrackerInfo` 不可变，字段固定）：分组表每次刷新对全部行调 `keyOf`、表格单元格与搜索都要重建这两个字符串。新增 `test/models/tracker_info_text_benchmark_test.dart`：JIT n=7（500 行 ×2000 次）`ruleText` 均值 35.98µs/中位 35.87µs → 12.54µs/12.34µs（**-65.2%**），`progressText` 均值 47.36µs/中位 47.32µs → 14.82µs/14.81µs（**-68.7%**）；`test/models/common_test.dart` 新增“不同对象各自缓存”用例，`test/features/tracker_info_list_test.dart`、`test/models/record_filter_test.dart`、`test/features/filter_test.dart`、`test/features/tracker_speed_ranker_test.dart`、`test/views/requests_test.dart`、`test/views/connections_test.dart` 共 73 个用例与 `dart analyze --fatal-infos` 全绿 || 实时连接表协议统计免 lowercase 拷贝 | -（仅 wrapper） | 本轮提交 | `liveProtocolSplit` 抽出为顶层函数并改用 `StringExtension.equalsIgnoreCase`：先比长度，再逐 codeUnit 做 ASCII 大小写不敏感比较，不再为每行 `metadata.network.toLowerCase()` 分配字符串；feed 仍保持原有 copy+sort。新增 `test/views/dashboard/connections_feed_benchmark_test.dart`：JIT n=7（300 行 ×2000 次 counter-only 更新）均值 20.16µs/中位 19.93µs → 13.09µs/13.06µs（均值 **-35.10%**，中位 **-35.00%**，单次更新省 ~7.1µs）；`test/common/string_test.dart` 新增 3 个 `equalsIgnoreCase` 用例（含 ASCII-only 折叠语义），`test/views/dashboard/connections_table_test.dart` 新增混合大小写协议计数与 traffic 更新后顺序不变用例（`TCP`/`Udp` → TCP 12 / UDP 8），`test/views/connections_test.dart`、`test/views/requests_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | Android 事件分发快照监听器 + 标签懒构造 | -（仅 wrapper） | 本轮提交 | `Service` 原来每个 Core 事件都 `List.of(_listeners)` 且都执行 `'Core event ${event.type.name}'` 字符串插值；现在监听器快照按 add/remove 失效缓存，事件类型标签只在 catch 分支构造，成功路径只保留一次 try。新增 `test/plugins/service_event_benchmark_test.dart`：JIT n=7（300 事件 ×200 批）perBatchUs 均值 529.00/中位 526.56 → 489.76/479.68（均值 **-7.40%**，中位 **-8.90%**，单事件 1.76µs → 1.63µs）；`test/plugins/service_test.dart` 25 个用例全绿，全量套件剩余既有本地 bundle 失败 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
@@ -365,6 +365,18 @@ dart run tool/test.dart   # exit 0
 外部 V2Ray 互操作支持 `MIHOMO_V2RAY_INTEROP_BIN` 复用已构建的版本化二进制；本机使用 `D:\Codex\tools\v2ray-5.51.2\bin\v2ray.exe`。`TestInboundVMess_MKCP_V2RayInterop` 现覆盖默认、seed 和全部 5 种 header，双向共 14 个子用例；普通与 `-race` 全绿。未知 header 现在启动/拨号即报错，不再静默回退 none。
 
 ## 5. 后续优化切入点
+
+### 待优化项清单（2026-11-07 全量复核，均在本机实测过基线）
+
+| 位置 | 实测基线（JIT） | 结论 / 下一步 |
+|---|---|---|
+| 实时连接 feed 的 `[...snapshot.connections]..sort(start 倒序)` | 300 行约 11.5µs/更新，`renderThrottleDuration`(300ms) 限制最多约 3.3 次/秒 | provider 下沉整表重排已否决（见第 3 节）；要落地必须改成“保留已排序 id 列表 + 增量插入/合并”(O(n+k log k))，并重新配对测量 |
+| `RecordFacet.optionsOf` 计数 | requests 页 500 行 ×3 个 offered facet ≈ 82µs/次，约 1 次/秒；单 facet 500 行 ≈ 31µs，其中每行 `valuesOf` 列表分配只占约 3µs（const 对照 33.6µs vs 30.9µs） | 成本在 map 计数本身；按对象缓存需要 items 列表稳定身份，而每次刷新都是新列表，暂不做 |
+| `RecordSorter.sort` 乱序路径 | 10000 行 ×1000 次同 `record_sorter_benchmark_test.dart`；`Expando` 缓存 sortKey 无效（见第 3 节） | 剩余可省的是 `order`+`sorted` 两个列表，需 in-place 置换且不能改调用方列表；上次尝试写反已回退，先写语义测试再上基准 |
+| 表格行单元格每帧构串 | `metadata.network.toUpperCase()`、`start.showTime`、`trackerDurationText(DateTime.now().difference(...))`、`_shownInList` 每行 5 元素列表，单项 0.1~1µs | 累计 <20µs/帧，未触及帧预算；要改需先做帧级采样证明 |
+| 仪表盘 `_Table` 每次 build 重建 columns/layouts/`tableColumnWidths` | 未测（需上下文级基准）；`RecordTableFrame._tableOf` 已有同样 memo 可照抄 | 候选：按 (width, columnWidths, locale, theme) memo |
+| `SpeedCard` 每帧对全部 speed 样本 fold 求 peak | 约 60 样本/帧 | 收益过小，记账备查 |
+| core/Clash.Meta 侧 P1/P2/P4 | 见下文各小节 | DNS 负回复、本地 DNS serve 全链、UDP 首包均已实测否决或维持不做 |
 
 ### P1：DNS UDP response parsing
 

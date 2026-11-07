@@ -191,16 +191,22 @@ extension TrackerInfoExt on TrackerInfo {
     return metadata.destinationIP;
   }
 
+  /// A row is immutable, so the text built out of its own fields is cached.
   String get progressText {
+    final cached = _trackerInfoProgressTexts[this];
+    if (cached != null) {
+      return cached;
+    }
     final process = metadata.process;
     final uid = metadata.uid;
-    if (uid != 0) {
-      return '$process($uid)'.trim();
-    }
-    return process.trim();
+    return _trackerInfoProgressTexts[this] = uid != 0
+        ? '$process($uid)'.trim()
+        : process.trim();
   }
 
-  String get ruleText => rulePayload.isNotEmpty ? '$rule($rulePayload)' : rule;
+  String get ruleText => _trackerInfoRuleTexts[this] ??= rulePayload.isNotEmpty
+      ? '$rule($rulePayload)'
+      : rule;
 
   List<String> get searchFields => [
     metadata.network,
@@ -322,6 +328,8 @@ abstract class TrackerInfosState with _$TrackerInfosState {
 
 final _trackerInfoSearchTexts = Expando<String>();
 final _trackerInfoFilteredLists = Expando<List<TrackerInfo>>();
+final _trackerInfoProgressTexts = Expando<String>();
+final _trackerInfoRuleTexts = Expando<String>();
 
 extension TrackerInfosStateExt on TrackerInfosState {
   bool get isSearching => SearchQuery(query).isNotEmpty;
