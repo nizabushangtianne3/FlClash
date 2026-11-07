@@ -58,4 +58,56 @@ void main() {
       'totalUs=${stopwatch.elapsedMicroseconds}',
     );
   });
+
+  test('hiding timed-out proxies over many groups stays cheap', () {
+    const groups = 100;
+    const perGroup = 20;
+    const attempts = 100;
+    const testUrl = 'http://delay.test';
+    final all = [
+      for (var group = 0; group < groups; group++)
+        Group(
+          name: 'group-$group',
+          type: GroupType.Selector,
+          testUrl: 'http://group-$group.test',
+          all: [
+            for (var index = 0; index < perGroup; index++)
+              Proxy(name: 'proxy-$group-$index', type: 'ss'),
+          ],
+        ),
+    ];
+    final delayMap = <String, Map<String, int?>>{
+      for (final group in all)
+        group.testUrl!: {for (final proxy in group.all) proxy.name: 100},
+    };
+
+    for (var i = 0; i < 50; i++) {
+      computeHideTimeout(
+        groups: all,
+        allGroups: all,
+        delayMap: delayMap,
+        selectedMap: const {},
+        defaultTestUrl: testUrl,
+      );
+    }
+
+    final stopwatch = Stopwatch()..start();
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      final visible = computeHideTimeout(
+        groups: all,
+        allGroups: all,
+        delayMap: delayMap,
+        selectedMap: const {},
+        defaultTestUrl: testUrl,
+      );
+      if (visible.length != groups) {
+        fail('lost a group');
+      }
+    }
+    stopwatch.stop();
+    stdout.writeln(
+      'computeHideTimeoutGroups groups=$groups perGroup=$perGroup '
+      'attempts=$attempts totalUs=${stopwatch.elapsedMicroseconds}',
+    );
+  });
 }

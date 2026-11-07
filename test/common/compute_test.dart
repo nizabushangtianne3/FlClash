@@ -371,6 +371,40 @@ void main() {
       ]);
     });
 
+    test("sorts a nested group without its own url by the outer group's", () {
+      const outer = Group(
+        name: 'outer',
+        type: GroupType.Selector,
+        testUrl: 'http://outer.test',
+        all: [
+          Proxy(name: 'a', type: 'ss'),
+          Proxy(name: 'inner', type: 'Selector'),
+        ],
+      );
+      const inner = Group(
+        name: 'inner',
+        type: GroupType.Selector,
+        now: 'pick',
+        all: [Proxy(name: 'pick', type: 'ss')],
+      );
+      final result = computeSort(
+        groups: [outer, inner],
+        sortType: ProxiesSortType.delay,
+        delayMap: {
+          'http://outer.test': {'a': 50, 'pick': 10},
+          'http://test.com': {'a': 999, 'pick': 999},
+        },
+        selectedMap: {},
+        defaultTestUrl: 'http://test.com',
+      );
+      // The pick inherits the outer group's test url, so the nested group
+      // leads; reading the default url instead would rank them the other way.
+      expect(result.first.all.map((proxy) => proxy.name).toList(), [
+        'inner',
+        'a',
+      ]);
+    });
+
     test('preserves group count in result', () {
       final multiGroups = [
         ...groups,

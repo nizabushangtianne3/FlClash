@@ -108,4 +108,123 @@ void main() {
       'totalUs=${stopwatch.elapsedMicroseconds}',
     );
   });
+
+  test('sorting many delayed groups stays within the budget', () {
+    const groups = 100;
+    const perGroup = 10;
+    const attempts = 100;
+    const testUrl = 'http://delay.test';
+    final all = [
+      for (var group = 0; group < groups; group++)
+        Group(
+          name: 'group-$group',
+          type: GroupType.Selector,
+          all: [
+            for (var index = 0; index < perGroup; index++)
+              Proxy(name: 'proxy-$group-$index', type: 'ss'),
+          ],
+        ),
+    ];
+    final delayMap = <String, Map<String, int?>>{
+      testUrl: {
+        for (final group in all)
+          for (final proxy in group.all)
+            proxy.name: (proxy.name.hashCode % 1000) + 1,
+      },
+    };
+
+    for (var i = 0; i < 50; i++) {
+      computeSort(
+        groups: all,
+        sortType: ProxiesSortType.delay,
+        delayMap: delayMap,
+        selectedMap: const {},
+        defaultTestUrl: testUrl,
+      );
+    }
+
+    final stopwatch = Stopwatch()..start();
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      final sorted = computeSort(
+        groups: all,
+        sortType: ProxiesSortType.delay,
+        delayMap: delayMap,
+        selectedMap: const {},
+        defaultTestUrl: testUrl,
+      );
+      if (sorted.length != groups) {
+        fail('lost a group');
+      }
+    }
+    stopwatch.stop();
+    stdout.writeln(
+      'computeSortDelaySorted groups=$groups attempts=$attempts '
+      'totalUs=${stopwatch.elapsedMicroseconds}',
+    );
+  });
+
+  test('sorting groups full of nested groups stays cheap', () {
+    const groups = 100;
+    const perGroup = 10;
+    const attempts = 100;
+    const testUrl = 'http://delay.test';
+    final nested = [
+      for (var group = 0; group < groups; group++)
+        for (var index = 0; index < perGroup; index++)
+          Group(
+            name: 'group-$group-$index',
+            type: GroupType.Selector,
+            now: 'pick-$group-$index',
+            all: [Proxy(name: 'pick-$group-$index', type: 'ss')],
+          ),
+    ];
+    final all = [
+      ...nested,
+      for (var group = 0; group < groups; group++)
+        Group(
+          name: 'group-$group',
+          type: GroupType.Selector,
+          all: [
+            for (var index = 0; index < perGroup; index++)
+              Proxy(name: 'group-$group-$index', type: 'Selector'),
+          ],
+        ),
+    ];
+    final delayMap = <String, Map<String, int?>>{
+      testUrl: {
+        for (var group = 0; group < groups; group++)
+          for (var index = 0; index < perGroup; index++)
+            'pick-$group-$index': (index % 7) + 1,
+      },
+    };
+
+    for (var i = 0; i < 50; i++) {
+      computeSort(
+        groups: all,
+        sortType: ProxiesSortType.delay,
+        delayMap: delayMap,
+        selectedMap: const {},
+        defaultTestUrl: testUrl,
+      );
+    }
+
+    final stopwatch = Stopwatch()..start();
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      final sorted = computeSort(
+        groups: all,
+        sortType: ProxiesSortType.delay,
+        delayMap: delayMap,
+        selectedMap: const {},
+        defaultTestUrl: testUrl,
+      );
+      if (sorted.length != all.length) {
+        fail('lost a group');
+      }
+    }
+    stopwatch.stop();
+    stdout.writeln(
+      'computeSortDelayNested groups=$groups perGroup=$perGroup '
+      'attempts=$attempts totalUs=${stopwatch.elapsedMicroseconds}',
+    );
+  });
 }
