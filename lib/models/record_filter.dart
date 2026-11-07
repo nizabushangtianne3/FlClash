@@ -95,8 +95,8 @@ class RecordFacet<T> {
   }) {
     final counts = <String, int>{};
     countInto(items, counts);
-    final frequent = counts.keys.sorted((a, b) => counts[b]! - counts[a]!);
-    final options = {...frequent.take(max), ...selected}.toList();
+    final frequent = _mostFrequent(counts, max);
+    final options = {...frequent, ...selected}.toList();
     int rank(String value) {
       final index = order.indexOf(value);
       return index < 0 ? order.length : index;
@@ -106,6 +106,33 @@ class RecordFacet<T> {
       final ranked = rank(a) - rank(b);
       return ranked != 0 ? ranked : a.toLowerCase().compareTo(b.toLowerCase());
     });
+  }
+
+  /// The [max] values with the highest counts, most frequent first. A table
+  /// holds hundreds of distinct values on a facet it offers, and only [max]
+  /// of them are shown, so the pass stays bounded instead of sorting them all.
+  /// A value already held keeps its place over one that only ties it.
+  /// With no more values than are shown, the counts order nothing: every one
+  /// of them is offered and the options sort themselves.
+  List<String> _mostFrequent(Map<String, int> counts, int max) {
+    if (counts.length <= max) {
+      return counts.keys.toList();
+    }
+    final best = <MapEntry<String, int>>[];
+    for (final entry in counts.entries) {
+      if (best.length >= max && entry.value <= best.last.value) {
+        continue;
+      }
+      var index = best.length;
+      while (index > 0 && best[index - 1].value < entry.value) {
+        index--;
+      }
+      best.insert(index, entry);
+      if (best.length > max) {
+        best.removeAt(max);
+      }
+    }
+    return [for (final entry in best) entry.key];
   }
 }
 
