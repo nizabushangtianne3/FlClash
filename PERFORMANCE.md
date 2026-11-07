@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-07
-- FlClash main：`64a76d6c`
+- FlClash main：`bcc289e6`
 - Clash.Meta main：`1ad9b1a8a`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -431,6 +431,7 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 
 ## 7. 已知维护事项
 
+- 2026-11-07 门禁修复（非性能）：`test/lint/prism_list_test.dart`、`test/lint/typography_test.dart` 在 Windows 上误报——`p.relative` 返回反斜杠，而豁免名单与 `_editorSizes` 都按正斜杠写。已按仓库既有写法（`design_package_test.dart`、`platform_layering_test.dart` 等本来就是 `p.relative(...).replaceAll('\', '/')`）统一规范化；`test/lint/dead_file_test.dart` 的 `path.startsWith('lib/')` 在 Windows 上恒为 false、整个测试被跳过，也一并改为规范化后比较，Windows 上首次真正生效（实测无孤儿文件）。Linux 上这些替换均为 no-op，CI 行为不变。
 - `miekg/dns` 的 `ClientExchangeUDP` 中 `Context.AfterFunc` 每次分配一个 stop 闭包；单独优化收益小，建议与 P1 一起重构。
 - 首次全量验证中 `TestInboundVMess_Mekya` 曾出现偶发 `unexpected EOF / closed pipe`；隔离复跑和后续全量均通过，尚不是稳定失败。
 - 任务缓存清理工具此前被执行器安全策略拦截，`D:\Codex\tmp` 下仍有 benchmark/profile 缓存目录；继续前可按任务名确认是否可清理。

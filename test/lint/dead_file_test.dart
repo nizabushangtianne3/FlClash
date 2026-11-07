@@ -4,6 +4,10 @@ import 'package:test/test.dart';
 
 const _entryPoints = ['lib/main.dart'];
 
+/// The path package reports the platform separator, and the checks below read
+/// the way a path is written in this repository.
+String _posixPath(String path) => path.replaceAll(r'\', '/');
+
 /// Types, and the top level names a file publishes alongside them — the
 /// `final appPath = AppPath()` singleton pattern is how most of `lib/common`
 /// is actually consumed.
@@ -63,11 +67,12 @@ void main() {
     final orphans = <String>[];
 
     for (final MapEntry(key: path, value: source) in sources.entries) {
-      if (!path.startsWith('lib/')) {
+      final file = _posixPath(path);
+      if (!file.startsWith('lib/')) {
         continue;
       }
-      if (barrels.contains(path) || _entryPoints.contains(path)) continue;
-      if (path.startsWith('lib/l10n/')) continue;
+      if (barrels.contains(path) || _entryPoints.contains(file)) continue;
+      if (file.startsWith('lib/l10n/')) continue;
 
       // Extensions and typedefs are reached through the types they attach to,
       // never by name, so a file that publishes only those cannot be measured

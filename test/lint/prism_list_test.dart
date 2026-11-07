@@ -24,7 +24,7 @@ void main() {
       if (entity is! File || !entity.path.endsWith('.dart')) {
         continue;
       }
-      final path = p.relative(entity.path);
+      final path = p.relative(entity.path).replaceAll(r'\', '/');
       if (_allowed.containsKey(path)) {
         continue;
       }
