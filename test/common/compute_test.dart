@@ -629,6 +629,22 @@ void main() {
       ]);
     });
 
+    test('keeps every source group when one group hides a proxy', () {
+      const other = Group(
+        name: 'other',
+        type: GroupType.Selector,
+        all: [Proxy(name: 'node', type: 'ss')],
+      );
+      final groups = hide(
+        groups: [group, other],
+        delayMap: {
+          defaultTestUrl: {'slow': -1},
+        },
+      );
+      expect(identical(groups[1], other), isTrue);
+      expect(groups.first.all.map((proxy) => proxy.name), ['fast', 'untested']);
+    });
+
     test("reads a group's own test url", () {
       const withTestUrl = Group(
         name: 'sel',

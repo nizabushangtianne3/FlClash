@@ -221,14 +221,17 @@ List<Group> computeHideTimeout({
   final groupsByName = groupsByNameFor(allGroups);
   final realStates = <String, SelectedProxyState>{};
   final proxyTypes = _proxyTypesFor(allGroups);
-  return groups.map((group) {
+  List<Group>? nextGroups;
+  for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+    final group = groups[groupIndex];
     final groupTestUrl = group.testUrl.takeFirstValid([defaultTestUrl]);
     final groupWithNow = groupsByName[group.name] ?? group;
     final selectedName = _coreSelectedName(
       groupWithNow,
       selectedMap[group.name] ?? '',
     );
-    final visible = group.all.where((proxy) {
+
+    bool keeps(Proxy proxy) {
       // A group's delay is its pick's, and hiding it would take away the only
       // way to choose the group where the mode does not show it on its own.
       if (proxy.name == selectedName || groupsByName.containsKey(proxy.name)) {
@@ -247,11 +250,27 @@ List<Group> computeHideTimeout({
       final testUrl = state.testUrl.takeFirstValid([groupTestUrl]);
       final delay = delayMap[testUrl]?[state.proxyName];
       return delay == null || delay > 0;
-    }).toList();
-    return visible.length == group.all.length && _sameOrder(visible, group.all)
+    }
+
+    List<Proxy>? visible;
+    for (var index = 0; index < group.all.length; index++) {
+      if (keeps(group.all[index])) {
+        visible?.add(group.all[index]);
+      } else {
+        visible ??= List<Proxy>.of(group.all.sublist(0, index));
+      }
+    }
+
+    final next = visible == null
         ? group
         : group.copyWith(all: visible.isEmpty ? group.all : visible);
-  }).toList();
+    if (identical(next, group)) {
+      continue;
+    }
+    nextGroups ??= List.of(groups, growable: true);
+    nextGroups[groupIndex] = next;
+  }
+  return nextGroups ?? groups;
 }
 
 String _coreSelectedName(Group group, String storedName) {
