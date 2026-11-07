@@ -579,6 +579,8 @@ class _TableState<T> extends ConsumerState<_Table<T>>
         final items = sorted.length > _maxFeedRows
             ? sorted.sublist(0, _maxFeedRows)
             : sorted;
+        // Every row of the table reads the same text style.
+        final cellStyle = AppTextStyle.footnote.of(context);
         final headerStyle = AppTextStyle.caption1
             .of(context, emphasized: true)
             .copyWith(color: colorScheme.onSurfaceVariant);
@@ -598,7 +600,7 @@ class _TableState<T> extends ConsumerState<_Table<T>>
           itemBuilder: (context, index) {
             final item = items[index];
             final cells = DefaultTextStyle.merge(
-              style: AppTextStyle.footnote.of(context),
+              style: cellStyle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               child: TableCells(

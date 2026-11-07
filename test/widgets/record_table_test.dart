@@ -2,6 +2,8 @@ import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/test_app.dart';
+
 List<RecordColumn<int>> _columns(Comparable<Object> Function(int item) key) {
   return [
     RecordColumn(
@@ -117,6 +119,42 @@ void main() {
         descending: true,
       ), reverse: true);
       expect(desc, [1, 2, 3]);
+    });
+  });
+
+  group('RecordTableFrame', () {
+    testWidgets('holds one row text style and shape for the whole table', (
+      tester,
+    ) async {
+      RecordTable<int>? captured;
+
+      Widget frame(List<int> items) => TestApp(
+        wrapInProviderScope: true,
+        child: SizedBox(
+          width: 400,
+          child: RecordTableFrame<int>(
+            tableId: 'test',
+            items: items,
+            columnsOf: (width) => _columns((item) => item),
+            builder: (context, table, items) {
+              captured = table;
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(frame(const [3, 1, 2]));
+
+      final table = captured!;
+      expect(table.rowTextStyle.fontSize, isNotNull);
+      expect(table.rowShape, isNotNull);
+
+      await tester.pumpWidget(frame(const [9, 8, 7]));
+
+      // New rows, same width and theme: the table, and with it the text and
+      // shape every row reads, is the one already built.
+      expect(captured, same(table));
     });
   });
 }

@@ -163,11 +163,18 @@ class RecordTable<T> {
   final List<double> widths;
   final double rowHeight;
 
+  /// The text and the shape a row of this table shows; every row reads the
+  /// same pair, so a rebuild resolves it once instead of per row.
+  final TextStyle rowTextStyle;
+  final OutlinedBorder rowShape;
+
   const RecordTable._({
     required this.columns,
     required this.layouts,
     required this.widths,
     required this.rowHeight,
+    required this.rowTextStyle,
+    required this.rowShape,
   });
 
   List<Widget> cellsOf(BuildContext context, T item) => [
@@ -241,11 +248,18 @@ class _RecordTableFrameState<T> extends ConsumerState<RecordTableFrame<T>>
       availableWidth: width - _recordTableMargin * 2,
       columnWidths: columnWidths,
     );
+    final style = AppTextStyle.subheadline.of(context);
     return _table = RecordTable._(
       columns: columns,
       layouts: layouts,
       widths: widths,
       rowHeight: rowHeight,
+      rowTextStyle: style.copyWith(
+        color: context.colorScheme.onSurface,
+        height: _recordCellLineHeight / style.fontSize!,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+      rowShape: AppShape.all(AppCorner.fit(rowHeight)),
     );
   }
 
@@ -466,20 +480,14 @@ class RecordTableRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = context.colorScheme;
-    final style = AppTextStyle.subheadline.of(context);
-    final shape = AppShape.all(AppCorner.fit(table.rowHeight));
     final level = striped ? context.raisedSurfaceLevel : context.surfaceLevel;
     final row = PressSurface(
       fill: striped ? level.colorOf(colorScheme) : Colors.transparent,
-      shape: shape,
+      shape: table.rowShape,
       childFills: true,
       onPressed: onTap,
       child: DefaultTextStyle(
-        style: style.copyWith(
-          color: colorScheme.onSurface,
-          height: _recordCellLineHeight / style.fontSize!,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
+        style: table.rowTextStyle,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         child: TableCells(
