@@ -30,23 +30,27 @@ extension StringExtension on String {
   }
 
   dynamic get splitByMultipleSeparators {
-    final parts = <String>[];
+    List<String>? parts;
     var start = 0;
     for (var index = 0; index < length; index++) {
       final codeUnit = codeUnitAt(index);
       if (codeUnit != 0x2C && codeUnit != 0x20 && codeUnit != 0x3B) {
         continue;
       }
+      parts ??= <String>[];
       if (index > start) {
         parts.add(substring(start, index));
       }
       start = index + 1;
     }
     if (start < length) {
+      if (parts == null) {
+        return this;
+      }
       parts.add(substring(start));
     }
 
-    return parts.length > 1 ? parts : this;
+    return parts == null || parts.length <= 1 ? this : parts;
   }
 
   String get countryFlagEmoji {

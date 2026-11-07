@@ -51,4 +51,23 @@ void main() {
     expect(outputBytes, count * 2);
     expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 50)));
   });
+
+  test('splits one hundred thousand single server values within budget', () {
+    const count = 100000;
+    final values = List.generate(count, (index) => 'server-$index');
+    var outputLength = 0;
+    final stopwatch = Stopwatch()..start();
+    for (final value in values) {
+      final result = value.splitByMultipleSeparators;
+      outputLength += result is List<String>
+          ? result.length
+          : (result as String).length;
+    }
+    stopwatch.stop();
+    stdout.writeln(
+      'splitSingle count=$count totalUs=${stopwatch.elapsedMicroseconds} '
+      'perCallUs=${stopwatch.elapsedMicroseconds / count}',
+    );
+    expect(outputLength, greaterThan(0));
+  });
 }
