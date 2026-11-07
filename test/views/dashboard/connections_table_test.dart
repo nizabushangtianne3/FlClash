@@ -37,6 +37,8 @@ TrackerInfo _connection(
   );
 }
 
+String _tcpNetwork(int index) => index < 12 ? 'tcp' : 'udp';
+
 TrackerInfo _request(String host, int download) {
   return TrackerInfo(
     id: host,
@@ -146,20 +148,24 @@ void main() {
     await teardown(tester);
   });
 
-  testWidgets('the table keeps the newest rows, sorts every connection and '
-      'counts them all', (tester) async {
+  Future<ProviderContainer> pumpLiveCard(
+    WidgetTester tester,
+    Locale locale, {
+    int count = 20,
+    String Function(int) networkOf = _tcpNetwork,
+  }) async {
     final core = _MockCore();
     when(() => core.getConnections(resync: any(named: 'resync'))).thenAnswer(
       (_) async => ConnectionDelta(
         added: [
-          for (var index = 0; index < 150; index++)
+          for (var index = 0; index < count; index++)
             _connection(
               index,
-              network: index < 130 ? 'tcp' : 'udp',
+              network: networkOf(index),
               download: index == 0 ? 1 << 30 : index,
             ),
         ],
-        count: 150,
+        count: count,
       ),
     );
     final connections = ProviderContainer(
@@ -181,8 +187,9 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: connections,
-        child: const TestApp(
-          child: HostScaffold(
+        child: TestApp(
+          locale: locale,
+          child: const HostScaffold(
             body: SizedBox(
               width: 960,
               height: 600,
@@ -198,6 +205,17 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
+    return connections;
+  }
+
+  testWidgets('the table keeps the newest rows, sorts every connection and '
+      'counts them all', (tester) async {
+    await pumpLiveCard(
+      tester,
+      const Locale('en'),
+      count: 150,
+      networkOf: (index) => index < 130 ? 'tcp' : 'udp',
+    );
 
     expect(find.text('TCP 130'), findsOneWidget);
     expect(find.text('UDP 20'), findsOneWidget);
@@ -217,58 +235,30 @@ void main() {
   testWidgets('counts a protocol whatever case the Core reports it in', (
     tester,
   ) async {
-    final core = _MockCore();
-    when(() => core.getConnections(resync: any(named: 'resync'))).thenAnswer(
-      (_) async => ConnectionDelta(
-        added: [
-          for (var index = 0; index < 20; index++)
-            _connection(index, network: index < 12 ? 'TCP' : 'Udp'),
-        ],
-        count: 20,
-      ),
+    await pumpLiveCard(
+      tester,
+      const Locale('en'),
+      networkOf: (index) => index < 12 ? 'TCP' : 'Udp',
     );
-    final connections = ProviderContainer(
-      overrides: [
-        profilesProvider.overrideWith(TestProfiles.new),
-        coreHandlerProvider.overrideWithValue(CoreController.scoped(core)),
-        coreStatusProvider.overrideWithBuild((_, _) => CoreStatus.connected),
-      ],
-    );
-    addTearDown(connections.dispose);
-    globalState.container = connections;
-    const size = Size(1000, 700);
-    connections.read(viewSizeProvider.notifier).value = size;
-    tester.view.physicalSize = size;
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: connections,
-        child: const TestApp(
-          child: HostScaffold(
-            body: SizedBox(
-              width: 960,
-              height: 600,
-              child: DashboardDensityScope(
-                density: DashboardDensity.standard,
-                scale: 1,
-                child: ConnectionsTableCard(),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
 
     expect(find.text('TCP 12'), findsOneWidget);
     expect(find.text('UDP 8'), findsOneWidget);
     expect(
       topOf(tester, 'host-19.test'),
       lessThan(topOf(tester, 'host-16.test')),
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('a counter-only update keeps the rows and their order', (
+    tester,
+  ) async {
+    final connections = await pumpLiveCard(
+      tester,
+      const Locale('en'),
+      networkOf: (index) => index < 12 ? 'TCP' : 'Udp',
     );
 
     connections.read(connectionsProvider.notifier).updateTraffic(const {
@@ -280,6 +270,25 @@ void main() {
       topOf(tester, 'host-19.test'),
       lessThan(topOf(tester, 'host-16.test')),
     );
+    expect(find.text('TCP 12'), findsOneWidget);
+    expect(find.text('UDP 8'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('the card table takes its columns from the locale', (
+    tester,
+  ) async {
+    await pumpLiveCard(tester, const Locale('en'));
+    expect(find.text('Download'), findsOneWidget);
+    expect(find.text('host-19.test'), findsOneWidget);
+
+    // The columns are held per width and locale, so this has to reach them.
+    await pumpLiveCard(tester, const Locale('zh', 'CN'));
+    expect(find.text('下载'), findsOneWidget);
+    expect(find.text('Download'), findsNothing);
+    expect(find.text('host-19.test'), findsOneWidget);
     expect(find.text('TCP 12'), findsOneWidget);
     expect(find.text('UDP 8'), findsOneWidget);
 

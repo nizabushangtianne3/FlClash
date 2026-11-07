@@ -5,6 +5,7 @@ import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/method.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/features/features.dart';
+import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/app.dart';
 import 'package:fl_clash/providers/core.dart';
@@ -420,21 +421,23 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
                 tableId: 'dashboard.connections',
                 items: connections,
                 rowHeight: rowHeight,
-                columnsOf: (width) => _connectionColumns(context, width),
+                columnsOf: _connectionColumns,
               ),
               DashboardFeed.requests => _Table<TrackerInfo>(
                 key: const ValueKey(DashboardFeed.requests),
                 tableId: 'dashboard.requests',
                 items: _requests,
                 rowHeight: rowHeight,
-                columnsOf: (_) => _requestColumns(context),
+                columnsOf: (appLocalizations, _) =>
+                    _requestColumns(appLocalizations),
               ),
               DashboardFeed.dns => _Table<DnsQuery>(
                 key: const ValueKey(DashboardFeed.dns),
                 tableId: 'dashboard.dns',
                 items: _queries,
                 rowHeight: rowHeight,
-                columnsOf: (_) => _dnsColumns(context),
+                columnsOf: (appLocalizations, _) =>
+                    _dnsColumns(appLocalizations),
               ),
             },
           ),
@@ -515,7 +518,14 @@ class _Table<T> extends ConsumerStatefulWidget {
   final String tableId;
   final List<T> items;
   final double rowHeight;
-  final List<RecordColumn<T>> Function(double width) columnsOf;
+
+  /// Built from the locale and the width, so a card table can hold on to the
+  /// columns it already built for that pair.
+  final List<RecordColumn<T>> Function(
+    AppLocalizations appLocalizations,
+    double width,
+  )
+  columnsOf;
 
   @override
   ConsumerState<_Table<T>> createState() => _TableState<T>();
@@ -525,9 +535,35 @@ class _TableState<T> extends ConsumerState<_Table<T>>
     with TableColumnWidthsMixin<_Table<T>> {
   final _sorter = RecordSorter<T>();
   RecordSort? _sort;
+  ({
+    List<RecordColumn<T>> columns,
+    List<TableColumn> layouts,
+    List<double> widths,
+  })?
+  _table;
+  Object? _tableInputs;
 
   @override
   String get tableId => widget.tableId;
+
+  ({
+    List<RecordColumn<T>> columns,
+    List<TableColumn> layouts,
+    List<double> widths,
+  })
+  _tableOf(AppLocalizations appLocalizations, double width) {
+    final inputs = (width, columnWidths, Localizations.localeOf(context));
+    final table = _table;
+    if (table != null && inputs == _tableInputs) {
+      return table;
+    }
+    _tableInputs = inputs;
+    return _table = recordTableColumns(
+      columnsOf: (width) => widget.columnsOf(appLocalizations, width),
+      availableWidth: width,
+      columnWidths: columnWidths,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -535,12 +571,9 @@ class _TableState<T> extends ConsumerState<_Table<T>>
     final rowHeight = widget.rowHeight;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = widget.columnsOf(constraints.maxWidth);
-        final layouts = [for (final column in columns) column.layout];
-        final widths = tableColumnWidths(
-          layouts,
+        final (:columns, :layouts, :widths) = _tableOf(
+          context.appLocalizations,
           constraints.maxWidth,
-          columnWidths,
         );
         final sorted = _sorter.sort(widget.items, columns, _sort);
         final items = sorted.length > _maxFeedRows
@@ -742,10 +775,9 @@ String _exitKey(TrackerInfo info) =>
     (info.chains.firstOrNull ?? '').toLowerCase();
 
 List<RecordColumn<TrackerInfo>> _connectionColumns(
-  BuildContext context,
+  AppLocalizations appLocalizations,
   double width,
 ) {
-  final appLocalizations = context.appLocalizations;
   final mid = width >= _midTableWidth;
   final wide = width >= _wideTableWidth;
   return [
@@ -824,8 +856,9 @@ List<RecordColumn<TrackerInfo>> _connectionColumns(
   ];
 }
 
-List<RecordColumn<TrackerInfo>> _requestColumns(BuildContext context) {
-  final appLocalizations = context.appLocalizations;
+List<RecordColumn<TrackerInfo>> _requestColumns(
+  AppLocalizations appLocalizations,
+) {
   return [
     RecordColumn(
       TableColumn('time', appLocalizations.time, width: 76),
@@ -862,8 +895,7 @@ List<RecordColumn<TrackerInfo>> _requestColumns(BuildContext context) {
   ];
 }
 
-List<RecordColumn<DnsQuery>> _dnsColumns(BuildContext context) {
-  final appLocalizations = context.appLocalizations;
+List<RecordColumn<DnsQuery>> _dnsColumns(AppLocalizations appLocalizations) {
   return [
     RecordColumn(
       TableColumn('time', appLocalizations.time, width: 76),

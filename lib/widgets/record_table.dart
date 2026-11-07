@@ -235,17 +235,16 @@ class _RecordTableFrameState<T> extends ConsumerState<RecordTableFrame<T>>
     if (table != null && inputs == _tableInputs) {
       return table;
     }
-    final columns = widget.columnsOf(width);
-    final layouts = [for (final column in columns) column.layout];
     _tableInputs = inputs;
+    final (:columns, :layouts, :widths) = recordTableColumns(
+      columnsOf: widget.columnsOf,
+      availableWidth: width - _recordTableMargin * 2,
+      columnWidths: columnWidths,
+    );
     return _table = RecordTable._(
       columns: columns,
       layouts: layouts,
-      widths: tableColumnWidths(
-        layouts,
-        width - _recordTableMargin * 2,
-        columnWidths,
-      ),
+      widths: widths,
       rowHeight: rowHeight,
     );
   }
@@ -514,4 +513,25 @@ class RecordCellText extends StatelessWidget {
           : null,
     );
   }
+}
+
+/// The columns a record table shows, the layouts they hand the rows and the
+/// widths they come out at. [availableWidth] is what the table itself spans.
+({
+  List<RecordColumn<T>> columns,
+  List<TableColumn> layouts,
+  List<double> widths,
+})
+recordTableColumns<T>({
+  required List<RecordColumn<T>> Function(double width) columnsOf,
+  required double availableWidth,
+  required Map<String, double> columnWidths,
+}) {
+  final columns = columnsOf(availableWidth);
+  final layouts = [for (final column in columns) column.layout];
+  return (
+    columns: columns,
+    layouts: layouts,
+    widths: tableColumnWidths(layouts, availableWidth, columnWidths),
+  );
 }

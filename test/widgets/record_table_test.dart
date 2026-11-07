@@ -9,10 +9,53 @@ List<RecordColumn<int>> _columns(Comparable<Object> Function(int item) key) {
       cell: (_, _) => const SizedBox(),
       sortKey: key,
     ),
+    RecordColumn(
+      const TableColumn('name', 'name', flex: 2),
+      cell: (_, _) => const SizedBox(),
+      sortKey: key,
+    ),
+    RecordColumn(
+      const TableColumn('extra', 'extra', flex: 1),
+      cell: (_, _) => const SizedBox(),
+      sortKey: key,
+    ),
   ];
 }
 
 void main() {
+  group('recordTableColumns', () {
+    test('hands the rows their layouts and their widths', () {
+      final table = recordTableColumns(
+        columnsOf: (width) => _columns((item) => item),
+        availableWidth: 400,
+        columnWidths: const {},
+      );
+
+      expect(table.layouts, [
+        for (final column in table.columns) column.layout,
+      ]);
+      expect(table.columns, hasLength(3));
+      expect(table.widths, hasLength(3));
+      expect(table.widths.first, 100);
+      // The flex column takes what the fixed one leaves.
+      expect(table.widths[1], closeTo(200, 0.001));
+      expect(table.widths.last, closeTo(100, 0.001));
+      expect(table.widths.reduce((a, b) => a + b), closeTo(400, 0.001));
+    });
+
+    test('a dragged width wins over the column own', () {
+      final table = recordTableColumns(
+        columnsOf: (width) => _columns((item) => item),
+        availableWidth: 400,
+        columnWidths: const {'name': 250},
+      );
+
+      expect(table.widths.first, 100);
+      expect(table.widths[1], 250);
+      expect(table.layouts, hasLength(3));
+    });
+  });
+
   group('RecordSorter', () {
     test('keeps the source list when it is already ordered', () {
       final items = List<int>.generate(100, (index) => index);
