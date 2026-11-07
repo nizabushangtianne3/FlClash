@@ -160,6 +160,20 @@ extension StringExtension on String {
       orElse: () => '',
     );
   }
+
+  /// Matches [other] ignoring case, folding ASCII letters only and copying
+  /// neither string.
+  bool equalsIgnoreCase(String other) {
+    if (length != other.length) {
+      return false;
+    }
+    for (var index = 0; index < length; index++) {
+      if (!_sameIgnoreCase(codeUnitAt(index), other.codeUnitAt(index))) {
+        return false;
+      }
+    }
+    return true;
+  }
 }
 
 Uri? _parseWithBareAtInUserInfo(String url) {
@@ -189,6 +203,15 @@ int _pathOrFragmentStart(String url, int start) {
 bool _isSvgChar(int codeUnit, int lower) {
   return codeUnit == lower ||
       (codeUnit >= 0x41 && codeUnit <= 0x5A && codeUnit + 0x20 == lower);
+}
+
+bool _sameIgnoreCase(int left, int right) {
+  if (left == right) {
+    return true;
+  }
+  final lowerLeft = left >= 0x41 && left <= 0x5A ? left + 0x20 : left;
+  final lowerRight = right >= 0x41 && right <= 0x5A ? right + 0x20 : right;
+  return lowerLeft == lowerRight;
 }
 
 final _labelCounter = RegExp(r'\((\d{1,9})\)$');

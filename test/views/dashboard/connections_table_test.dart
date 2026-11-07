@@ -213,4 +213,77 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 2));
   });
+
+  testWidgets('counts a protocol whatever case the Core reports it in', (
+    tester,
+  ) async {
+    final core = _MockCore();
+    when(() => core.getConnections(resync: any(named: 'resync'))).thenAnswer(
+      (_) async => ConnectionDelta(
+        added: [
+          for (var index = 0; index < 20; index++)
+            _connection(index, network: index < 12 ? 'TCP' : 'Udp'),
+        ],
+        count: 20,
+      ),
+    );
+    final connections = ProviderContainer(
+      overrides: [
+        profilesProvider.overrideWith(TestProfiles.new),
+        coreHandlerProvider.overrideWithValue(CoreController.scoped(core)),
+        coreStatusProvider.overrideWithBuild((_, _) => CoreStatus.connected),
+      ],
+    );
+    addTearDown(connections.dispose);
+    globalState.container = connections;
+    const size = Size(1000, 700);
+    connections.read(viewSizeProvider.notifier).value = size;
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: connections,
+        child: const TestApp(
+          child: HostScaffold(
+            body: SizedBox(
+              width: 960,
+              height: 600,
+              child: DashboardDensityScope(
+                density: DashboardDensity.standard,
+                scale: 1,
+                child: ConnectionsTableCard(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('TCP 12'), findsOneWidget);
+    expect(find.text('UDP 8'), findsOneWidget);
+    expect(
+      topOf(tester, 'host-19.test'),
+      lessThan(topOf(tester, 'host-16.test')),
+    );
+
+    connections.read(connectionsProvider.notifier).updateTraffic(const {
+      '0': (upload: 99, download: 99),
+    });
+    await tester.pump();
+
+    expect(
+      topOf(tester, 'host-19.test'),
+      lessThan(topOf(tester, 'host-16.test')),
+    );
+    expect(find.text('TCP 12'), findsOneWidget);
+    expect(find.text('UDP 8'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 2));
+  });
 }

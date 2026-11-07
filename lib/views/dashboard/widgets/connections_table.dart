@@ -161,20 +161,26 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
     }
     final next = [...snapshot.connections]
       ..sort((a, b) => b.start.compareTo(a.start));
-    var tcp = 0;
-    for (final item in next) {
-      if (item.metadata.network.toLowerCase() == 'tcp') {
-        tcp++;
-      }
-    }
+    final (:tcp, :udp) = liveProtocolSplit(next);
     updateWhenRouteSettled(
       () => setState(() {
         connections = next;
         tcpCount = tcp;
-        udpCount = next.length - tcp;
+        udpCount = udp;
       }),
     );
   }
+}
+
+/// Splits the live table by protocol for the summary cards.
+({int tcp, int udp}) liveProtocolSplit(List<TrackerInfo> rows) {
+  var tcp = 0;
+  for (final row in rows) {
+    if (row.metadata.network.equalsIgnoreCase('tcp')) {
+      tcp++;
+    }
+  }
+  return (tcp: tcp, udp: rows.length - tcp);
 }
 
 /// Follows a counter the Core moves per event, at the cadence the feed's own

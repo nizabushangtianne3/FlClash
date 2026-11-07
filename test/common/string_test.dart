@@ -224,4 +224,25 @@ void main() {
       expect(''.take(3), '');
     });
   });
+
+  group('StringExtension.equalsIgnoreCase', () {
+    test('matches a string whatever case it is written in', () {
+      expect('tcp'.equalsIgnoreCase('tcp'), isTrue);
+      expect('tcp'.equalsIgnoreCase('TCP'), isTrue);
+      expect('TcP'.equalsIgnoreCase('tcp'), isTrue);
+      expect(''.equalsIgnoreCase(''), isTrue);
+    });
+
+    test('rejects a different length or a different character', () {
+      expect('tcp'.equalsIgnoreCase('tcps'), isFalse);
+      expect('tcp'.equalsIgnoreCase('udp'), isFalse);
+      expect('tcp'.equalsIgnoreCase('tcq'), isFalse);
+    });
+
+    test('leaves characters that only differ by a bit alone', () {
+      expect('@'.equalsIgnoreCase('`'), isFalse);
+      expect('['.equalsIgnoreCase('{'), isFalse);
+      expect('ä'.equalsIgnoreCase('Ä'), isFalse);
+    });
+  });
 }
