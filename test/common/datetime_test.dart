@@ -5,6 +5,43 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/test_app.dart';
 
 void main() {
+  group('DateTimeExtension.localMoment', () {
+    test('renders a UTC moment as the local time it is', () {
+      final utc = DateTime.utc(2026, 5, 27, 13, 45, 30);
+
+      expect(utc.isUtc, isTrue);
+      expect(utc.localMoment.isUtc, isFalse);
+      expect(utc.localMoment.year, 2026);
+      expect(utc.localMoment, utc.toLocal());
+    });
+
+    test('hands back a local moment untouched', () {
+      final local = DateTime(2026, 5, 27, 13, 45, 30);
+
+      expect(local.localMoment, same(local));
+    });
+
+    test('reads the rendered text of a moment the same way every time', () {
+      final utc = DateTime.utc(2026, 5, 27, 13, 45, 30);
+      final localOfUtc = utc.toLocal();
+
+      expect(utc.show, localOfUtc.show);
+      expect(utc.showTime, localOfUtc.showTime);
+      expect(utc.showFull, localOfUtc.showFull);
+      // A second read of the same moment is the same string, not a new one.
+      expect(utc.showTime, same(utc.showTime));
+      expect(utc.showFull, same(utc.showFull));
+      expect(utc.show, same(utc.show));
+    });
+
+    test('a moment one second off is not the same text', () {
+      final utc = DateTime.utc(2026, 5, 27, 13, 45, 30);
+      final later = utc.add(const Duration(seconds: 1));
+
+      expect(later.showTime, isNot(same(utc.showTime)));
+    });
+  });
+
   group('DateTimeExtension', () {
     test('detects dates before now', () {
       expect(

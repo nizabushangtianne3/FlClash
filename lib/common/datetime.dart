@@ -2,7 +2,22 @@ import 'package:flutter/widgets.dart';
 
 import 'context.dart';
 
+/// The Core timestamps everything in UTC, and a table row reads the same
+/// moment on every rebuild, so a UTC moment keeps both the local reading of
+/// itself and the text that reading renders. One already local is read as it
+/// is, which is the one-shot path a log takes.
+final _localMoments = Expando<DateTime>();
+final _showDates = Expando<String>();
+final _showFulls = Expando<String>();
+final _showTimes = Expando<String>();
+
 extension DateTimeExtension on DateTime {
+  /// Reads a UTC moment in the local zone; a local one is already that.
+  DateTime get localMoment {
+    var cached = _localMoments[this];
+    return cached ??= (isUtc ? toLocal() : this);
+  }
+
   bool get isBeforeNow {
     return isBefore(DateTime.now());
   }
@@ -60,14 +75,35 @@ extension DateTimeExtension on DateTime {
   }
 
   String get show {
-    final local = isUtc ? toLocal() : this;
-    return '${local.year.toString().padLeft(4, '0')}-'
-        '${local.month.toString().padLeft(2, '0')}-'
-        '${local.day.toString().padLeft(2, '0')}';
+    final cached = _showDates[this];
+    if (cached != null) {
+      return cached;
+    }
+    return _showDates[this] = _dateOf(localMoment);
   }
 
   String get showFull {
-    final local = isUtc ? toLocal() : this;
+    final cached = _showFulls[this];
+    if (cached != null) {
+      return cached;
+    }
+    return _showFulls[this] = _fullOf(localMoment);
+  }
+
+  String get showTime {
+    final cached = _showTimes[this];
+    if (cached != null) {
+      return cached;
+    }
+    return _showTimes[this] = _timeOf(localMoment);
+  }
+
+  String _dateOf(DateTime local) =>
+      '${local.year.toString().padLeft(4, '0')}-'
+      '${local.month.toString().padLeft(2, '0')}-'
+      '${local.day.toString().padLeft(2, '0')}';
+
+  String _fullOf(DateTime local) {
     final year = local.year.toString().padLeft(4, '0');
     final month = local.month.toString().padLeft(2, '0');
     final day = local.day.toString().padLeft(2, '0');
@@ -77,12 +113,10 @@ extension DateTimeExtension on DateTime {
     return '$year-$month-$day $hour:$minute:$second';
   }
 
-  String get showTime {
-    final local = isUtc ? toLocal() : this;
-    return ' ${local.hour.toString().padLeft(2, '0')}:'
-        '${local.minute.toString().padLeft(2, '0')}:'
-        '${local.second.toString().padLeft(2, '0')}';
-  }
+  String _timeOf(DateTime local) =>
+      ' ${local.hour.toString().padLeft(2, '0')}:'
+      '${local.minute.toString().padLeft(2, '0')}:'
+      '${local.second.toString().padLeft(2, '0')}';
 }
 
 String getDateStringLast2(int value) {
