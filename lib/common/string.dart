@@ -239,11 +239,20 @@ String uniqueLabelFor(
 
 extension StringNullExt on String? {
   String takeFirstValid(List<String?> others, {String defaultValue = ''}) {
-    if (this != null && this!.trim().isNotEmpty) return this!.trim();
+    final self = this;
+    if (self != null) {
+      final trimmed = self.trim();
+      if (trimmed.isNotEmpty) {
+        return trimmed;
+      }
+    }
 
     for (final s in others) {
-      if (s != null && s.trim().isNotEmpty) {
-        return s.trim();
+      if (s != null) {
+        final trimmed = s.trim();
+        if (trimmed.isNotEmpty) {
+          return trimmed;
+        }
       }
     }
     return defaultValue;

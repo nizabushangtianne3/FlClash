@@ -645,6 +645,39 @@ void main() {
       expect(groups.first.all.map((proxy) => proxy.name), ['fast', 'untested']);
     });
 
+    test(
+      'hides a timed-out proxy inside a nested group and keeps the group',
+      () {
+        const inner = Group(
+          name: 'inner',
+          type: GroupType.Selector,
+          testUrl: 'https://inner.test',
+          all: [
+            Proxy(name: 'deep', type: 'ss'),
+            Proxy(name: 'deepSlow', type: 'ss'),
+          ],
+        );
+        const outer = Group(
+          name: 'outer',
+          type: GroupType.Selector,
+          all: [
+            Proxy(name: 'leaf', type: 'ss'),
+            Proxy(name: 'leafSlow', type: 'ss'),
+          ],
+        );
+        final groups = hide(
+          groups: [outer, inner],
+          delayMap: {
+            'https://inner.test': {'deep': 90, 'deepSlow': -1},
+            defaultTestUrl: {'leaf': 90, 'leafSlow': -1},
+          },
+        );
+        expect(groups.first.all.map((proxy) => proxy.name), ['leaf']);
+        // The inner group is itself a member of outer, so it is kept as a group.
+        expect(groups.last.all.map((proxy) => proxy.name), ['deep']);
+      },
+    );
+
     test("reads a group's own test url", () {
       const withTestUrl = Group(
         name: 'sel',

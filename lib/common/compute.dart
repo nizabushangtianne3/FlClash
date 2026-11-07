@@ -219,7 +219,6 @@ List<Group> computeHideTimeout({
     return groups;
   }
   final groupsByName = groupsByNameFor(allGroups);
-  final realStates = <String, SelectedProxyState>{};
   final proxyTypes = _proxyTypesFor(allGroups);
   List<Group>? nextGroups;
   for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
@@ -237,18 +236,12 @@ List<Group> computeHideTimeout({
       if (proxy.name == selectedName || groupsByName.containsKey(proxy.name)) {
         return true;
       }
-      final state = realStates[proxy.name] ??= computeRealSelectedProxyState(
-        proxy.name,
-        groups: allGroups,
-        groupsByName: groupsByName,
-        selectedMap: selectedMap,
-        cache: realStates,
-      );
-      if (_unprobeableProxyTypes.contains(proxyTypes[state.proxyName])) {
+      // What reaches here is not a group, so it resolves to itself: the delay
+      // measured for its own name under the group's test url is its own.
+      if (_unprobeableProxyTypes.contains(proxyTypes[proxy.name])) {
         return true;
       }
-      final testUrl = state.testUrl.takeFirstValid([groupTestUrl]);
-      final delay = delayMap[testUrl]?[state.proxyName];
+      final delay = delayMap[groupTestUrl]?[proxy.name];
       return delay == null || delay > 0;
     }
 
