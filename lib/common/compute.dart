@@ -4,6 +4,9 @@ import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 
+/// A test url nobody measured answers no delay for any name.
+const _noDelays = <String, int?>{};
+
 int _delaySortPriority(int delay) => switch (delay) {
   > 0 => 0,
   0 => 1,
@@ -51,12 +54,21 @@ List<Group> computeSort({
     final delays = Int64List(count);
     final flags = Uint8List(count);
     for (var index = 0; index < count; index++) {
-      final realState = realStateFor(proxies[index].name);
-      final stateTestUrl = realState.testUrl.takeFirstValid([testUrl]);
-      final delay = delayMap[stateTestUrl]?[realState.proxyName] ?? 0;
+      final proxyName = proxies[index].name;
+      // A proxy that is not a group resolves to itself: its delay is the one
+      // measured for its own name under the group's test url.
+      final realState = groupsByName[proxyName] == null
+          ? null
+          : realStateFor(proxyName);
+      final delay = realState == null
+          ? (delayMap[testUrl] ?? _noDelays)[proxyName] ?? 0
+          : (delayMap[realState.testUrl.takeFirstValid([testUrl])] ??
+                    _noDelays)[realState.proxyName] ??
+                0;
       delays[index] = delay;
       flags[index] =
-          _delaySortPriority(delay) | (realState.group ? _groupFlag : 0);
+          _delaySortPriority(delay) |
+          (realState?.group == true ? _groupFlag : 0);
     }
 
     int compareDelayStates(int left, int right) {

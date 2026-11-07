@@ -336,6 +336,41 @@ void main() {
       ]);
     });
 
+    test("reads a nested group's own test url for its pick", () {
+      const outer = Group(
+        name: 'outer',
+        type: GroupType.Selector,
+        all: [
+          Proxy(name: 'a', type: 'ss'),
+          Proxy(name: 'inner', type: 'Selector'),
+        ],
+      );
+      const inner = Group(
+        name: 'inner',
+        type: GroupType.Selector,
+        testUrl: 'http://inner.test',
+        now: 'pick',
+        all: [Proxy(name: 'pick', type: 'ss')],
+      );
+      final result = computeSort(
+        groups: [outer, inner],
+        sortType: ProxiesSortType.delay,
+        delayMap: {
+          'http://test.com': {'a': 50, 'pick': 999},
+          'http://inner.test': {'pick': 10},
+        },
+        selectedMap: {},
+        defaultTestUrl: 'http://test.com',
+      );
+
+      // The group member sorts by the delay measured under its own url, so it
+      // leads; a leaf next to it reads the group's own test url.
+      expect(result.first.all.map((proxy) => proxy.name).toList(), [
+        'inner',
+        'a',
+      ]);
+    });
+
     test('preserves group count in result', () {
       final multiGroups = [
         ...groups,
