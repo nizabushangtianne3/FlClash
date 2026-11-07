@@ -590,6 +590,53 @@ void main() {
     });
 
     test(
+      'testing a group probes the pick of a nested group under its url',
+      () async {
+        const innerUrl = 'http://inner.test';
+        when(() => core.testDelay(any())).thenAnswer(
+          (invocation) async => Delay(
+            url: (invocation.positionalArguments[0] as TestDelayParams).testUrl,
+            name: (invocation.positionalArguments[0] as TestDelayParams)
+                .proxyName,
+            value: 10,
+          ),
+        );
+        final container = _delayContainer(buildContainer);
+
+        container
+            .read(groupsProvider.notifier)
+            .update(
+              (_) => [
+                _group('Outer', const [
+                  _proxy,
+                  Proxy(name: 'Nested', type: 'Selector'),
+                ]),
+                const Group(
+                  type: GroupType.Selector,
+                  name: 'Nested',
+                  testUrl: innerUrl,
+                  now: 'HK-02',
+                  all: [Proxy(name: 'HK-02', type: 'ss')],
+                ),
+              ],
+            );
+
+        await actionOf(container).delayTestGroups([
+          _group('Outer', const [
+            _proxy,
+            Proxy(name: 'Nested', type: 'Selector'),
+          ]),
+        ]);
+
+        // The nested group is a member of the outer one, so the outer group's
+        // test asks for the pick of the nested group under the nested url.
+        verify(() => core.testDelay(_delayTest(_testUrl, 'HK-01'))).called(1);
+        verify(() => core.testDelay(_delayTest(innerUrl, 'HK-02'))).called(1);
+        verifyNever(() => core.testDelay(_delayTest(_testUrl, 'Nested')));
+      },
+    );
+
+    test(
       'testing a page group probes the nodes the timeout filter hides',
       () async {
         when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer(

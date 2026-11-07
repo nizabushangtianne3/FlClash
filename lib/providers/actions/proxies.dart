@@ -660,23 +660,30 @@ class ProxiesAction extends _$ProxiesAction {
         if (isUnprobeableProxyType(proxy.type)) {
           continue;
         }
-        final state = realStates[proxy.name] ??= computeRealSelectedProxyState(
-          proxy.name,
-          groups: groups,
-          groupsByName: groupsByName,
-          selectedMap: selectedMap,
-        );
-        if (state.proxyName.isEmpty) {
+        // A proxy that is not a group resolves to itself: its delay is the one
+        // measured for its own name under the batch's test url.
+        final state = groupsByName[proxy.name] == null
+            ? null
+            : realStates[proxy.name] ??= computeRealSelectedProxyState(
+                proxy.name,
+                groups: groups,
+                groupsByName: groupsByName,
+                selectedMap: selectedMap,
+              );
+        final proxyName = state?.proxyName ?? proxy.name;
+        if (proxyName.isEmpty) {
           continue;
         }
-        final currentTestUrl = state.testUrl.takeFirstValid([fallbackTestUrl]);
-        final key = delayTestKey(currentTestUrl, state.proxyName);
+        final currentTestUrl = state == null
+            ? fallbackTestUrl
+            : state.testUrl.takeFirstValid([fallbackTestUrl]);
+        final key = delayTestKey(currentTestUrl, proxyName);
         if (!seen.add(key)) {
           continue;
         }
         targets.add(
           _DelayTestTarget(
-            proxyName: state.proxyName,
+            proxyName: proxyName,
             testUrl: currentTestUrl,
             key: key,
           ),
