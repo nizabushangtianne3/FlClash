@@ -22,9 +22,9 @@ const _isolatedMatchCount = 1000;
 final _searchTexts = Expando<String>();
 
 List<IconNameMatch> _matchIconNames(
-  ({List<String> names, String target}) input,
+  ({List<IconSetIcon> icons, String target}) input,
 ) {
-  return matchIconNames(input.names, input.target);
+  return matchIconNames(input.icons, input.target);
 }
 
 class _IconSource {
@@ -109,7 +109,7 @@ class _IconPickerViewState extends ConsumerState<IconPickerView> {
     var matches = const <IconNameMatch>[];
     try {
       matches = await compute(_matchIconNames, (
-        names: [for (final icon in icons) icon.name],
+        icons: icons,
         target: widget.groupName,
       ));
     } catch (e) {

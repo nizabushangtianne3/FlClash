@@ -1009,10 +1009,14 @@ abstract class IconSetIcon with _$IconSetIcon {
 }
 
 final _iconLabels = Expando<String>();
+final _iconCompactNames = Expando<String>();
 final _nonAlphanumeric = RegExp('[^a-z0-9]');
 
 extension IconSetIconExt on IconSetIcon {
   String get label => _iconLabels[this] ??= name.fileStem.replaceAll('_', ' ');
+
+  String get compactName =>
+      _iconCompactNames[this] ??= _compactIconName(name.fileStem);
 }
 
 String _compactIconName(String value) =>
@@ -1023,14 +1027,14 @@ typedef IconNameMatch = ({int index, int score, int length});
 typedef ScoredIcon = ({IconSetIcon icon, int score, int length});
 
 /// English only: a name with no Latin letters or digits matches nothing.
-List<IconNameMatch> matchIconNames(List<String> names, String target) {
+List<IconNameMatch> matchIconNames(List<IconSetIcon> icons, String target) {
   final compactTarget = _compactIconName(target);
   if (compactTarget.isEmpty) {
     return const [];
   }
   final matches = <IconNameMatch>[];
-  for (final (index, name) in names.indexed) {
-    final compact = _compactIconName(name.fileStem);
+  for (final (index, icon) in icons.indexed) {
+    final compact = icon.compactName;
     if (compact.isEmpty) {
       continue;
     }
@@ -1073,7 +1077,7 @@ extension IconSetIconsExt on List<IconSetIcon> {
   ];
 
   List<ScoredIcon> scoreFor(String name) =>
-      scoredBy(matchIconNames([for (final icon in this) icon.name], name));
+      scoredBy(matchIconNames(this, name));
 }
 
 @freezed
