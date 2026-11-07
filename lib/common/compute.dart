@@ -50,6 +50,7 @@ List<Group> computeSort({
   }
 
   List<Proxy> sortOfDelay(List<Proxy> proxies, String testUrl) {
+    final fallbackDelays = delayMap[testUrl];
     final count = proxies.length;
     final delays = Int64List(count);
     final flags = Uint8List(count);
@@ -61,7 +62,7 @@ List<Group> computeSort({
           ? null
           : realStateFor(proxyName);
       final delay = realState == null
-          ? (delayMap[testUrl] ?? _noDelays)[proxyName] ?? 0
+          ? (fallbackDelays ?? _noDelays)[proxyName] ?? 0
           : (delayMap[realState.testUrl.takeFirstValid([testUrl])] ??
                     _noDelays)[realState.proxyName] ??
                 0;
@@ -237,6 +238,7 @@ List<Group> computeHideTimeout({
     final group = groups[groupIndex];
     final groupTestUrl = group.testUrl.takeFirstValid([defaultTestUrl]);
     final groupWithNow = groupsByName[group.name] ?? group;
+    final delays = delayMap[groupTestUrl];
     final selectedName = _coreSelectedName(
       groupWithNow,
       selectedMap[group.name] ?? '',
@@ -253,7 +255,7 @@ List<Group> computeHideTimeout({
       if (_unprobeableProxyTypes.contains(proxyTypes[proxy.name])) {
         return true;
       }
-      final delay = delayMap[groupTestUrl]?[proxy.name];
+      final delay = delays?[proxy.name];
       return delay == null || delay > 0;
     }
 

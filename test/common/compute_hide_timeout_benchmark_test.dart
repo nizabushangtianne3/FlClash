@@ -29,7 +29,7 @@ void main() {
       testUrl: {for (final proxy in all) proxy.name: 100},
     };
 
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 50; i++) {
       computeHideTimeout(
         groups: groups,
         allGroups: groups,

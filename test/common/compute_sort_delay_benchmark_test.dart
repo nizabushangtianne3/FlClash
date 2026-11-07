@@ -30,7 +30,7 @@ void main() {
       },
     };
 
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 50; i++) {
       computeSort(
         groups: groups,
         sortType: ProxiesSortType.delay,
@@ -79,7 +79,7 @@ void main() {
       testUrl: const {'fast': 50, 'slow': 500},
     };
 
-    for (var i = 0; i < 10; i++) {
+    for (var i = 0; i < 50; i++) {
       computeSort(
         groups: sortedGroups,
         sortType: ProxiesSortType.delay,
