@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-07
-- FlClash main：`7d6ba453`
+- FlClash main：`7b847d6a`
 - Clash.Meta main：`1ad9b1a8a`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -343,6 +343,7 @@
 | TrackerSpeedRanker scratch TypedData 复用 | `test/features/tracker_speed_ranker_benchmark_test.dart` JIT n=7：均值 8.37ms/中位 8.24ms → 8.36ms/中位 8.26ms（时间 -0.11%/+0.22%，无收益，且新增重复初始化代码）。Dart 对小型 TypedData 分配成本低，节省的分配被 fillRange/清理抵消；撤销，保留已落地的 int32 索引与 positions map 复用。 |
 | `CoreEventManager` request/DNS filter 内联 | `test/core/event_dispatch_benchmark_test.dart` JIT n=7：request 均值 2.621µs/中位 2.624µs → 2.669µs/2.650µs（**+1.84%/+1.00%**），log 均值 5.023µs/中位 5.014µs → 5.081µs/5.081µs（**+1.15%/+1.34%**）。单个 listener 下手写双层过滤比 `_filterFor` + `.any` 更慢，无收益；撤销。 |
 | `Connections` 发布即按 start 倒序 + 仪表盘 feed 免 copy/sort | 设想：把“最新在前”下沉到 provider，`_merge` 只在增删行时重建有序 map，`_showConnections` 不再 copy+sort。`test/views/dashboard/connections_feed_benchmark_test.dart` JIT n=7（300 行）实测：feed 准备均值 19.90µs/中位 20.00µs → 3.65µs/3.64µs（**-81.7%**），但 provider 结构变化发布均值 117.79µs → 175.20µs（**+48.7%**，entries.toList + sort + map 重建）。feed 刷新受 `renderThrottleDuration`（300ms）限制，最多约 3.3 次/秒，而结构变化发布随 1 秒轮询发生：按 1 次发布 + 3.3 次更新/秒算是 171.6µs → 187.1µs（**+9.0%**），更新更少时最多 +48.7%，无明确收益；已撤销 provider 改动并保留 feed 的 copy+sort。若将来要落地，需改为“保留已排序 id 列表 + 增量插入/合并”（O(n+k log k)）后重新配对测量，不要直接整表重排。 |
+| 表格单元格文字样式按 ColorScheme 缓存（`Expando`） | 设想：`RecordCellText`/`_Muted`/`_Number` 每次重建都为 muted 样式新建 `TextStyle`。改用 `context.mutedTextStyle` + `Expando<TextStyle>` 按主题缓存后，`test/widgets/row_cells_benchmark_test.dart` 同 session 配对测量（n=5，500 行 ×500 次 cellsOf）：1415ns/行 → 1403ns/行（**-0.9%**，噪声内）。Dart 小对象分配很便宜，`Expando` 查找加 `context.colorScheme` 继承查找与新建一个 TextStyle 同价；已撤销，保留原逐单元格构造 |
 | `FixedList.updateByKey` 改 `entries` 循环 | `test/providers/requests_update_benchmark_test.dart` JIT n=7：perBatchUs 均值 31.57/中位 32 → 31.71/32（**+0.44%/0%**）。省掉的 `forEach` 闭包被 `entries` 入口迭代抵消，无收益；撤销，保留原 `Map.forEach` 形状。 |
 
 ## 4. 当前验证矩阵
@@ -378,7 +379,7 @@ dart run tool/test.dart   # exit 0
 | 实时连接 feed 的 `[...snapshot.connections]..sort(start 倒序)` | 300 行约 11.5µs/更新，`renderThrottleDuration`(300ms) 限制最多约 3.3 次/秒 | **维持不做（2026-11-07 二次测量）**：provider 下沉整表重排已否决（见第 3 节）；换成“缓存排序结果 + 按行 map 查询重组”也要每行一次 map 查询重建输出列表（实测 `FixedList.updateByKey` 52ns/行，300 行约 15µs），与整表排序持平、无净收益。真正的剩余成本已变成每次刷新重建 20 行 ×8 列的 widget（行文字/形状与菜单本轮已优化），要再降只能自绘表格 |
 | `RecordFacet.optionsOf` 计数 | requests 页 500 行 ×3 个 offered facet ≈ 82µs/次；单 facet 500 行 ≈ 31µs，其中每行 `valuesOf` 列表分配只占约 3µs（const 对照 33.6µs vs 30.9µs） | 成本在 map 计数本身（约 55ns/行/facet）。本想加「同一列表实例跳过重算」，但三个调用点（requests/dns/logs）都由 `throttler.call(..., renderThrottleDuration)` 驱动，只有新数据到达才触发，列表必然已变，命中率为 0；不做 |
 | `RecordSorter.sort` 乱序路径 | 10000 行 ×1000 次同 `record_sorter_benchmark_test.dart`；`Expando` 缓存 sortKey 无效（见第 3 节） | 剩余可省的是 `order`+`sorted` 两个列表，需 in-place 置换且不能改调用方列表；上次尝试写反已回退，先写语义测试再上基准 |
-| 表格行单元格每帧构串（剩余，均已实测到地板） | `metadata.network.toUpperCase()` 24ns/行；`trackerDurationText(...)` 221ns/行（按秒分桶缓存可省 ~200ns/行，≈11µs/s，不划算，`DateTime.now()` 每次仅 37ns）；`_shownInList` 每行 5 元素列表；`start.showTime` 原 4.42µs/行，已随 UTC 时刻缓存落地 | 剩余单项都是百 ns 级，累计远低于帧预算；要改需先做帧级采样证明 |
+| 表格行单元格构建（`toUpperCase`、时长文本、`dashboardTraffic` 格式化与单元格 widget） | `test/widgets/row_cells_benchmark_test.dart` JIT n=5（500 行 ×500 次 `RecordTable.cellsOf`）：约 1.40µs/行，其中约一半是 `traffic`/`trackerDurationText` 的字符串格式化，约一半是单元格 widget；20 行可见表格每次刷新约 28µs | 单项拆分已到地板（样式缓存方案见第 3 节，已否决）。再降只剩两条路：按列声明「单元格读什么」做 per-column memo（counter-only 刷新跳过描述性列，约省 40%），或自绘表格 render object（无逐单元格 widget 树）；两者都要动 `RecordColumn`/`TableCells` 的公共 API，风险高于收益，先留基准 |
 | `SpeedCard` 每帧对全部 speed 样本 fold 求 peak | 约 60 样本/帧 | 收益过小，记账备查 |
 | core/Clash.Meta 侧 P1/P2/P4 | 见下文各小节 | DNS 负回复、本地 DNS serve 全链、UDP 首包均已实测否决或维持不做 |
 
