@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-08
-- FlClash main：`3d995515`
+- FlClash main：`dfb4d579`
 - Clash.Meta main：`1ad9b1a8a`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -351,6 +351,7 @@
 | `Connections` 发布即按 start 倒序 + 仪表盘 feed 免 copy/sort | 设想：把“最新在前”下沉到 provider，`_merge` 只在增删行时重建有序 map，`_showConnections` 不再 copy+sort。`test/views/dashboard/connections_feed_benchmark_test.dart` JIT n=7（300 行）实测：feed 准备均值 19.90µs/中位 20.00µs → 3.65µs/3.64µs（**-81.7%**），但 provider 结构变化发布均值 117.79µs → 175.20µs（**+48.7%**，entries.toList + sort + map 重建）。feed 刷新受 `renderThrottleDuration`（300ms）限制，最多约 3.3 次/秒，而结构变化发布随 1 秒轮询发生：按 1 次发布 + 3.3 次更新/秒算是 171.6µs → 187.1µs（**+9.0%**），更新更少时最多 +48.7%，无明确收益；已撤销 provider 改动并保留 feed 的 copy+sort。若将来要落地，需改为“保留已排序 id 列表 + 增量插入/合并”（O(n+k log k)）后重新配对测量，不要直接整表重排。 |
 | 表格单元格文字样式按 ColorScheme 缓存（`Expando`） | 设想：`RecordCellText`/`_Muted`/`_Number` 每次重建都为 muted 样式新建 `TextStyle`。改用 `context.mutedTextStyle` + `Expando<TextStyle>` 按主题缓存后，`test/widgets/row_cells_benchmark_test.dart` 同 session 配对测量（n=5，500 行 ×500 次 cellsOf）：1415ns/行 → 1403ns/行（**-0.9%**，噪声内）。Dart 小对象分配很便宜，`Expando` 查找加 `context.colorScheme` 继承查找与新建一个 TextStyle 同价；已撤销，保留原逐单元格构造 |
 | `FixedList.updateByKey` 改 `entries` 循环 | `test/providers/requests_update_benchmark_test.dart` JIT n=7：perBatchUs 均值 31.57/中位 32 → 31.71/32（**+0.44%/0%**）。省掉的 `forEach` 闭包被 `entries` 入口迭代抵消，无收益；撤销，保留原 `Map.forEach` 形状。 |
+| `delay`/`delayTestPhase` 去掉 `realTestUrlProvider` 家族跳，改为直接 `watch(patchClashConfigProvider.select)` | 新增 `test/providers/delay_provider_benchmark_test.dart`（1000 行 ×10 次 `refresh(delayProvider)`）三次交替配对（A=HEAD 带家族跳，B=直连 select）：A 8080833/8259448/8660959µs（均值 8333747）→ B 9154707/9247181/9358151µs（均值 9253346），**+11.0%**，三轮全慢。家族元素按参数缓存后只是一次读，`select` 订阅每次重建都要付闭包与通知器成本；撤销，保留 `realTestUrlProvider` |
 | `computeSort`/`computeHideTimeout` 把 `takeFirstValid` 的 fallback 列表提出循环 | 2026-11-08 三次交替配对（A=HEAD，B=hoist，每轮新进程）：`computeHideTimeoutGroups` 100 组 11963µs → 11561µs（**-3.4%**，但 3 个配对只有 1 个为负）、`computeSortDelaySorted` 100 组 10447µs → 11521µs（**+10.3%**）、新增的 `computeSortDelayNested`（100 组 ×10 嵌套组）45406µs → 46556µs（**+2.5%**），全部落在 ±5% 进程噪声内、无稳定收益；且实现时极易把嵌套组 fallback 从「外层组 testUrl」误提升成「全局默认 testUrl」（语义偏差，这次已由新增回归测试钉住后回退）。撤销 compute.dart 改动；本轮只落地测试增量：`test/common/compute_sort_delay_benchmark_test.dart` 新增多组/嵌套组两个场景、`test/common/compute_hide_timeout_benchmark_test.dart` 新增多组场景、`test/common/compute_test.dart` 新增「嵌套组无自己的 testUrl 时读外层组 testUrl」用例（41 例全绿） |
 
 ## 4. 当前验证矩阵
