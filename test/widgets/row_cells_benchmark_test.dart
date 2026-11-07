@@ -47,8 +47,10 @@ void main() {
           child: RecordTableFrame<TrackerInfo>(
             tableId: 'test',
             items: rows,
-            columnsOf: (width) =>
-                _columns(cellContext ??= tester.element(find.byType(SizedBox)), width),
+            columnsOf: (width) => _columns(
+              cellContext ??= tester.element(find.byType(SizedBox)),
+              width,
+            ),
             builder: (context, built, items) {
               table = built;
               cellContext ??= context;
