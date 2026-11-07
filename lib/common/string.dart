@@ -106,7 +106,21 @@ extension StringExtension on String {
     if (startsWith('data:')) {
       return startsWith('data:image/svg+xml');
     }
-    return (Uri.tryParse(this)?.path ?? this).toLowerCase().endsWith('.svg');
+    var end = length;
+    for (var index = 0; index < length; index++) {
+      final codeUnit = codeUnitAt(index);
+      if (codeUnit == 0x3F || codeUnit == 0x23) {
+        end = index;
+        break;
+      }
+    }
+    final dot = lastIndexOf('.', end - 1);
+    if (dot < 0 || end - dot != 4) {
+      return false;
+    }
+    return _isSvgChar(codeUnitAt(dot + 1), 0x73) &&
+        _isSvgChar(codeUnitAt(dot + 2), 0x76) &&
+        _isSvgChar(codeUnitAt(dot + 3), 0x67);
   }
 
   String toMd5() {
@@ -170,6 +184,11 @@ int _pathOrFragmentStart(String url, int start) {
     }
   }
   return -1;
+}
+
+bool _isSvgChar(int codeUnit, int lower) {
+  return codeUnit == lower ||
+      (codeUnit >= 0x41 && codeUnit <= 0x5A && codeUnit + 0x20 == lower);
 }
 
 final _labelCounter = RegExp(r'\((\d{1,9})\)$');

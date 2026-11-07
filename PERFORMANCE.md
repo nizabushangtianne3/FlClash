@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-07
-- FlClash main：`00ced429`
+- FlClash main：`c38f029d`
 - Clash.Meta main：`47244368e`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -187,6 +187,7 @@
 | 隐藏超时节点选中判断改缓存 | -（仅 wrapper） | 本轮提交 | `computeHideTimeout` 的 `_coreSelectedName` 不再每条组两次 `group.all.any` 线性扫成员；改用已有 `Group.containsMemberName` 成员名缓存。新增 `test/common/compute_hide_timeout_benchmark_test.dart`：JIT n=7（2000 节点健康组 ×100 次）均值 59.02ms/中位 60.00ms → 53.24ms/53.23ms（均值 **-9.79%**，中位 **-11.28%**）；`test/common/compute_test.dart`、`test/providers/proxies_action_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | 隐藏超时节点无隐藏时免建可见列表/结果组表 | -（仅 wrapper） | 本轮提交 | `computeHideTimeout` 不再先用 `where().toList()` 建可见列表再比较；只在第一次遇到被隐藏节点时才懒拷前面的可见节点，全可见直接返回原组。结果组表同样懒拷，仅实际变化的组才拷贝 `List.of(groups)`。同基准 JIT n=7：均值 53.24ms/中位 53.23ms → 47.06ms/46.86ms（均值 **-11.61%**，中位 **-11.98%**）；`test/common/compute_test.dart` 新增“一个组隐藏节点时其他组保持实例身份”，38 个用例全绿，`test/providers/proxies_action_test.dart` 与 `dart analyze --fatal-infos` 通过。
 | 无分隔符字符串 split 惰性分配 | -（仅 wrapper） | 本轮提交 | `StringExtension.splitByMultipleSeparators` 不再先分配空 `parts` 列表；仅在遇到第一个分隔符时才创建，单值字符串直接返回自身。`test/common/string_benchmark_test.dart` 新增单值场景：JIT n=7（100000 个 server）均值 16.373ms/中位 15.929ms → 13.600ms/13.608ms（均值 **-16.94%**，中位 **-14.57%**，单次调用 0.164µs → 0.136µs）；`test/common/string_test.dart` 既有 40 个 split/getBase64/url 用例全绿，`test/models/references_test.dart` 与 `dart analyze --fatal-infos` 通过 |
+| SVG 类型判断免 URI 解析/整串 lowercase | -（仅 wrapper） | 本轮提交 | `StringExtension.isSvg` 对非 data URI 不再 `Uri.tryParse(path).toLowerCase().endsWith`；改为按 query/fragment 切出路径尾部，直接定位最后一个 `.` 并按 codeUnit 大小写不敏感比较 `svg`。`test/common/string_benchmark_test.dart` 新增 SVG URL 场景：JIT n=7（100000 个带 `?v=` 的 CDN 图标 URL）均值 41.875ms/中位 42.172ms → 9.582ms/9.692ms（均值 **-77.12%**，中位 **-77.02%**，单次调用 0.419µs → 0.096µs）；`test/common/string_test.dart`、`test/views/icon_picker_view_test.dart`、`test/widgets/target_icon_test.dart`、`test/providers/icon_sets_action_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 

@@ -70,4 +70,28 @@ void main() {
     );
     expect(outputLength, greaterThan(0));
   });
+
+  test('checks one hundred thousand svg urls within budget', () {
+    const count = 100000;
+    final values = List.generate(
+      count,
+      (index) =>
+          'https://cdn.example.com/icons/node-${index % 500}'
+          '${index.isEven ? '.svg' : '.png'}?v=$index',
+    );
+    var hits = 0;
+    final stopwatch = Stopwatch()..start();
+    for (final value in values) {
+      if (value.isSvg) {
+        hits++;
+      }
+    }
+    stopwatch.stop();
+    stdout.writeln(
+      'svg count=$count hits=$hits '
+      'totalUs=${stopwatch.elapsedMicroseconds} '
+      'perCallUs=${stopwatch.elapsedMicroseconds / count}',
+    );
+    expect(hits, count ~/ 2);
+  });
 }
