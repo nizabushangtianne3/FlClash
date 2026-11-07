@@ -171,8 +171,12 @@ class TrackerInfoTableRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ContextMenuRegion(
-      menuItems: trackerInfoMenuItems(context, trackerInfo, onClose: onClose),
+    // The row rebuilds whenever its counters move, which the menu does not
+    // read, so the menu is held until the metadata behind it changes.
+    return CachedMenu(
+      inputs: [trackerInfo.metadata, onClose],
+      menuItemsOf: () =>
+          trackerInfoMenuItems(context, trackerInfo, onClose: onClose),
       child: RecordTableRow(
         table: table,
         striped: striped,
