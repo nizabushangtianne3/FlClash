@@ -25,7 +25,13 @@ class RecordFilter {
 /// Filters on one facet widen each other, on different facets narrow.
 class RecordFacet<T> {
   final RecordFacetKind kind;
-  final Iterable<String> Function(T item) valuesOf;
+
+  /// The one value this facet reads from a row, empty when the row has none;
+  /// null for a facet that reads several.
+  final String Function(T item)? valueOf;
+
+  /// The several values this facet reads from a row; null when it reads one.
+  final List<String> Function(T item)? valuesOf;
 
   /// Only a facet whose values come from a fixed set is offered in the menu;
   /// one growing with the user's apps or profiles is filtered from a row.
@@ -40,9 +46,47 @@ class RecordFacet<T> {
     this.offered = false,
     this.order = const [],
     this.labelOf,
-  });
+  }) : valueOf = null;
+
+  /// A facet that reads a single value: counting a table does not have to
+  /// build a one-element list per row.
+  const RecordFacet.single(
+    this.kind,
+    this.valueOf, {
+    this.offered = false,
+    this.order = const [],
+    this.labelOf,
+  }) : valuesOf = null;
 
   String label(String value) => labelOf?.call(value) ?? value;
+
+  /// Whether a row answers any of [selected] on this facet.
+  bool matches(T item, Set<String> selected) {
+    final single = valueOf;
+    return single != null
+        ? selected.contains(single(item))
+        : valuesOf!(item).any(selected.contains);
+  }
+
+  void countInto(Iterable<T> items, Map<String, int> counts) {
+    final single = valueOf;
+    if (single != null) {
+      for (final item in items) {
+        final value = single(item);
+        if (value.isNotEmpty) {
+          counts[value] = (counts[value] ?? 0) + 1;
+        }
+      }
+      return;
+    }
+    for (final item in items) {
+      for (final value in valuesOf!(item)) {
+        if (value.isNotEmpty) {
+          counts[value] = (counts[value] ?? 0) + 1;
+        }
+      }
+    }
+  }
 
   List<String> optionsOf(
     Iterable<T> items, {
@@ -50,13 +94,7 @@ class RecordFacet<T> {
     int max = recordFacetMaxOptions,
   }) {
     final counts = <String, int>{};
-    for (final item in items) {
-      for (final value in valuesOf(item)) {
-        if (value.isNotEmpty) {
-          counts[value] = (counts[value] ?? 0) + 1;
-        }
-      }
-    }
+    countInto(items, counts);
     final frequent = counts.keys.sorted((a, b) => counts[b]! - counts[a]!);
     final options = {...frequent.take(max), ...selected}.toList();
     int rank(String value) {
@@ -123,7 +161,7 @@ extension RecordFilterIterableExt<T> on Iterable<T> {
     }
     return where(
       (item) => selected.entries.every(
-        (entry) => entry.key.valuesOf(item).any(entry.value.contains),
+        (entry) => entry.key.matches(item, entry.value),
       ),
     );
   }

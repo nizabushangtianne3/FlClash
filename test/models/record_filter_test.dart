@@ -2,20 +2,25 @@ import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:test/test.dart';
 
-typedef _Item = ({String id, String network, String app});
+typedef _Item = ({String id, String network, String app, List<String> tags});
 
 final _facets = <RecordFacet<_Item>>[
-  RecordFacet(
+  RecordFacet.single(
     RecordFacetKind.network,
-    (item) => [item.network],
+    (item) => item.network,
     offered: true,
     order: const ['tcp', 'udp'],
   ),
-  RecordFacet(RecordFacetKind.app, (item) => [item.app]),
+  RecordFacet.single(RecordFacetKind.app, (item) => item.app),
+  RecordFacet(RecordFacetKind.proxy, (item) => item.tags),
 ];
 
-_Item _item(String id, {String network = 'tcp', String app = 'curl'}) =>
-    (id: id, network: network, app: app);
+_Item _item(
+  String id, {
+  String network = 'tcp',
+  String app = 'curl',
+  List<String> tags = const [],
+}) => (id: id, network: network, app: app, tags: tags);
 
 List<String> _ids(Iterable<_Item> items) => [for (final item in items) item.id];
 
@@ -118,6 +123,49 @@ void main() {
         'chrome: d b',
         'curl: c a',
       ]);
+    });
+  });
+
+  group('a facet that reads one value', () {
+    test('counts, orders and filters like the one that reads a list', () {
+      final single = _facets.first;
+      final listed = RecordFacet<_Item>(
+        RecordFacetKind.network,
+        (item) => [item.network],
+        offered: true,
+        order: const ['tcp', 'udp'],
+      );
+      final items = [
+        _item('a', network: 'udp'),
+        _item('b'),
+        _item('c', network: 'udp'),
+        _item('d', network: ''),
+      ];
+      const filters = [RecordFilter(RecordFacetKind.network, 'tcp')];
+
+      expect(single.optionsOf(items), listed.optionsOf(items));
+      expect(single.optionsOf(items), ['tcp', 'udp']);
+      expect(_ids(items.whereFilters([single], filters)), ['b']);
+      expect(_ids(items.whereFilters([listed], filters)), ['b']);
+    });
+
+    test('a facet that reads several counts each of them', () {
+      final facet = _facets.last;
+      final items = [
+        _item('a', tags: const ['Tokyo', 'Proxy']),
+        _item('b', tags: const ['Proxy']),
+      ];
+
+      expect(facet.optionsOf(items), ['Proxy', 'Tokyo']);
+      expect(
+        _ids(
+          items.whereFilters(
+            [facet],
+            const [RecordFilter(RecordFacetKind.proxy, 'Tokyo')],
+          ),
+        ),
+        ['a'],
+      );
     });
   });
 }

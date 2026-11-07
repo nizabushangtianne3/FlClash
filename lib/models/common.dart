@@ -254,9 +254,9 @@ extension LogExt on Log {
 }
 
 final logFacets = <RecordFacet<Log>>[
-  RecordFacet(
+  RecordFacet.single(
     RecordFacetKind.level,
-    (log) => [log.logLevel.name],
+    (log) => log.logLevel.name,
     offered: true,
     order: [for (final level in LogLevel.values) level.name],
   ),
@@ -293,20 +293,20 @@ extension LogsStateExt on LogsState {
 }
 
 final trackerInfoFacets = <RecordFacet<TrackerInfo>>[
-  RecordFacet(
+  RecordFacet.single(
     RecordFacetKind.network,
-    (info) => [info.metadata.network],
+    (info) => info.metadata.network,
     offered: true,
     order: const ['tcp', 'udp'],
     labelOf: (value) => value.toUpperCase(),
   ),
-  RecordFacet(RecordFacetKind.rule, (info) => [info.rule], offered: true),
-  RecordFacet(
+  RecordFacet.single(RecordFacetKind.rule, (info) => info.rule, offered: true),
+  RecordFacet.single(
     RecordFacetKind.mitm,
-    (info) => [if (info.metadata.mitm) 'MITM'],
+    (info) => info.metadata.mitm ? 'MITM' : '',
     offered: true,
   ),
-  RecordFacet(RecordFacetKind.app, (info) => [info.metadata.process]),
+  RecordFacet.single(RecordFacetKind.app, (info) => info.metadata.process),
   RecordFacet(RecordFacetKind.proxy, (info) => info.chains),
 ];
 
@@ -429,7 +429,11 @@ abstract class DnsQueriesState with _$DnsQueriesState {
 }
 
 final dnsQueryFacets = <RecordFacet<DnsQuery>>[
-  RecordFacet(RecordFacetKind.type, (query) => [query.type], offered: true),
+  RecordFacet.single(
+    RecordFacetKind.type,
+    (query) => query.type,
+    offered: true,
+  ),
   for (final kind in const [
     RecordFacetKind.initiator,
     RecordFacetKind.cache,
