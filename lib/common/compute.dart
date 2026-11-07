@@ -258,14 +258,11 @@ String _coreSelectedName(Group group, String storedName) {
   if (group.type.isComputedSelected) {
     return group.realNow;
   }
-  if (storedName.isNotEmpty &&
-      group.all.any((proxy) => proxy.name == storedName)) {
+  if (storedName.isNotEmpty && group.containsMemberName(storedName)) {
     return storedName;
   }
   final now = group.realNow;
-  return now.isNotEmpty && group.all.any((proxy) => proxy.name == now)
-      ? now
-      : '';
+  return now.isNotEmpty && group.containsMemberName(now) ? now : '';
 }
 
 SelectedProxyState computeRealSelectedProxyState(
