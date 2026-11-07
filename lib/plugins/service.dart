@@ -43,6 +43,7 @@ class Service {
 
   final ObserverList<ServiceListener> _listeners =
       ObserverList<ServiceListener>();
+  List<ServiceListener>? _listenerSnapshot;
 
   int _commandRevision = 0;
   bool _startRequested = false;
@@ -63,10 +64,7 @@ class Service {
             ),
           );
           for (final event in coreEventsFromData(methodCall.arguments)) {
-            _dispatch(
-              'Core event ${event.type.name}',
-              (listener) => listener.onServiceEvent(event),
-            );
+            _dispatchEvent(event);
           }
           break;
         case 'stopped':
@@ -75,7 +73,7 @@ class Service {
             break;
           }
           _startRequested = false;
-          _dispatch('stop report', (listener) => listener.onServiceStopped());
+          _dispatchStop();
           break;
         default:
           throw MissingPluginException();
@@ -100,13 +98,37 @@ class Service {
     );
   }
 
-  void _dispatch(String label, void Function(ServiceListener) deliver) {
-    for (final listener in List.of(_listeners)) {
+  List<ServiceListener> get _listenersSnapshot =>
+      _listenerSnapshot ??= List.unmodifiable(_listeners);
+
+  void _dispatchEvent(CoreEvent event) {
+    final listeners = _listenersSnapshot;
+    if (listeners.isEmpty) {
+      return;
+    }
+    for (final listener in listeners) {
       try {
-        deliver(listener);
+        listener.onServiceEvent(event);
       } catch (error) {
         commonPrint.log(
-          'Unable to dispatch Android $label: $error',
+          'Unable to dispatch Android Core event ${event.type.name}: $error',
+          logLevel: LogLevel.error,
+        );
+      }
+    }
+  }
+
+  void _dispatchStop() {
+    final listeners = _listenersSnapshot;
+    if (listeners.isEmpty) {
+      return;
+    }
+    for (final listener in listeners) {
+      try {
+        listener.onServiceStopped();
+      } catch (error) {
+        commonPrint.log(
+          'Unable to dispatch Android stop report: $error',
           logLevel: LogLevel.error,
         );
       }
@@ -158,10 +180,12 @@ class Service {
 
   void addListener(ServiceListener listener) {
     _listeners.add(listener);
+    _listenerSnapshot = null;
   }
 
   void removeListener(ServiceListener listener) {
     _listeners.remove(listener);
+    _listenerSnapshot = null;
   }
 }
 

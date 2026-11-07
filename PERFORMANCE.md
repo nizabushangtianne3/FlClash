@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-07
-- FlClash main：`04fabbba`
+- FlClash main：`921da828`
 - Clash.Meta main：`47244368e`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -190,6 +190,7 @@
 | SVG 类型判断免 URI 解析/整串 lowercase | -（仅 wrapper） | 本轮提交 | `StringExtension.isSvg` 对非 data URI 不再 `Uri.tryParse(path).toLowerCase().endsWith`；改为按 query/fragment 切出路径尾部，直接定位最后一个 `.` 并按 codeUnit 大小写不敏感比较 `svg`。`test/common/string_benchmark_test.dart` 新增 SVG URL 场景：JIT n=7（100000 个带 `?v=` 的 CDN 图标 URL）均值 41.875ms/中位 42.172ms → 9.582ms/9.692ms（均值 **-77.12%**，中位 **-77.02%**，单次调用 0.419µs → 0.096µs）；`test/common/string_test.dart`、`test/views/icon_picker_view_test.dart`、`test/widgets/target_icon_test.dart`、`test/providers/icon_sets_action_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | 图标名匹配不再拷贝名字列表、压缩名按对象缓存 | -（仅 wrapper） | 本轮提交 | `matchIconNames` 改收 `List<IconSetIcon>`，图标选择器不再为每次键入把整个图标表拷成 `List<String>`；`IconSetIcon.compactName` 按对象缓存 `fileStem` 的压缩结果，主线程重复匹配时不再对每张图重复 `toLowerCase + replaceAll`；isolate 输入也直接发图标对象。新增 `test/models/icon_name_match_benchmark_test.dart`：JIT n=7（5000 图标 ×100 次匹配+排序）均值 284.00ms/中位 283.59ms → 54.75ms/54.75ms（均值 **-80.72%**，中位 **-80.69%**，单次匹配排序 2.84ms → 0.547ms）；新增 `test/models/icon_name_match_test.dart` 覆盖评分、忽略无拉丁名字符、按 URL 去重排序，`test/views/icon_picker_view_test.dart`、`test/widgets/target_icon_test.dart`、`test/providers/icon_sets_action_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | 图标名压缩 codeUnit 直筛 | -（仅 wrapper） | 本轮提交 | `_compactIconName` 不再 `toLowerCase().replaceAll(RegExp)`；先扫描 codeUnit 记录是否有大写/非字母数字，无字符直接返回空串、全小写字母数字直接返回原串，否则用 `StringBuffer` 只追加小写 ASCII 字母和数字。新增 `test/models/icon_name_cold_match_benchmark_test.dart`：JIT n=7（5000 个新对象 ×100 次冷匹配）均值 492.74ms/中位 479.50ms → 401.28ms/393.45ms（均值 **-18.56%**，中位 **-17.96%**，单次 4.927ms → 4.013ms）；`test/models/icon_name_match_test.dart`、`test/views/icon_picker_view_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
+| Android 事件分发快照监听器 + 标签懒构造 | -（仅 wrapper） | 本轮提交 | `Service` 原来每个 Core 事件都 `List.of(_listeners)` 且都执行 `'Core event ${event.type.name}'` 字符串插值；现在监听器快照按 add/remove 失效缓存，事件类型标签只在 catch 分支构造，成功路径只保留一次 try。新增 `test/plugins/service_event_benchmark_test.dart`：JIT n=7（300 事件 ×200 批）perBatchUs 均值 529.00/中位 526.56 → 489.76/479.68（均值 **-7.40%**，中位 **-8.90%**，单事件 1.76µs → 1.63µs）；`test/plugins/service_test.dart` 25 个用例全绿，全量套件剩余既有本地 bundle 失败 |
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
