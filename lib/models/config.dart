@@ -258,7 +258,6 @@ abstract class AppSettingProps with _$AppSettingProps {
     @Default(true)
     @JsonKey(readValue: _readSidebarExpanded)
     bool sidebarExpanded,
-    @Default(0) int acceptedDisclaimerVersion,
     @Default(true) bool minimizeOnExit,
     @Default(false) bool hidden,
     @Default(false) bool developerMode,

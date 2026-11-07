@@ -704,15 +704,6 @@ class MessageLookup extends MessageLookupByLibrary {
     "disclaimerAcceptTitle": MessageLookupByLibrary.simpleMessage(
       "Связь с открытой лицензией",
     ),
-    "disclaimerAcknowledgeLabel": MessageLookupByLibrary.simpleMessage(
-      "Я прочитал(а) и понимаю это заявление",
-    ),
-    "disclaimerAcknowledgeTip": MessageLookupByLibrary.simpleMessage(
-      "Чтобы подтвердить, что вы ознакомились с ним, прочитайте следующее заявление и отметьте пункт ниже:",
-    ),
-    "disclaimerAcknowledgeTitle": MessageLookupByLibrary.simpleMessage(
-      "Подтвердите заявление",
-    ),
     "disclaimerChangesContent": MessageLookupByLibrary.simpleMessage(
       "Это заявление может меняться в следующих версиях; к каждой версии относится заявление, поставляемое с ней.",
     ),
@@ -720,7 +711,7 @@ class MessageLookup extends MessageLookupByLibrary {
       "Изменения заявления",
     ),
     "disclaimerDesc": MessageLookupByLibrary.simpleMessage(
-      "Перед использованием FlClash («Программа») внимательно прочитайте это заявление и убедитесь, что понимаете его. Нажимая «Согласен», вы подтверждаете, что прочитали и поняли изложенное ниже. Если не хотите продолжать, нажмите «Выход».",
+      "Перед использованием FlClash («Программа») внимательно прочитайте это заявление и убедитесь, что понимаете его.",
     ),
     "disclaimerLiabilityContent": MessageLookupByLibrary.simpleMessage(
       "В максимальной степени, допустимой применимым законодательством, ни разработчики, ни участники проекта не несут ответственности за любой прямой, косвенный, случайный, особый, штрафной или последующий ущерб, возникший в результате использования или невозможности использования Программы, включая, помимо прочего, потерю данных, повреждение устройства, сбои сети, прерывание деятельности, упущенную выгоду или связанные с этим правовые споры, даже если они были предупреждены о возможности такого ущерба.",
@@ -748,18 +739,6 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "disclaimerResponsibilityTitle": MessageLookupByLibrary.simpleMessage(
       "Ваша ответственность",
-    ),
-    "disclaimerRestateHint": MessageLookupByLibrary.simpleMessage(
-      "Введите заявление выше",
-    ),
-    "disclaimerRestateMismatch": MessageLookupByLibrary.simpleMessage(
-      "Не совпадает с текстом заявления",
-    ),
-    "disclaimerRestateTip": MessageLookupByLibrary.simpleMessage(
-      "Чтобы подтвердить, что вы ознакомились с ним, полностью введите следующее заявление в поле ниже:",
-    ),
-    "disclaimerRestateTitle": MessageLookupByLibrary.simpleMessage(
-      "Повторите заявление",
     ),
     "disclaimerSoftwareContent": MessageLookupByLibrary.simpleMessage(
       "Программа — это клиент сетевого прокси с открытым исходным кодом на основе ядра Clash.Meta (mihomo). Она предоставляет только локальные инструменты: управление конфигурациями, маршрутизацию по правилам и пересылку трафика.",

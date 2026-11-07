@@ -529,19 +529,12 @@ class MessageLookup extends MessageLookupByLibrary {
       "本声明是对软件性质、风险与责任的说明，不是 GPL-3.0 之外的附加条款，也不限制该协议授予你的运行、复制、修改和分发等任何权利；两者不一致时，以 GPL-3.0 为准。",
     ),
     "disclaimerAcceptTitle": MessageLookupByLibrary.simpleMessage("与开源协议的关系"),
-    "disclaimerAcknowledgeLabel": MessageLookupByLibrary.simpleMessage(
-      "我已阅读并理解此声明",
-    ),
-    "disclaimerAcknowledgeTip": MessageLookupByLibrary.simpleMessage(
-      "为确认你已知悉，请阅读以下声明并勾选下方选项：",
-    ),
-    "disclaimerAcknowledgeTitle": MessageLookupByLibrary.simpleMessage("确认声明"),
     "disclaimerChangesContent": MessageLookupByLibrary.simpleMessage(
       "本声明可能随版本更新而修订，以每个版本附带的内容为准。",
     ),
     "disclaimerChangesTitle": MessageLookupByLibrary.simpleMessage("声明变更"),
     "disclaimerDesc": MessageLookupByLibrary.simpleMessage(
-      "在使用 FlClash（以下简称“本软件”）前，请仔细阅读并充分理解本声明。点击“同意”表示你已阅读并理解以下内容；如不想继续，可点击“退出”。",
+      "在使用 FlClash（以下简称“本软件”）前，请仔细阅读并充分理解本声明。",
     ),
     "disclaimerLiabilityContent": MessageLookupByLibrary.simpleMessage(
       "在适用法律允许的最大范围内，开发者及所有贡献者均不对因使用或无法使用本软件而产生的任何直接、间接、偶然、特殊、惩罚性或后果性损害承担责任，包括但不限于数据丢失、设备损坏、网络异常、业务中断、利润损失或因此引起的任何法律纠纷，即使已被告知发生此类损害的可能性。",
@@ -564,14 +557,6 @@ class MessageLookup extends MessageLookupByLibrary {
     "disclaimerResponsibilityTitle": MessageLookupByLibrary.simpleMessage(
       "用户责任",
     ),
-    "disclaimerRestateHint": MessageLookupByLibrary.simpleMessage("在此输入上述声明"),
-    "disclaimerRestateMismatch": MessageLookupByLibrary.simpleMessage(
-      "与声明内容不一致",
-    ),
-    "disclaimerRestateTip": MessageLookupByLibrary.simpleMessage(
-      "为确认你已知悉，请在下方输入框中完整复述以下声明：",
-    ),
-    "disclaimerRestateTitle": MessageLookupByLibrary.simpleMessage("复述声明"),
     "disclaimerSoftwareContent": MessageLookupByLibrary.simpleMessage(
       "本软件是基于 Clash.Meta（mihomo）内核的开源网络代理客户端，仅提供配置管理、规则分流与流量转发等本地工具功能。",
     ),

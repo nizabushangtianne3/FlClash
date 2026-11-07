@@ -721,15 +721,6 @@ class MessageLookup extends MessageLookupByLibrary {
     "disclaimerAcceptTitle": MessageLookupByLibrary.simpleMessage(
       "Rapport avec la licence open source",
     ),
-    "disclaimerAcknowledgeLabel": MessageLookupByLibrary.simpleMessage(
-      "J\'ai lu et compris cette déclaration",
-    ),
-    "disclaimerAcknowledgeTip": MessageLookupByLibrary.simpleMessage(
-      "Pour confirmer que vous avez compris, lisez la déclaration suivante et cochez la case ci-dessous :",
-    ),
-    "disclaimerAcknowledgeTitle": MessageLookupByLibrary.simpleMessage(
-      "Confirmer la déclaration",
-    ),
     "disclaimerChangesContent": MessageLookupByLibrary.simpleMessage(
       "Cette déclaration peut être révisée dans les versions ultérieures ; chaque version contient celle qui s\'y applique.",
     ),
@@ -737,7 +728,7 @@ class MessageLookup extends MessageLookupByLibrary {
       "Modifications de cette déclaration",
     ),
     "disclaimerDesc": MessageLookupByLibrary.simpleMessage(
-      "Avant d\'utiliser FlClash (« le Logiciel »), lisez attentivement cette déclaration et assurez-vous de bien la comprendre. Appuyer sur « Accepter » signifie que vous avez lu et compris ce qui suit. Si vous ne souhaitez pas continuer, appuyez sur « Quitter ».",
+      "Avant d\'utiliser FlClash (« le Logiciel »), lisez attentivement cette déclaration et assurez-vous de bien la comprendre.",
     ),
     "disclaimerLiabilityContent": MessageLookupByLibrary.simpleMessage(
       "Dans toute la mesure permise par la loi applicable, ni les développeurs ni aucun contributeur ne sauraient être tenus responsables de dommages directs, indirects, accessoires, spéciaux, punitifs ou consécutifs résultant de l’utilisation ou de l’impossibilité d’utiliser le Logiciel, y compris, sans s’y limiter, la perte de données, les dommages matériels, les pannes réseau, l’interruption d’activité, le manque à gagner ou tout litige qui en découlerait, même s’ils ont été avertis de la possibilité de tels dommages.",
@@ -765,18 +756,6 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "disclaimerResponsibilityTitle": MessageLookupByLibrary.simpleMessage(
       "Votre responsabilité",
-    ),
-    "disclaimerRestateHint": MessageLookupByLibrary.simpleMessage(
-      "Saisissez la déclaration ci-dessus",
-    ),
-    "disclaimerRestateMismatch": MessageLookupByLibrary.simpleMessage(
-      "Ne correspond pas à la déclaration",
-    ),
-    "disclaimerRestateTip": MessageLookupByLibrary.simpleMessage(
-      "Pour confirmer que vous avez compris, saisissez la déclaration suivante en entier dans le champ ci-dessous :",
-    ),
-    "disclaimerRestateTitle": MessageLookupByLibrary.simpleMessage(
-      "Recopier la déclaration",
     ),
     "disclaimerSoftwareContent": MessageLookupByLibrary.simpleMessage(
       "Le Logiciel est un client proxy réseau open source construit sur le cœur Clash.Meta (mihomo). Il se limite à fournir des outils locaux tels que la gestion de la configuration, le routage par règles et le transfert du trafic.",

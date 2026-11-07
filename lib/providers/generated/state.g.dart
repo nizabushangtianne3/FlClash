@@ -3057,7 +3057,7 @@ final class SelectedProxyNameProvider
   }
 }
 
-String _$selectedProxyNameHash() => r'978137d2923d02a519b763a6e6c2f2bbca282e41';
+String _$selectedProxyNameHash() => r'99bb2653a13b93f3ecec23d5324cdbc9dbde596c';
 
 final class SelectedProxyNameFamily extends $Family
     with $FunctionalFamilyOverride<String?, String> {

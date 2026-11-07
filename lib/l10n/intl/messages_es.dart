@@ -719,15 +719,6 @@ class MessageLookup extends MessageLookupByLibrary {
     "disclaimerAcceptTitle": MessageLookupByLibrary.simpleMessage(
       "Relación con la licencia de código abierto",
     ),
-    "disclaimerAcknowledgeLabel": MessageLookupByLibrary.simpleMessage(
-      "He leído y entiendo esta declaración",
-    ),
-    "disclaimerAcknowledgeTip": MessageLookupByLibrary.simpleMessage(
-      "Para confirmar que lo entiendes, lee la siguiente declaración y marca la casilla de abajo:",
-    ),
-    "disclaimerAcknowledgeTitle": MessageLookupByLibrary.simpleMessage(
-      "Confirma la declaración",
-    ),
     "disclaimerChangesContent": MessageLookupByLibrary.simpleMessage(
       "Esta declaración puede revisarse en versiones posteriores; cada versión incluye la que le corresponde.",
     ),
@@ -735,7 +726,7 @@ class MessageLookup extends MessageLookupByLibrary {
       "Cambios en esta declaración",
     ),
     "disclaimerDesc": MessageLookupByLibrary.simpleMessage(
-      "Antes de usar FlClash («el Software»), lee atentamente esta declaración y asegúrate de entenderla. Tocar «Aceptar» significa que has leído y entendido lo que sigue. Si no quieres continuar, toca «Salir».",
+      "Antes de usar FlClash («el Software»), lee atentamente esta declaración y asegúrate de entenderla.",
     ),
     "disclaimerLiabilityContent": MessageLookupByLibrary.simpleMessage(
       "En la máxima medida permitida por la ley aplicable, ni los desarrolladores ni ningún colaborador serán responsables de ningún daño directo, indirecto, incidental, especial, punitivo o emergente derivado del uso o de la imposibilidad de usar el Software, incluidos, entre otros, la pérdida de datos, los daños al dispositivo, los fallos de red, la interrupción de la actividad, el lucro cesante o cualquier disputa legal resultante, incluso si se les hubiera advertido de la posibilidad de tales daños.",
@@ -763,18 +754,6 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "disclaimerResponsibilityTitle": MessageLookupByLibrary.simpleMessage(
       "Tu responsabilidad",
-    ),
-    "disclaimerRestateHint": MessageLookupByLibrary.simpleMessage(
-      "Escribe la declaración anterior",
-    ),
-    "disclaimerRestateMismatch": MessageLookupByLibrary.simpleMessage(
-      "No coincide con la declaración",
-    ),
-    "disclaimerRestateTip": MessageLookupByLibrary.simpleMessage(
-      "Para confirmar que lo entiendes, escribe la siguiente declaración completa en el campo de abajo:",
-    ),
-    "disclaimerRestateTitle": MessageLookupByLibrary.simpleMessage(
-      "Repite la declaración",
     ),
     "disclaimerSoftwareContent": MessageLookupByLibrary.simpleMessage(
       "El Software es un cliente proxy de red de código abierto basado en el núcleo Clash.Meta (mihomo). Solo ofrece herramientas locales como la gestión de configuración, el enrutamiento basado en reglas y el reenvío de tráfico.",

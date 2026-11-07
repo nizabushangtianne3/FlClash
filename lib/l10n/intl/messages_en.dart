@@ -672,15 +672,6 @@ class MessageLookup extends MessageLookupByLibrary {
     "disclaimerAcceptTitle": MessageLookupByLibrary.simpleMessage(
       "Relation to the open-source license",
     ),
-    "disclaimerAcknowledgeLabel": MessageLookupByLibrary.simpleMessage(
-      "I have read and understand this statement",
-    ),
-    "disclaimerAcknowledgeTip": MessageLookupByLibrary.simpleMessage(
-      "To confirm you understand, read the following statement and check the box below:",
-    ),
-    "disclaimerAcknowledgeTitle": MessageLookupByLibrary.simpleMessage(
-      "Confirm the statement",
-    ),
     "disclaimerChangesContent": MessageLookupByLibrary.simpleMessage(
       "This statement may be revised in later releases; each release carries the version that applies to it.",
     ),
@@ -688,7 +679,7 @@ class MessageLookup extends MessageLookupByLibrary {
       "Changes to this statement",
     ),
     "disclaimerDesc": MessageLookupByLibrary.simpleMessage(
-      "Before using FlClash (\"the Software\"), please read this statement carefully and make sure you understand it. Tapping \"Agree\" means you have read and understood what follows. If you do not want to continue, tap \"Exit\".",
+      "Before using FlClash (\"the Software\"), please read this statement carefully and make sure you understand it.",
     ),
     "disclaimerLiabilityContent": MessageLookupByLibrary.simpleMessage(
       "To the maximum extent permitted by applicable law, neither the developers nor any contributor shall be liable for any direct, indirect, incidental, special, punitive, or consequential damages arising from the use of or inability to use the Software, including but not limited to data loss, device damage, network failures, business interruption, lost profits, or any resulting legal dispute, even if advised of the possibility of such damages.",
@@ -716,18 +707,6 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "disclaimerResponsibilityTitle": MessageLookupByLibrary.simpleMessage(
       "Your responsibility",
-    ),
-    "disclaimerRestateHint": MessageLookupByLibrary.simpleMessage(
-      "Enter the statement above",
-    ),
-    "disclaimerRestateMismatch": MessageLookupByLibrary.simpleMessage(
-      "Does not match the statement",
-    ),
-    "disclaimerRestateTip": MessageLookupByLibrary.simpleMessage(
-      "To confirm you understand, enter the following statement in full in the field below:",
-    ),
-    "disclaimerRestateTitle": MessageLookupByLibrary.simpleMessage(
-      "Restate the statement",
     ),
     "disclaimerSoftwareContent": MessageLookupByLibrary.simpleMessage(
       "The Software is an open-source network proxy client built on the Clash.Meta (mihomo) core. It only provides local tooling such as configuration management, rule-based routing, and traffic forwarding.",

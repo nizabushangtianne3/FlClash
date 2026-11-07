@@ -573,19 +573,12 @@ class MessageLookup extends MessageLookupByLibrary {
     "disclaimerAcceptTitle": MessageLookupByLibrary.simpleMessage(
       "オープンソースライセンスとの関係",
     ),
-    "disclaimerAcknowledgeLabel": MessageLookupByLibrary.simpleMessage(
-      "この声明を読み、理解しました",
-    ),
-    "disclaimerAcknowledgeTip": MessageLookupByLibrary.simpleMessage(
-      "内容を理解したことを確認するため、以下の声明を読み、下のチェックボックスをオンにしてください：",
-    ),
-    "disclaimerAcknowledgeTitle": MessageLookupByLibrary.simpleMessage("声明の確認"),
     "disclaimerChangesContent": MessageLookupByLibrary.simpleMessage(
       "本声明は今後のバージョンで改訂されることがあり、各バージョンに付属する内容が適用されます。",
     ),
     "disclaimerChangesTitle": MessageLookupByLibrary.simpleMessage("本声明の変更"),
     "disclaimerDesc": MessageLookupByLibrary.simpleMessage(
-      "FlClash（以下「本ソフトウェア」）を使用する前に、本声明をよくお読みのうえ十分に理解してください。「同意する」をタップすると、以下の内容を読み理解したことになります。続行しない場合は「終了」をタップしてください。",
+      "FlClash（以下「本ソフトウェア」）を使用する前に、本声明をよくお読みのうえ十分に理解してください。",
     ),
     "disclaimerLiabilityContent": MessageLookupByLibrary.simpleMessage(
       "適用法で認められる最大限の範囲において、開発者およびすべての貢献者は、本ソフトウェアの使用または使用不能に起因する直接的、間接的、偶発的、特別、懲罰的または結果的な損害（データの消失、機器の損傷、ネットワーク障害、業務の中断、逸失利益、およびそれに起因する法的紛争を含むがこれらに限らない）について、その可能性を知らされていた場合であっても、一切責任を負いません。",
@@ -612,14 +605,6 @@ class MessageLookup extends MessageLookupByLibrary {
     "disclaimerResponsibilityTitle": MessageLookupByLibrary.simpleMessage(
       "利用者の責任",
     ),
-    "disclaimerRestateHint": MessageLookupByLibrary.simpleMessage("上記の声明を入力"),
-    "disclaimerRestateMismatch": MessageLookupByLibrary.simpleMessage(
-      "声明の内容と一致しません",
-    ),
-    "disclaimerRestateTip": MessageLookupByLibrary.simpleMessage(
-      "内容を理解したことを確認するため、以下の声明を下の入力欄に正確に入力してください：",
-    ),
-    "disclaimerRestateTitle": MessageLookupByLibrary.simpleMessage("声明の復唱"),
     "disclaimerSoftwareContent": MessageLookupByLibrary.simpleMessage(
       "本ソフトウェアは Clash.Meta（mihomo）コアをベースとしたオープンソースのネットワークプロキシクライアントであり、設定管理、ルールによる振り分け、トラフィック転送などのローカルツール機能のみを提供します。",
     ),

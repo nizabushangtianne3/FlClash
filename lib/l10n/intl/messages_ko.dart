@@ -563,19 +563,12 @@ class MessageLookup extends MessageLookupByLibrary {
     "disclaimerAcceptTitle": MessageLookupByLibrary.simpleMessage(
       "오픈 소스 라이선스와의 관계",
     ),
-    "disclaimerAcknowledgeLabel": MessageLookupByLibrary.simpleMessage(
-      "이 문구를 읽고 이해했습니다",
-    ),
-    "disclaimerAcknowledgeTip": MessageLookupByLibrary.simpleMessage(
-      "내용을 이해했는지 확인하기 위해 다음 문구를 읽고 아래 항목에 체크하세요.",
-    ),
-    "disclaimerAcknowledgeTitle": MessageLookupByLibrary.simpleMessage("문구 확인"),
     "disclaimerChangesContent": MessageLookupByLibrary.simpleMessage(
       "본 고지는 이후 버전에서 개정될 수 있으며, 각 버전에 포함된 내용이 적용됩니다.",
     ),
     "disclaimerChangesTitle": MessageLookupByLibrary.simpleMessage("본 문서의 변경"),
     "disclaimerDesc": MessageLookupByLibrary.simpleMessage(
-      "FlClash(이하 \"본 소프트웨어\")를 사용하기 전에 본 고지를 주의 깊게 읽고 충분히 이해해 주세요. \"동의\"를 누르면 아래 내용을 읽고 이해했음을 뜻합니다. 계속하지 않으려면 \"종료\"를 누르세요.",
+      "FlClash(이하 \"본 소프트웨어\")를 사용하기 전에 본 고지를 주의 깊게 읽고 충분히 이해해 주세요.",
     ),
     "disclaimerLiabilityContent": MessageLookupByLibrary.simpleMessage(
       "관련 법률이 허용하는 최대 범위에서, 개발자와 기여자는 본 소프트웨어의 사용 또는 사용 불능으로 발생하는 직접, 간접, 부수적, 특별, 징벌적 또는 결과적 손해에 대해 책임을 지지 않습니다. 여기에는 데이터 손실, 기기 손상, 네트워크 장애, 사업 중단, 이익 손실 및 그로 인한 법적 분쟁이 포함되며 이에 국한되지 않고, 그러한 손해의 가능성을 사전에 통지받은 경우에도 마찬가지입니다.",
@@ -602,16 +595,6 @@ class MessageLookup extends MessageLookupByLibrary {
     "disclaimerResponsibilityTitle": MessageLookupByLibrary.simpleMessage(
       "사용자의 책임",
     ),
-    "disclaimerRestateHint": MessageLookupByLibrary.simpleMessage(
-      "위 문구를 입력하세요",
-    ),
-    "disclaimerRestateMismatch": MessageLookupByLibrary.simpleMessage(
-      "문구와 일치하지 않습니다",
-    ),
-    "disclaimerRestateTip": MessageLookupByLibrary.simpleMessage(
-      "내용을 이해했는지 확인하기 위해 아래 입력란에 다음 문구를 그대로 입력하세요.",
-    ),
-    "disclaimerRestateTitle": MessageLookupByLibrary.simpleMessage("문구 다시 입력"),
     "disclaimerSoftwareContent": MessageLookupByLibrary.simpleMessage(
       "본 소프트웨어는 Clash.Meta(mihomo) 코어를 기반으로 한 오픈 소스 네트워크 프록시 클라이언트입니다. 구성 관리, 규칙 기반 라우팅, 트래픽 전달과 같은 로컬 도구만 제공합니다.",
     ),

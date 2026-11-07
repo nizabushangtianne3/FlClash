@@ -36,8 +36,6 @@ const safeModeBuild = bool.fromEnvironment('SAFE_MODE');
 /// Not const so tests can cover both states.
 bool mitmFeature = const bool.fromEnvironment('FEATURE_MITM');
 
-const disclaimerVersion = 1;
-
 String _randomPipeId() {
   final random = Random.secure();
   return List.generate(

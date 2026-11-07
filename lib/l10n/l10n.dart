@@ -2331,10 +2331,10 @@ class AppLocalizations {
     return Intl.message('Disclaimer', name: 'disclaimer', desc: '', args: []);
   }
 
-  /// `Before using FlClash ("the Software"), please read this statement carefully and make sure you understand it. Tapping "Agree" means you have read and understood what follows. If you do not want to continue, tap "Exit".`
+  /// `Before using FlClash ("the Software"), please read this statement carefully and make sure you understand it.`
   String get disclaimerDesc {
     return Intl.message(
-      'Before using FlClash ("the Software"), please read this statement carefully and make sure you understand it. Tapping "Agree" means you have read and understood what follows. If you do not want to continue, tap "Exit".',
+      'Before using FlClash ("the Software"), please read this statement carefully and make sure you understand it.',
       name: 'disclaimerDesc',
       desc: '',
       args: [],
@@ -2546,76 +2546,6 @@ class AppLocalizations {
     return Intl.message(
       'This statement explains the nature, risks, and responsibilities of using the Software. It is not an additional term beyond GPL-3.0 and does not limit any right that license grants you, including to run, copy, modify, and distribute the Software. Where the two differ, GPL-3.0 prevails.',
       name: 'disclaimerAcceptContent',
-      desc: '',
-      args: [],
-    );
-  }
-
-  /// `Restate the statement`
-  String get disclaimerRestateTitle {
-    return Intl.message(
-      'Restate the statement',
-      name: 'disclaimerRestateTitle',
-      desc: '',
-      args: [],
-    );
-  }
-
-  /// `To confirm you understand, enter the following statement in full in the field below:`
-  String get disclaimerRestateTip {
-    return Intl.message(
-      'To confirm you understand, enter the following statement in full in the field below:',
-      name: 'disclaimerRestateTip',
-      desc: '',
-      args: [],
-    );
-  }
-
-  /// `Enter the statement above`
-  String get disclaimerRestateHint {
-    return Intl.message(
-      'Enter the statement above',
-      name: 'disclaimerRestateHint',
-      desc: '',
-      args: [],
-    );
-  }
-
-  /// `Does not match the statement`
-  String get disclaimerRestateMismatch {
-    return Intl.message(
-      'Does not match the statement',
-      name: 'disclaimerRestateMismatch',
-      desc: '',
-      args: [],
-    );
-  }
-
-  /// `Confirm the statement`
-  String get disclaimerAcknowledgeTitle {
-    return Intl.message(
-      'Confirm the statement',
-      name: 'disclaimerAcknowledgeTitle',
-      desc: '',
-      args: [],
-    );
-  }
-
-  /// `To confirm you understand, read the following statement and check the box below:`
-  String get disclaimerAcknowledgeTip {
-    return Intl.message(
-      'To confirm you understand, read the following statement and check the box below:',
-      name: 'disclaimerAcknowledgeTip',
-      desc: '',
-      args: [],
-    );
-  }
-
-  /// `I have read and understand this statement`
-  String get disclaimerAcknowledgeLabel {
-    return Intl.message(
-      'I have read and understand this statement',
-      name: 'disclaimerAcknowledgeLabel',
       desc: '',
       args: [],
     );
