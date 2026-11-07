@@ -1010,7 +1010,6 @@ abstract class IconSetIcon with _$IconSetIcon {
 
 final _iconLabels = Expando<String>();
 final _iconCompactNames = Expando<String>();
-final _nonAlphanumeric = RegExp('[^a-z0-9]');
 
 extension IconSetIconExt on IconSetIcon {
   String get label => _iconLabels[this] ??= name.fileStem.replaceAll('_', ' ');
@@ -1019,8 +1018,39 @@ extension IconSetIconExt on IconSetIcon {
       _iconCompactNames[this] ??= _compactIconName(name.fileStem);
 }
 
-String _compactIconName(String value) =>
-    value.toLowerCase().replaceAll(_nonAlphanumeric, '');
+String _compactIconName(String value) {
+  var hasDisallowed = false;
+  var hasUpper = false;
+  var hasAlphanumeric = false;
+  for (final codeUnit in value.codeUnits) {
+    if (codeUnit >= 0x30 && codeUnit <= 0x39) {
+      hasAlphanumeric = true;
+    } else if (codeUnit >= 0x61 && codeUnit <= 0x7A) {
+      hasAlphanumeric = true;
+    } else if (codeUnit >= 0x41 && codeUnit <= 0x5A) {
+      hasUpper = true;
+      hasAlphanumeric = true;
+    } else {
+      hasDisallowed = true;
+    }
+  }
+  if (!hasAlphanumeric) {
+    return '';
+  }
+  if (!hasDisallowed && !hasUpper) {
+    return value;
+  }
+  final compact = StringBuffer();
+  for (final codeUnit in value.codeUnits) {
+    final lower = codeUnit >= 0x41 && codeUnit <= 0x5A
+        ? codeUnit + 0x20
+        : codeUnit;
+    if ((lower >= 0x30 && lower <= 0x39) || (lower >= 0x61 && lower <= 0x7A)) {
+      compact.writeCharCode(lower);
+    }
+  }
+  return compact.toString();
+}
 
 typedef IconNameMatch = ({int index, int score, int length});
 
