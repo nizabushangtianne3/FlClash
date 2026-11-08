@@ -114,7 +114,10 @@ func groupNow(t *testing.T, proxy constant.Proxy) string {
 func encodeGroupDoc(proxy constant.Proxy) []byte {
 	groupDocsMu.Lock()
 	defer groupDocsMu.Unlock()
-	return appendGroupDoc(nil, nil, proxy)
+	if !isProxyGroupType(proxy.Type()) {
+		return appendNodeView(nil, proxy)
+	}
+	return appendGroupDoc(nil, newGroupDocSlot(proxy))
 }
 
 // patchSelectGroup restores selections before the providers behind the groups

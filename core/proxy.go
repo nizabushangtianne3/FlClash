@@ -178,7 +178,7 @@ func (a *proxiesAnswer) appendProxyTable(buf []byte, snapshot *sortedProxyNameCa
 			buf = append(buf, view...)
 			continue
 		}
-		buf = appendGroupDoc(buf, snapshot, a.proxies[snapshot.names[i]])
+		buf = appendGroupDoc(buf, snapshot.groupSlots[i])
 	}
 	return buf
 }
@@ -187,35 +187,26 @@ func (a *proxiesAnswer) appendProxyTable(buf []byte, snapshot *sortedProxyNameCa
 // AppendJSON writes it; the built-in GLOBAL is the one document that needs an
 // edit, spliced in place instead of a decode/marshal round trip.
 // The caller holds the document cache lock.
-func appendGroupDoc(dst []byte, snapshot *sortedProxyNameCache, proxy constant.Proxy) []byte {
-	proxyType := proxy.Type()
-	if !isProxyGroupType(proxyType) {
-		return appendNodeView(dst, proxy)
-	}
-	if groupDocsSnapshot != snapshot {
-		groupDocsSnapshot = snapshot
-		clear(groupDocs)
-	}
-
-	var (
-		keyed bool
-		key   groupDocKey
-		group outboundgroup.ProxyGroup
-	)
-	if isCacheableGroupDoc(proxyType) {
-		if g, ok := adapterAs[outboundgroup.ProxyGroup](proxy); ok {
-			// The key is read once and reused for the store, so a group's live
-			// selection is walked once per answer instead of twice more.
-			if k, ok := groupDocKeyOf(proxy, g); ok {
-				keyed, key, group = true, k, g
-				if entry, exist := groupDocs[proxy]; exist &&
-					entry.key == key && groupDocVersionsMatch(group, entry.versions) {
-					return append(dst, entry.doc...)
-				}
+func appendGroupDoc(dst []byte, slot *groupDocSlot) []byte {
+	if slot != nil && slot.group != nil {
+		// The key is read once and reused for the store, so a group's live
+		// selection is walked once per answer instead of twice more.
+		if key, ok := groupDocKeyOf(slot.proxy, slot.group); ok {
+			if slot.doc != nil && slot.key == key &&
+				groupDocVersionsMatch(slot.group, slot.versions) {
+				return append(dst, slot.doc...)
 			}
+			start := len(dst)
+			dst = appendGroupDocument(dst, slot.proxy)
+			slot.key, slot.versions = key, groupDocVersions(slot.group)
+			slot.doc = slices.Clone(dst[start:])
+			return dst
 		}
 	}
-	start := len(dst)
+	return appendGroupDocument(dst, slot.proxy)
+}
+
+func appendGroupDocument(dst []byte, proxy constant.Proxy) []byte {
 	appender, ok := proxy.Adapter().(interface{ AppendJSON([]byte) []byte })
 	if !ok {
 		data, err := proxy.Adapter().MarshalJSON()
@@ -229,13 +220,6 @@ func appendGroupDoc(dst []byte, snapshot *sortedProxyNameCache, proxy constant.P
 	}
 	if isBuiltInGlobal(proxy) {
 		dst = appendGlobalHidden(dst)
-	}
-	if keyed {
-		groupDocs[proxy] = &groupDocEntry{
-			key:      key,
-			versions: groupDocVersions(group),
-			doc:      slices.Clone(dst[start:]),
-		}
 	}
 	return dst
 }
@@ -288,6 +272,9 @@ type sortedProxyNameCache struct {
 	// them; the escaped length comes from jsonutil.StringLen.
 	keySpans  [][]byte
 	nodeViews [][]byte
+	// groupSlots aligns with names: a nil element marks a node row whose view
+	// is precomputed, and a non-nil one carries that group's document cache.
+	groupSlots []*groupDocSlot
 	// sizeBase is the answer's precomputed share: static key/node bytes, the
 	// escaped all-list length and a conservative scaffold per cached group kind.
 	sizeBase int
@@ -305,6 +292,7 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 	slices.Sort(names)
 	keySpans := make([][]byte, len(names))
 	nodeViews := make([][]byte, len(names))
+	groupSlots := make([]*groupDocSlot, len(names))
 	// A cached group member list commonly dominates its document. One larger
 	// allocation is cheaper than the old 320B scaffold's repeated growslices.
 	const groupScaffold = 768
@@ -319,6 +307,7 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 		keySpans[i] = append(span, ':')
 		sizeBase += len(keySpans[i]) + jsonutil.StringLen(name) + 1
 		if isProxyGroupType(proxy.Type()) {
+			groupSlots[i] = newGroupDocSlot(proxy)
 			sizeBase += groupScaffold
 			continue
 		}
@@ -330,6 +319,7 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 		names:     names,
 		keySpans:  keySpans,
 		nodeViews: nodeViews,
+		groupSlots: groupSlots,
 		sizeBase:  sizeBase,
 	}
 	sortedProxyNames.Store(cache)
@@ -348,17 +338,31 @@ type groupDocKey struct {
 	fixed string
 }
 
-type groupDocEntry struct {
+var (
+	groupDocsMu       sync.Mutex
+)
+
+// groupDocSlot is one group row's document cache. The slots ride the snapshot
+// they were built for, so a rebuilt table starts with empty slots and an
+// answer needs no map lookup to reach the row it is writing.
+type groupDocSlot struct {
+	proxy    constant.Proxy
+	group    outboundgroup.ProxyGroup // nil for a kind the cache does not cover
 	key      groupDocKey
 	versions []uint32
 	doc      []byte
 }
 
-var (
-	groupDocsMu       sync.Mutex
-	groupDocsSnapshot *sortedProxyNameCache
-	groupDocs         = map[constant.Proxy]*groupDocEntry{}
-)
+func newGroupDocSlot(proxy constant.Proxy) *groupDocSlot {
+	slot := &groupDocSlot{proxy: proxy}
+	if !isCacheableGroupDoc(proxy.Type()) {
+		return slot
+	}
+	if group, ok := adapterAs[outboundgroup.ProxyGroup](proxy); ok {
+		slot.group = group
+	}
+	return slot
+}
 
 // groupDocKeyOf reads the values the live encode would write. The bool is
 // false for the kinds the cache does not cover.

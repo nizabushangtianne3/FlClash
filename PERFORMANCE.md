@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 96 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 97 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -213,6 +213,7 @@
 | 组的实时选中读取收敛到单锁：`URLTest.fast` 把 stale 检查与缓存读取合并为新的 `Single.CachedValid`；`URLTest`/`Fallback` 的钉选从 `sync.RWMutex` 改为 `atomic.Pointer[string]` | `89fad1edd` | 本轮提交 | `BenchmarkHandleGetProxies` paired n=7 benchstat：200 组 urltest 59.92µ → 50.47µ（**-15.77%**，p=0.001）、200 组+1000 节点 urltest 77.02µ → 66.89µ（**-13.15%**，p=0.001）、fallback -5.02%（p=0.004）、loadbalance -5.37%（p=0.011），geomean **-7.09%**，分配/内存不变；`BenchmarkURLTestSelectedProxyLargeGroup` paired n=5：166.4ns → 148.2ns（**-10.94%**，p=0.008）。答案字节形状由 `TestGroupDocsAnswerWhatTheirGroupsChange`、`TestProxiesAnswerAnswersWhatTheHostReads` 钉住 |
 | 代理解表答案整表一次持锁、组文档键只读一次：`appendProxyTable` 每答案持锁一次（原每组一次），缓存键读一次后同时用于查找与写入（原键会被读三次：查找、组自身编码、写入），行类型每组只问一次 | -（仅 wrapper） | 本轮提交 | 与上一行同一基准配对测量（wrapper 与子模块共同构成该收益）；`TestGroupDocsAnswerWhatTheirGroupsChange` 覆盖四种 kind 的稳态答案、钉选与订阅刷新后 now/all 到达下一答案 |
 | 连接轮询行表改 tracker 键 + 死行原地清扫：`connectionRows` 由 `map[uuid.UUID]` 改 `map[statistic.Tracker]`，另存 order slice，清扫时原地压缩；行 id 建行时算一次，删除时不再现算 | -（仅 wrapper） | 本轮提交 | `BenchmarkGetConnections` paired n=7 benchstat：resync 100 行 45.83µ → 30.06µ（**-34.43%**，p=0.002）、resync 500 行 146.0µ → 123.3µ（**-15.56%**，p=0.001）、delta 500 行 39.11µ → 35.10µ（p=0.073 噪声内），geomean **-16.97%**，分配/内存不变；`TestConnectionDeltaAnswersWhatMoved` 全绿 |
+| 代理解表组文档缓存槽位化：`groupDocs`（按代理查 map + 快照比对）改为随快照预建的 `groupSlots`，每组每答案省掉 `Type()`、类型断言、map 查找与快照比较，整表锁保持不变 | -（仅 wrapper） | 本轮提交 | `BenchmarkHandleGetProxies` 3 轮交替配对 n=15：groups=20 5.105µ → 4.152µ（**-18.67%**，p=0.000）、groups=200 71.28µ → 53.08µ（**-25.54%**，p=0.002）、千节点 70.05µ → 57.58µ（**-17.80%**，p=0.001）、urltest 50.35µ → 42.35µ（**-15.90%**，p=0.000）、千节点 urltest 68.58µ → 55.79µ（**-18.65%**，p=0.000）、fallback **-18.86%**、loadbalance **-18.56%**，geomean **-19.19%**，分配/内存不变；wrapper 全量 + focused race + vet 通过 |
 | IPv6 支持检查按进程缓存 + 网络变更失效：`verifyIP6()` 原先每次配置解析都走一遍 `net.InterfaceAddrs()`（实测单次 1.52ms，占 800 节点解析 CPU 采样的 16.7%）；子模块缓存答案并导出 `ResetIPV6Support()`，wrapper 的 `handleNetworkChanged`（桌面 connectivity 变更与 Android NetworkObserver 都走这条路径）调用它失效 | 本轮提交 | 本轮提交 | `BenchmarkParseConfig` 800 节点 paired n=3：13.02ms → 11.31ms（**-13.1%**），分配 89953 → 89895 基本不变；新增 `TestVerifyIP6CachesUntilTheNetworkChanges` 钉住缓存命中、`SKIP_SYSTEM_IPV6_CHECK` 逃逸口与重置后重新询问系统；子模块全量（104 包）+`go vet ./...`、wrapper 全量 +`go vet .`、config 包 race 全部通过 |
 
 本轮验证：子模块 `go test ./... -count=1 -p=1`（104 包 ok）与 `go vet ./...`、wrapper `go test . -count=1` 与 `go vet .`、`go test -race . -run 'Proxy|Proxies|Group|Connection|TestMessageBatch|TestResetNetwork'`（CGO_ENABLED=1）与子模块 `go test -race ./adapter/outboundgroup/... ./common/singledo/...` 全部通过。
