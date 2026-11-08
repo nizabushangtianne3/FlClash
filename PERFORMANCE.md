@@ -2,8 +2,8 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-08（核心轮次 + Dart compute 轮次）
-- FlClash main：`9982a0ce`
+- 最近核对日期：2026-11-08（核心轮次 + Dart compute 轮次 + 槽位读键）
+- FlClash main：`3c3ae432`
 - Clash.Meta main：`640f8a50a`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 100 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 102 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -216,6 +216,8 @@
 | 代理解表组文档缓存槽位化：`groupDocs`（按代理查 map + 快照比对）改为随快照预建的 `groupSlots`，每组每答案省掉 `Type()`、类型断言、map 查找与快照比较，整表锁保持不变 | -（仅 wrapper） | 本轮提交 | `BenchmarkHandleGetProxies` 3 轮交替配对 n=15：groups=20 5.105µ → 4.152µ（**-18.67%**，p=0.000）、groups=200 71.28µ → 53.08µ（**-25.54%**，p=0.002）、千节点 70.05µ → 57.58µ（**-17.80%**，p=0.001）、urltest 50.35µ → 42.35µ（**-15.90%**，p=0.000）、千节点 urltest 68.58µ → 55.79µ（**-18.65%**，p=0.000）、fallback **-18.86%**、loadbalance **-18.56%**，geomean **-19.19%**，分配/内存不变；wrapper 全量 + focused race + vet 通过 |
 | Profile 读档缓存直接持有 `wire` 字节（省掉每次读档的整份拷贝） | -（仅 wrapper） | `881b74ba` | `BenchmarkProfileReadAndMerge` 与 `BenchmarkMergeProfileBase` 3 轮交替配对 n=15：分配字节 geomean **-2.79%**（p=0.000），时间持平（该路径 50% 在 `os.ReadFile`、21% 在 yaml，属 I/O 主导）；wrapper 全量 + vet 通过 |
 | IPv6 支持检查按进程缓存 + 网络变更失效：`verifyIP6()` 原先每次配置解析都走一遍 `net.InterfaceAddrs()`（实测单次 1.52ms，占 800 节点解析 CPU 采样的 16.7%）；子模块缓存答案并导出 `ResetIPV6Support()`，wrapper 的 `handleNetworkChanged`（桌面 connectivity 变更与 Android NetworkObserver 都走这条路径）调用它失效 | 本轮提交 | 本轮提交 | `BenchmarkParseConfig` 800 节点 paired n=3：13.02ms → 11.31ms（**-13.1%**），分配 89953 → 89895 基本不变；新增 `TestVerifyIP6CachesUntilTheNetworkChanges` 钉住缓存命中、`SKIP_SYSTEM_IPV6_CHECK` 逃逸口与重置后重新询问系统；子模块全量（104 包）+`go vet ./...`、wrapper 全量 +`go vet .`、config 包 race 全部通过 |
+| 代理解表组文档键的输入改从槽位读（`3c3ae432`） | -（仅 wrapper） | `3c3ae432` | 答案路径原本每组每答案都向 proxy 问一次适配器类型、并从其 adapter 上断言出钉选读取器；两者在代理生命周期内固定，改由槽位携带，答案路径只剩一次进入组读取实时选中。`BenchmarkHandleGetProxies` 3 轮交替配对 n=15：urltest 200 组 37.81µ → 36.61µ（**-3.17%**，p=0.019）、千节点 urltest 53.23µ → 51.42µ（**-3.39%**，p=0.026）、fallback 45.32µ → 42.02µ（**-7.28%**，p=0.000），geomean **-2.79%**；Selector 场景不用这些输入，维持底线。wrapper 全量 + vet + focused race 通过 |
+| 嵌套组选中态解析一次 copy 完成（`d302ed10`） | -（仅 Dart） | `d302ed10` | `_resolveRealSelectedProxyState` 原先每层用两次链式 freezed `copyWith` 分别带 group 标记与（解析名 + testUrl），每个嵌套成员要建两个对象；合并为一次。`test/common/compute_sort_delay_benchmark_test.dart` 嵌套场景 7 轮交替配对：47.5ms → 46.3ms（中位 **-2.6%**，7 轮中 6 轮更快）；平坦场景不触发解析，无影响。`compute_test.dart` 41 例 + focused 全绿 |
 | 隐藏超时节点：代理类型改从对象读，删掉整张按名缓存表 | -（仅 Dart） | `30851bf7` | `computeHideTimeout` 原本对每个代理查一次 `_proxyTypesFor` 建的 name→type 表，而该表内容就是 `proxy.name: proxy.type`。改为直接读 `proxy.type`，每个成员少一次字符串键查找，整张缓存表（含 Expando）随之删除。`test/common/compute_hide_timeout_benchmark_test.dart` 7 轮交替配对（每轮新进程）：100 组×20 成员 126.9µs → 89.3µs（**-29.6%**，7/7 全部更快）；2000 节点单组（healthy）中位 10.22µs → 9.26µs（**-9.4%**，逐轮 4/7）。`test/common/compute_test.dart` 41 例、focused 8 个文件 136 例与 `dart analyze` 全绿 |
 
 本轮验证：子模块 `go test ./... -count=1 -p=1`（104 包 ok）与 `go vet ./...`、wrapper `go test . -count=1` 与 `go vet .`、`go test -race . -run 'Proxy|Proxies|Group|Connection|TestMessageBatch|TestResetNetwork'`（CGO_ENABLED=1）与子模块 `go test -race ./adapter/outboundgroup/... ./common/singledo/...` 全部通过。
