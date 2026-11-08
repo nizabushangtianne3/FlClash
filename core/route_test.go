@@ -182,6 +182,13 @@ func TestNestedGroupSwitchPublishesEveryPick(t *testing.T) {
 	}
 }
 
+// routeState is the tests' locked read of the published counters.
+func routeState() RouteState {
+	currentRoute.mu.Lock()
+	defer currentRoute.mu.Unlock()
+	return routeStateLocked()
+}
+
 func TestRouteChangesSplitResetsFromMoves(t *testing.T) {
 	recorder := recordRoutes(t)
 	handleWatchRoute(true, 0)
