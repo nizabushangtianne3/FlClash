@@ -157,11 +157,13 @@ func TestProxyGroupNamesKeepsOnlyGroups(t *testing.T) {
 			"Direct node": constant.Direct,
 			"Fall":        constant.Fallback,
 			"Balance":     constant.LoadBalance,
-			"Chain":       constant.Relay,
+			// A relay group no longer parses, so the type no longer reaches a
+			// proxy and is not a group here either.
+			"Chain": constant.Relay,
 		}),
 	)
 
-	want := []string{"GLOBAL", "Auto", "Fall", "Balance", "Chain"}
+	want := []string{"GLOBAL", "Auto", "Fall", "Balance"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("proxyGroupNames = %v, want %v", names, want)
 	}
@@ -263,7 +265,6 @@ func TestIsProxyGroupType(t *testing.T) {
 		constant.Selector,
 		constant.URLTest,
 		constant.Fallback,
-		constant.Relay,
 		constant.LoadBalance,
 	}
 	for _, adapterType := range groups {
@@ -272,7 +273,12 @@ func TestIsProxyGroupType(t *testing.T) {
 		}
 	}
 
-	singles := []constant.AdapterType{constant.Direct, constant.Reject}
+	singles := []constant.AdapterType{
+		constant.Direct,
+		constant.Reject,
+		// The relay group type was removed upstream: no proxy carries it.
+		constant.Relay,
+	}
 	for _, adapterType := range singles {
 		if isProxyGroupType(adapterType) {
 			t.Errorf("isProxyGroupType(%v) = true, want false", adapterType)

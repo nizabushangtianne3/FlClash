@@ -53,7 +53,9 @@ func adapterAs[T any](proxy constant.Proxy) (group T, ok bool) {
 
 func isProxyGroupType(adapterType constant.AdapterType) bool {
 	switch adapterType {
-	case constant.Selector, constant.URLTest, constant.Fallback, constant.Relay, constant.LoadBalance:
+	// A relay group no longer parses: outboundgroup's parser answers that the
+	// type was removed, so no proxy carries it.
+	case constant.Selector, constant.URLTest, constant.Fallback, constant.LoadBalance:
 		return true
 	default:
 		return false
@@ -188,22 +190,21 @@ func (a *proxiesAnswer) appendProxyTable(buf []byte, snapshot *sortedProxyNameCa
 // edit, spliced in place instead of a decode/marshal round trip.
 // The caller holds the document cache lock.
 func appendGroupDoc(dst []byte, slot *groupDocSlot) []byte {
-	if slot != nil && slot.group != nil {
-		// The key is read once and reused for the store, so a group's live
-		// selection is walked once per answer instead of twice more.
-		if key, ok := groupDocKeyOf(slot); ok {
-			if slot.doc != nil && slot.key == key &&
-				groupDocVersionsMatch(slot.group, slot.versions) {
-				return append(dst, slot.doc...)
-			}
-			start := len(dst)
-			dst = appendGroupDocument(dst, slot.proxy)
-			slot.key, slot.versions = key, groupDocVersions(slot.group)
-			slot.doc = slices.Clone(dst[start:])
-			return dst
-		}
+	// A slot for a kind the document cache does not cover still carries the
+	// proxy, and its document is encoded live.
+	if slot.group == nil {
+		return appendGroupDocument(dst, slot.proxy)
 	}
-	return appendGroupDocument(dst, slot.proxy)
+	key := groupDocKeyOf(slot)
+	if slot.doc != nil && slot.key == key &&
+		groupDocVersionsMatch(slot.group, slot.versions) {
+		return append(dst, slot.doc...)
+	}
+	start := len(dst)
+	dst = appendGroupDocument(dst, slot.proxy)
+	slot.key, slot.versions = key, groupDocVersions(slot.group)
+	slot.doc = slices.Clone(dst[start:])
+	return dst
 }
 
 func appendGroupDocument(dst []byte, proxy constant.Proxy) []byte {
@@ -368,29 +369,32 @@ func newGroupDocSlot(proxy constant.Proxy) *groupDocSlot {
 	if !ok {
 		return slot
 	}
-	slot.group = group
-	if fixed, ok := proxy.Adapter().(interface{ SelectedName() string }); ok {
+	// The key of a URLTest or Fallback also names its pinned selection, so a
+	// group whose adapter does not expose one stays on the live path instead
+	// of failing that read on every answer.
+	if adapterType == constant.URLTest || adapterType == constant.Fallback {
+		fixed, ok := proxy.Adapter().(interface{ SelectedName() string })
+		if !ok {
+			return slot
+		}
 		slot.fixed = fixed
 	}
+	slot.group = group
 	return slot
 }
 
-// groupDocKeyOf reads the values the live encode would write. The bool is
-// false for the kinds the cache does not cover.
-func groupDocKeyOf(slot *groupDocSlot) (groupDocKey, bool) {
+// groupDocKeyOf reads the values the live encode would write.
+func groupDocKeyOf(slot *groupDocSlot) groupDocKey {
 	switch slot.typ {
 	case constant.Selector:
-		return groupDocKey{now: slot.group.Now()}, true
-	case constant.URLTest, constant.Fallback:
-		if slot.fixed == nil {
-			return groupDocKey{}, false
-		}
-		return groupDocKey{now: slot.group.Now(), fixed: slot.fixed.SelectedName()}, true
+		return groupDocKey{now: slot.group.Now()}
 	case constant.LoadBalance:
-		return groupDocKey{}, true
-	default:
-		return groupDocKey{}, false
+		return groupDocKey{}
 	}
+	// A slot carries a group only for the four cacheable kinds, so what is
+	// left is a URLTest or a Fallback, whose document also names its pinned
+	// selection.
+	return groupDocKey{now: slot.group.Now(), fixed: slot.fixed.SelectedName()}
 }
 
 func groupDocVersions(group outboundgroup.ProxyGroup) []uint32 {
