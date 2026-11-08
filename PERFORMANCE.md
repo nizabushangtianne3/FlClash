@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 97 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 98 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -214,6 +214,7 @@
 | 代理解表答案整表一次持锁、组文档键只读一次：`appendProxyTable` 每答案持锁一次（原每组一次），缓存键读一次后同时用于查找与写入（原键会被读三次：查找、组自身编码、写入），行类型每组只问一次 | -（仅 wrapper） | 本轮提交 | 与上一行同一基准配对测量（wrapper 与子模块共同构成该收益）；`TestGroupDocsAnswerWhatTheirGroupsChange` 覆盖四种 kind 的稳态答案、钉选与订阅刷新后 now/all 到达下一答案 |
 | 连接轮询行表改 tracker 键 + 死行原地清扫：`connectionRows` 由 `map[uuid.UUID]` 改 `map[statistic.Tracker]`，另存 order slice，清扫时原地压缩；行 id 建行时算一次，删除时不再现算 | -（仅 wrapper） | 本轮提交 | `BenchmarkGetConnections` paired n=7 benchstat：resync 100 行 45.83µ → 30.06µ（**-34.43%**，p=0.002）、resync 500 行 146.0µ → 123.3µ（**-15.56%**，p=0.001）、delta 500 行 39.11µ → 35.10µ（p=0.073 噪声内），geomean **-16.97%**，分配/内存不变；`TestConnectionDeltaAnswersWhatMoved` 全绿 |
 | 代理解表组文档缓存槽位化：`groupDocs`（按代理查 map + 快照比对）改为随快照预建的 `groupSlots`，每组每答案省掉 `Type()`、类型断言、map 查找与快照比较，整表锁保持不变 | -（仅 wrapper） | 本轮提交 | `BenchmarkHandleGetProxies` 3 轮交替配对 n=15：groups=20 5.105µ → 4.152µ（**-18.67%**，p=0.000）、groups=200 71.28µ → 53.08µ（**-25.54%**，p=0.002）、千节点 70.05µ → 57.58µ（**-17.80%**，p=0.001）、urltest 50.35µ → 42.35µ（**-15.90%**，p=0.000）、千节点 urltest 68.58µ → 55.79µ（**-18.65%**，p=0.000）、fallback **-18.86%**、loadbalance **-18.56%**，geomean **-19.19%**，分配/内存不变；wrapper 全量 + focused race + vet 通过 |
+| Profile 读档缓存直接持有 `wire` 字节（省掉每次读档的整份拷贝） | -（仅 wrapper） | `881b74ba` | `BenchmarkProfileReadAndMerge` 与 `BenchmarkMergeProfileBase` 3 轮交替配对 n=15：分配字节 geomean **-2.79%**（p=0.000），时间持平（该路径 50% 在 `os.ReadFile`、21% 在 yaml，属 I/O 主导）；wrapper 全量 + vet 通过 |
 | IPv6 支持检查按进程缓存 + 网络变更失效：`verifyIP6()` 原先每次配置解析都走一遍 `net.InterfaceAddrs()`（实测单次 1.52ms，占 800 节点解析 CPU 采样的 16.7%）；子模块缓存答案并导出 `ResetIPV6Support()`，wrapper 的 `handleNetworkChanged`（桌面 connectivity 变更与 Android NetworkObserver 都走这条路径）调用它失效 | 本轮提交 | 本轮提交 | `BenchmarkParseConfig` 800 节点 paired n=3：13.02ms → 11.31ms（**-13.1%**），分配 89953 → 89895 基本不变；新增 `TestVerifyIP6CachesUntilTheNetworkChanges` 钉住缓存命中、`SKIP_SYSTEM_IPV6_CHECK` 逃逸口与重置后重新询问系统；子模块全量（104 包）+`go vet ./...`、wrapper 全量 +`go vet .`、config 包 race 全部通过 |
 
 本轮验证：子模块 `go test ./... -count=1 -p=1`（104 包 ok）与 `go vet ./...`、wrapper `go test . -count=1` 与 `go vet .`、`go test -race . -run 'Proxy|Proxies|Group|Connection|TestMessageBatch|TestResetNetwork'`（CGO_ENABLED=1）与子模块 `go test -race ./adapter/outboundgroup/... ./common/singledo/...` 全部通过。
@@ -369,6 +370,8 @@
 | `computeSort`/`computeHideTimeout` 把 `takeFirstValid` 的 fallback 列表提出循环 | 2026-11-08 三次交替配对（A=HEAD，B=hoist，每轮新进程）：`computeHideTimeoutGroups` 100 组 11963µs → 11561µs（**-3.4%**，但 3 个配对只有 1 个为负）、`computeSortDelaySorted` 100 组 10447µs → 11521µs（**+10.3%**）、新增的 `computeSortDelayNested`（100 组 ×10 嵌套组）45406µs → 46556µs（**+2.5%**），全部落在 ±5% 进程噪声内、无稳定收益；且实现时极易把嵌套组 fallback 从「外层组 testUrl」误提升成「全局默认 testUrl」（语义偏差，这次已由新增回归测试钉住后回退）。撤销 compute.dart 改动；本轮只落地测试增量：`test/common/compute_sort_delay_benchmark_test.dart` 新增多组/嵌套组两个场景、`test/common/compute_hide_timeout_benchmark_test.dart` 新增多组场景、`test/common/compute_test.dart` 新增「嵌套组无自己的 testUrl 时读外层组 testUrl」用例（41 例全绿） |
 | `adapter.Proxy` 构造时固化 Name/Type（少一次接口分发） | 5 轮交替配对 n=15（groups=200 场景）：119.1µ ±38% → 125.9µ ±42%（p=0.902，无显著差异）。本机在跑用户自己的 FlClash 实例，CPU 负载 ~52%，该场景方差 ±38% 以上，只有大幅收益才可判定；理论收益仅省一次分发，与风险（改动全项目最基础的代理包装类型）不相称，撤销并记录 |
 | `computeSort` 延迟排序两项微优化（`_sameOrder` 同列表短路 + 排序键缓冲跨组复用） | 3 轮交替配对（每轮新进程、50 次 warm-up 后测 100 次）：1000 节点全量排序 17.82ms → 18.46ms（**+3.6%**）、100 组×10 嵌套组 46.22ms → 48.99ms（**+6.0%**）、已有序的两个场景在 ±4% 内；缓冲复用虽把每组 2 次 TypedData 分配降到每 computation 2 次，但没有转化为时间收益。撤销两项改动。结论：Dart JIT 下 <15% 的计时差需要 ≥7 组交替配对才可判定，微优化应先做分配/操作数论证再上基准 |
+| Selector 选中名缓存进 `selectorSelection`（稳态 `Now()` 少两次接口分发） | 3 轮交替配对 n=15（千节点 selector 场景）：75.90µ ±20% → 79.48µ ±23%（p=0.902，无显著差异）。itab 热时分发成本只有个位数 ns，与在子模块最基础的选择缓存里多加一个字段的风险不相称，撤销并记录 |
+| 代理解表组文档键改「组选中代数」 | 剖析确认 `groupDocKeyOf` 仍是答案路径最大单项（URLTest 场景约 25%），但把键换成子模块导出的选择代数量，任何漏记的变更点都会让 UI 显示过期选中态；需先枚举 URLTest/Fallback/LoadBalance 的全部选中变更点并逐点补计数，本轮未做，留在待优化项 |
 
 ## 4. 当前验证矩阵
 
@@ -419,6 +422,8 @@ dart run tool/test.dart   # exit 0
 | `adapter.Proxy` 的 `extra` xsync.Map 读路径初始化 | `BenchmarkHandleGetProxies` 内存剖析：活对象的 30% 来自 `xsync.newMapTable[string,*internalProxyState]`，且**纯读取**（`AliveForTestUrl`/`LastDelayForTestUrl`）就会触发惰性建表 | 可加 `hasExtra atomic.Bool` 让纯读取不建表；但真实使用中节点都会被测速、表反正要建，收益有限，记账备查 |
 | 连接轮询的 `row.stale(info)` 与 `Manager.Range` | 剖析：stale ~25ns/行；Range 桶遍历约占该基准采样的 10% | 要再降需要 `TrackerInfo` 侧提供元数据版本号（改动面覆盖全部元数据写入点），维持不做 |
 | `BenchmarkGetConnectionsDelta` 仍走 `json.Marshal` | 基准内自行 `json.Marshal(handleGetConnections(...))`，而生产路径走 `frameFor` | 基准与生产路径不一致，应改为 `frameFor` 后重测（本轮未改，避免把测量修正与重构混在同一提交） |
+| 连接 resync 答案的行级链路 | 剖析（500 行）：`TrackerInfo.AppendJSON` 约 74ns/行、行管理（Info/查表/stale）约 8ns/行、`rowAnswerSize` 仅占 2.5%，GC 占 45%（378KB/答案）；答案缓冲池化只在 spill 路径安全，而 resync 只发生在页面打开与漂移重同步，真实收益有限 | `rowAnswerSize` 不值得缓存；`stale` 与 `Manager.Range` 的再削减需要 `TrackerInfo` 元数据版本号或 xsync  relaxed 遍历（后者改变子模块共享语义），维持不做 |
+| `handleGetExternalProviders` 答案 | 43.6µs/答案：逐条 `AppendString` 占 26%、每次答案全量排序占 19%； Dart 侧只在 provider 更新后 `syncProviders()` 调用 | 文档缓存要把 version/count/updateAt/subscription-info 五个易变值都纳入键（其中 subscription-info 是指向可变结构的指针），而该路径只在订阅刷新后跑一次，风险收益不相称，维持不做 |
 
 ### P1：DNS UDP response parsing
 
