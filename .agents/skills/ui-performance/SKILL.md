@@ -60,6 +60,29 @@ running indicator; a fling needs `createGesture` with `moveBy` and timestamps to
 not mobile, so a touch drag on the editor selects text, and scrolling there takes a trackpad `panZoom` gesture; Timer creation under FakeAsync samples a stack, so
 Timer cost in a profile is an artifact.
 
+### Host load and the manual benchmarks
+
+Measure with the host quiet. A user FlClash instance of their own may be running (its Core relays traffic), which
+puts the machine near 50% and adds roughly +-10% to a Dart JIT timing and +-20-38% to a Go `ns/op`. A Dart JIT
+difference under about 15% is not decidable, so only claim what clears it; on the Go side, alternate base and change
+in the same session and take `benchstat`'s p-value, not a single run.
+
+Every `test/**/*benchmark*_test.dart` file is `@Skip('Manual performance benchmark')`, so measuring needs the
+annotation removed for the run and restored with `git checkout -- <file>` afterwards, so the working tree never
+carries it. Start `flutter test` once to build, then alternate base/change rounds of at least seven, each in a fresh
+process: within one process a reused case's GC leaks into the next one and showed a false +12% before.
+
+`dart run tool/test.dart` runs 32 bundles in parallel, so timing tests (cooldowns, debounce windows, acquire
+deadlines) flake under load and the flake set moves between runs; a file that fails inside a bundle passes on its
+own, which is why the tool decides by re-running failed files alone. After editing a Go file the next suite run also
+pays a Go rebuild through the setup hook and starts that much busier, so run it twice before attributing a new
+failure to the change.
+
+Measured costs to plan against on this host: a freezed `copyWith` is roughly 150-250ns, so two chained copyWiths per
+item are worth merging into one; an `Expando` lookup (WeakMap plus identity hash) measured slower than hashing a
+short string in a `Map`, so it does not pay to remove a name-keyed lookup; a per-item one-element list built inside a
+loop is about 30ns and is worth hoisting out.
+
 ### Device numbers
 
 `flutter test` is JIT on the host. A case near the budget, raster cost, and anything glass-related are settled on a

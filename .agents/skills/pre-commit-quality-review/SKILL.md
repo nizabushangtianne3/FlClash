@@ -55,6 +55,11 @@ Focus on:
 - **Remnants:** obsolete branches, compatibility layers, unused parameters, commented-out code, comments the rewrite
   invalidated; coupling that makes existing test boundaries hard to use.
 
+On a refactor that lands over several commits, review the final state against the baseline the round started from,
+not against `HEAD`: the remnants that accumulate over the round (a branch whose reason left, a comment naming a case
+the rewrite removed) are exactly what a single-commit review of the last patch misses. Read the complete affected
+unit at the end, not the diff of the last edit.
+
 Not findings: length, a missing design pattern, naming taste, or anything without code evidence and a real
 maintenance cost. Do not add cross-layer coupling to remove a few similar lines, rewrite stable code for uniformity,
 or demand abstractions for speculative needs.

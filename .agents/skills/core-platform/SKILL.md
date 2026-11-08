@@ -63,3 +63,26 @@ on Linux, and Windows Service Control Manager behavior need their real platform 
   modes, so a debug build is not exempt.
 - `plugins/setup/` is a build harness, not a Dart API plugin, and its hooks can trigger Go or Rust compilation
   indirectly through Flutter platform builds; a missing toolchain fails `flutter test`, not only `flutter build`.
+
+## Answer Paths (`core/`)
+
+The proxy table, connection table, provider list, and event batch answers each leave as their own frame
+(`frameWriter`, `core/method.go`), never through the `MethodResponse` reflection envelope, so `ConnectionDelta`'s
+`MarshalJSON` is only the independent encoder the frame test decodes against, and a benchmark that measures
+`json.Marshal` on an answer is measuring a path no host reads. Measure the frame.
+
+The proxy answer caches what is static per tunnel snapshot (sorted names, `"name":` spans, node views) and what a
+group's answer reads live (its document, keyed on the selection and provider versions). Keep the cache decision and
+the reads that need interface dispatch at snapshot-build time: the answer path then does one `Now()` per group and
+one provider walk per group, and the group document cache lock is taken once per answer for the whole table.
+
+Two facts keep this code honest: `constant.ProxyAdapter` declares `AppendJSON`, so an assertion against an optional
+appender never fails and its fallback is dead; and the relay group type no longer parses (the submodule parser
+answers that it was removed), so no proxy carries `constant.Relay` and a `case constant.Relay:` in a group-type
+switch is unreachable. After removing such a branch, re-check the coverage of the touched function: the wrapper
+sits at 81% of statements, and a dead branch hides as an uncovered line rather than as a defect.
+
+Measure like the ledger in `PERFORMANCE.md` says: baseline and change on the same load and cache, at least seven
+paired rounds with `benchstat`, and record the rejected experiments with their numbers. On this host the user's own
+FlClash instance may be running, which puts the machine near 50% and widens `ns/op` by 20-38%, so take the p-value
+rather than a single run.
