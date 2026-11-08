@@ -656,6 +656,8 @@ class ProxiesAction extends _$ProxiesAction {
     final targets = <_DelayTestTarget>[];
     for (final batch in batches) {
       final fallbackTestUrl = ref.read(realTestUrlProvider(batch.testUrl));
+      // One fallback list for the whole batch instead of one per member.
+      final fallbacks = [fallbackTestUrl];
       for (final proxy in batch.proxies) {
         if (isUnprobeableProxyType(proxy.type)) {
           continue;
@@ -676,7 +678,7 @@ class ProxiesAction extends _$ProxiesAction {
         }
         final currentTestUrl = state == null
             ? fallbackTestUrl
-            : state.testUrl.takeFirstValid([fallbackTestUrl]);
+            : state.testUrl.takeFirstValid(fallbacks);
         final key = delayTestKey(currentTestUrl, proxyName);
         if (!seen.add(key)) {
           continue;

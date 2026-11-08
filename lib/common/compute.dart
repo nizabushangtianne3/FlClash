@@ -52,6 +52,8 @@ List<Group> computeSort({
   List<Proxy> sortOfDelay(List<Proxy> proxies, String testUrl) {
     final fallbackDelays = delayMap[testUrl];
     final count = proxies.length;
+    // One fallback list for the whole group instead of one per member.
+    final fallbacks = [testUrl];
     final delays = Int64List(count);
     final flags = Uint8List(count);
     for (var index = 0; index < count; index++) {
@@ -63,7 +65,7 @@ List<Group> computeSort({
           : realStateFor(proxyName);
       final delay = realState == null
           ? (fallbackDelays ?? _noDelays)[proxyName] ?? 0
-          : (delayMap[realState.testUrl.takeFirstValid([testUrl])] ??
+          : (delayMap[realState.testUrl.takeFirstValid(fallbacks)] ??
                     _noDelays)[realState.proxyName] ??
                 0;
       delays[index] = delay;

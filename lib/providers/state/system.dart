@@ -148,10 +148,12 @@ Map<String, Map<String, int>> trayDelays(Ref ref) {
       selectedMap[group.name] ?? '',
     );
     final groupDelays = <String, int>{};
+    // One fallback list for the group's rows instead of one per row.
+    final fallbacks = [testUrl];
     for (final proxy in visibleTrayProxies(group, selectedName)) {
       final state = stateOf(proxy.name);
       final delay =
-          delayMap[state.testUrl.takeFirstValid([testUrl])]?[state.proxyName] ??
+          delayMap[state.testUrl.takeFirstValid(fallbacks)]?[state.proxyName] ??
           0;
       if (delay != 0) {
         groupDelays[proxy.name] = delay;
