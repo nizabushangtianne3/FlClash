@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-08
-- FlClash main：`dfb4d579`
-- Clash.Meta main：`1ad9b1a8a`
+- 最近核对日期：2026-11-08（核心答案路径轮次）
+- FlClash main：`3788368c`
+- Clash.Meta main：`89fad1edd`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次，账本当前共 93 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 95 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -203,6 +203,18 @@
 | TrackerInfo 行文本按对象缓存 | -（仅 wrapper） | 本轮提交 | `ruleText`/`progressText` 改为按对象 `Expando<String>` 缓存（`TrackerInfo` 不可变，字段固定）：分组表每次刷新对全部行调 `keyOf`、表格单元格与搜索都要重建这两个字符串。新增 `test/models/tracker_info_text_benchmark_test.dart`：JIT n=7（500 行 ×2000 次）`ruleText` 均值 35.98µs/中位 35.87µs → 12.54µs/12.34µs（**-65.2%**），`progressText` 均值 47.36µs/中位 47.32µs → 14.82µs/14.81µs（**-68.7%**）；`test/models/common_test.dart` 新增“不同对象各自缓存”用例，`test/features/tracker_info_list_test.dart`、`test/models/record_filter_test.dart`、`test/features/filter_test.dart`、`test/features/tracker_speed_ranker_test.dart`、`test/views/requests_test.dart`、`test/views/connections_test.dart` 共 73 个用例与 `dart analyze --fatal-infos` 全绿 |
 | 实时连接表协议统计免 lowercase 拷贝 | -（仅 wrapper） | 本轮提交 | `liveProtocolSplit` 抽出为顶层函数并改用 `StringExtension.equalsIgnoreCase`：先比长度，再逐 codeUnit 做 ASCII 大小写不敏感比较，不再为每行 `metadata.network.toLowerCase()` 分配字符串；feed 仍保持原有 copy+sort。新增 `test/views/dashboard/connections_feed_benchmark_test.dart`：JIT n=7（300 行 ×2000 次 counter-only 更新）均值 20.16µs/中位 19.93µs → 13.09µs/13.06µs（均值 **-35.10%**，中位 **-35.00%**，单次更新省 ~7.1µs）；`test/common/string_test.dart` 新增 3 个 `equalsIgnoreCase` 用例（含 ASCII-only 折叠语义），`test/views/dashboard/connections_table_test.dart` 新增混合大小写协议计数与 traffic 更新后顺序不变用例（`TCP`/`Udp` → TCP 12 / UDP 8），`test/views/connections_test.dart`、`test/views/requests_test.dart` 与 `dart analyze --fatal-infos` 全绿 |
 | Android 事件分发快照监听器 + 标签懒构造 | -（仅 wrapper） | 本轮提交 | `Service` 原来每个 Core 事件都 `List.of(_listeners)` 且都执行 `'Core event ${event.type.name}'` 字符串插值；现在监听器快照按 add/remove 失效缓存，事件类型标签只在 catch 分支构造，成功路径只保留一次 try。新增 `test/plugins/service_event_benchmark_test.dart`：JIT n=7（300 事件 ×200 批）perBatchUs 均值 529.00/中位 526.56 → 489.76/479.68（均值 **-7.40%**，中位 **-8.90%**，单事件 1.76µs → 1.63µs）；`test/plugins/service_test.dart` 25 个用例全绿，全量套件剩余既有本地 bundle 失败 |
+
+### 2026-11-08 核心答案路径轮次
+
+本轮按用户要求聚焦 core（Go wrapper + 子模块）：从 benchmark 地图重新测量，CPU 剖析 `getProxies` 与 `getConnections` 两条答案路径，落地三项结构性重构；第 5 节同步更新待优化项清单。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 组的实时选中读取收敛到单锁：`URLTest.fast` 把 stale 检查与缓存读取合并为新的 `Single.CachedValid`；`URLTest`/`Fallback` 的钉选从 `sync.RWMutex` 改为 `atomic.Pointer[string]` | `89fad1edd` | 本轮提交 | `BenchmarkHandleGetProxies` paired n=7 benchstat：200 组 urltest 59.92µ → 50.47µ（**-15.77%**，p=0.001）、200 组+1000 节点 urltest 77.02µ → 66.89µ（**-13.15%**，p=0.001）、fallback -5.02%（p=0.004）、loadbalance -5.37%（p=0.011），geomean **-7.09%**，分配/内存不变；`BenchmarkURLTestSelectedProxyLargeGroup` paired n=5：166.4ns → 148.2ns（**-10.94%**，p=0.008）。答案字节形状由 `TestGroupDocsAnswerWhatTheirGroupsChange`、`TestProxiesAnswerAnswersWhatTheHostReads` 钉住 |
+| 代理解表答案整表一次持锁、组文档键只读一次：`appendProxyTable` 每答案持锁一次（原每组一次），缓存键读一次后同时用于查找与写入（原键会被读三次：查找、组自身编码、写入），行类型每组只问一次 | -（仅 wrapper） | 本轮提交 | 与上一行同一基准配对测量（wrapper 与子模块共同构成该收益）；`TestGroupDocsAnswerWhatTheirGroupsChange` 覆盖四种 kind 的稳态答案、钉选与订阅刷新后 now/all 到达下一答案 |
+| 连接轮询行表改 tracker 键 + 死行原地清扫：`connectionRows` 由 `map[uuid.UUID]` 改 `map[statistic.Tracker]`，另存 order slice，清扫时原地压缩；行 id 建行时算一次，删除时不再现算 | -（仅 wrapper） | 本轮提交 | `BenchmarkGetConnections` paired n=7 benchstat：resync 100 行 45.83µ → 30.06µ（**-34.43%**，p=0.002）、resync 500 行 146.0µ → 123.3µ（**-15.56%**，p=0.001）、delta 500 行 39.11µ → 35.10µ（p=0.073 噪声内），geomean **-16.97%**，分配/内存不变；`TestConnectionDeltaAnswersWhatMoved` 全绿 |
+
+本轮验证：子模块 `go test ./... -count=1 -p=1`（104 包 ok）与 `go vet ./...`、wrapper `go test . -count=1` 与 `go vet .`、`go test -race . -run 'Proxy|Proxies|Group|Connection|TestMessageBatch|TestResetNetwork'`（CGO_ENABLED=1）与子模块 `go test -race ./adapter/outboundgroup/... ./common/singledo/...` 全部通过。
 
 ### 2026-11-05 测量记录（审计后刻意未动）
 
@@ -393,6 +405,16 @@ dart run tool/test.dart   # exit 0
 | 表格行单元格构建（`toUpperCase`、时长文本、`dashboardTraffic` 格式化与单元格 widget） | `test/widgets/row_cells_benchmark_test.dart` JIT n=5（500 行 ×500 次 `RecordTable.cellsOf`）：约 1.40µs/行，其中约一半是 `traffic`/`trackerDurationText` 的字符串格式化，约一半是单元格 widget；20 行可见表格每次刷新约 28µs | 单项拆分已到地板（样式缓存方案见第 3 节，已否决）。再降只剩两条路：按列声明「单元格读什么」做 per-column memo（counter-only 刷新跳过描述性列，约省 40%），或自绘表格 render object（无逐单元格 widget 树）；两者都要动 `RecordColumn`/`TableCells` 的公共 API，风险高于收益，先留基准 |
 | `SpeedCard` 每帧对全部 speed 样本 fold 求 peak | 约 60 样本/帧 | 收益过小，记账备查 |
 | core/Clash.Meta 侧 P1/P2/P4 | 见下文各小节 | DNS 负回复、本地 DNS serve 全链、UDP 首包均已实测否决或维持不做 |
+
+### 待优化项清单（2026-11-08 核心轮次复核，均在本机实测过）
+
+| 位置 | 实测基线 | 结论 / 下一步 |
+|---|---|---|
+| `getProxies` 答案的 `groupDocKeyOf` → `Now()` | 剖析：URLTest 场景答案路径 CPU 的约 25%（200 组 × ~90ns/答案） | **本轮已减半但仍是最大单项**：把缓存键换成"组选中代数"（由子模块导出选择代数量）可再降，但任何漏记的变更点都会让 UI 显示过期选中态。需先在子模块枚举 URLTest/Fallback/LoadBalance 的全部选中变更点，再逐点补代数并重测 |
+| `configuredTestTimeout`（`core/delay.go`） | 每次 delay 测试遍历全部 provider，并对每个返回 timeout 的 provider 线性扫成员（`slices.ContainsFunc(pd.Proxies(), …)`）；1000 节点 × N provider 时每次调用 O(providers × members) | 单次成本远小于 URLTest 网络往返，暂不动；若要改，按 `proxy.ProxyInfo().ProviderName` 直接定位 provider（语义差异：同名节点跨 provider 时只认隧道表里那一个，需先确认可接受） |
+| `adapter.Proxy` 的 `extra` xsync.Map 读路径初始化 | `BenchmarkHandleGetProxies` 内存剖析：活对象的 30% 来自 `xsync.newMapTable[string,*internalProxyState]`，且**纯读取**（`AliveForTestUrl`/`LastDelayForTestUrl`）就会触发惰性建表 | 可加 `hasExtra atomic.Bool` 让纯读取不建表；但真实使用中节点都会被测速、表反正要建，收益有限，记账备查 |
+| 连接轮询的 `row.stale(info)` 与 `Manager.Range` | 剖析：stale ~25ns/行；Range 桶遍历约占该基准采样的 10% | 要再降需要 `TrackerInfo` 侧提供元数据版本号（改动面覆盖全部元数据写入点），维持不做 |
+| `BenchmarkGetConnectionsDelta` 仍走 `json.Marshal` | 基准内自行 `json.Marshal(handleGetConnections(...))`，而生产路径走 `frameFor` | 基准与生产路径不一致，应改为 `frameFor` 后重测（本轮未改，避免把测量修正与重构混在同一提交） |
 
 ### P1：DNS UDP response parsing
 
