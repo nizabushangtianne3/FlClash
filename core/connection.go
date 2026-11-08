@@ -8,6 +8,7 @@ import (
 
 	"github.com/metacubex/mihomo/common/jsonutil"
 	"github.com/metacubex/mihomo/component/resolver"
+	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/tunnel/statistic"
 )
@@ -254,6 +255,9 @@ func handleClearDnsCache() {
 // Android's NetworkObserver reports through handleResetNetwork.
 func handleNetworkChanged() {
 	handleClearDnsCache()
+	// Only a new network can have changed what the system supports, and the
+	// cached answer is what the next config parse reads.
+	config.ResetIPV6Support()
 }
 
 // A connection that went out over a network the device has left hangs until
