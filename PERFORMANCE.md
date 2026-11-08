@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-08（核心轮次 + Dart compute 轮次 + 槽位读键）
-- FlClash main：`7b79aa0a`
+- FlClash main：`87826e88`
 - Clash.Meta main：`640f8a50a`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 103 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 104 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -219,6 +219,7 @@
 | 代理解表组文档键的输入改从槽位读（`3c3ae432`） | -（仅 wrapper） | `3c3ae432` | 答案路径原本每组每答案都向 proxy 问一次适配器类型、并从其 adapter 上断言出钉选读取器；两者在代理生命周期内固定，改由槽位携带，答案路径只剩一次进入组读取实时选中。`BenchmarkHandleGetProxies` 3 轮交替配对 n=15：urltest 200 组 37.81µ → 36.61µ（**-3.17%**，p=0.019）、千节点 urltest 53.23µ → 51.42µ（**-3.39%**，p=0.026）、fallback 45.32µ → 42.02µ（**-7.28%**，p=0.000），geomean **-2.79%**；Selector 场景不用这些输入，维持底线。wrapper 全量 + vet + focused race 通过 |
 | 嵌套组选中态解析一次 copy 完成（`d302ed10`） | -（仅 Dart） | `d302ed10` | `_resolveRealSelectedProxyState` 原先每层用两次链式 freezed `copyWith` 分别带 group 标记与（解析名 + testUrl），每个嵌套成员要建两个对象；合并为一次。`test/common/compute_sort_delay_benchmark_test.dart` 嵌套场景 7 轮交替配对：47.5ms → 46.3ms（中位 **-2.6%**，7 轮中 6 轮更快）；平坦场景不触发解析，无影响。`compute_test.dart` 41 例 + focused 全绿 |
 | 三个热循环的单元素 fallback 列表提到循环外（`7b79aa0a`） | -（仅 Dart） | `7b79aa0a` | `computeSort.sortOfDelay`、`_resolveDelayTestTargets` 与托盘延迟视图此前对每个「组成员」都新建一个单元素 fallback 列表；改为每组/每批/每组一次，与 `computeHideTimeout` 早已具备的形状一致。`compute_sort_delay_benchmark_test.dart` 嵌套场景 7 轮交替配对：46.5ms → 45.3ms（中位 **-2.6%**，5/7 轮更快）；平坦场景不访问组成员、无变化。focused 11 个文件 179 例全绿 |
+| 连接增量基准改测生产帧路径（`87826e88`，仅测试） | -（仅 wrapper） | `87826e88` | `BenchmarkGetConnectionsDelta` 原先走 `json.Marshal(handleGetConnections(...))`，即 `ConnectionDelta.MarshalJSON` 的反射信封——生产路径从不使用它（答案以自己的 frame 发出）。基准改为 `frameFor`：100 行 5.70µs → 4.64µs、500 行 38.3µs → 33.8µs，分配 3 → 2。**注意：这组历史数据与之前的配对不再可比**，本回合起该基准与 `GetConnectionsResyncFrame` 同基准。`MarshalJSON` 保留——帧字节测试用它作独立编码器的交叉验证 |
 | 隐藏超时节点：代理类型改从对象读，删掉整张按名缓存表 | -（仅 Dart） | `30851bf7` | `computeHideTimeout` 原本对每个代理查一次 `_proxyTypesFor` 建的 name→type 表，而该表内容就是 `proxy.name: proxy.type`。改为直接读 `proxy.type`，每个成员少一次字符串键查找，整张缓存表（含 Expando）随之删除。`test/common/compute_hide_timeout_benchmark_test.dart` 7 轮交替配对（每轮新进程）：100 组×20 成员 126.9µs → 89.3µs（**-29.6%**，7/7 全部更快）；2000 节点单组（healthy）中位 10.22µs → 9.26µs（**-9.4%**，逐轮 4/7）。`test/common/compute_test.dart` 41 例、focused 8 个文件 136 例与 `dart analyze` 全绿 |
 
 本轮验证：子模块 `go test ./... -count=1 -p=1`（104 包 ok）与 `go vet ./...`、wrapper `go test . -count=1` 与 `go vet .`、`go test -race . -run 'Proxy|Proxies|Group|Connection|TestMessageBatch|TestResetNetwork'`（CGO_ENABLED=1）与子模块 `go test -race ./adapter/outboundgroup/... ./common/singledo/...` 全部通过。
@@ -432,7 +433,6 @@ dart run tool/test.dart   # exit 0
 | `configuredTestTimeout`（`core/delay.go`） | 每次 delay 测试遍历全部 provider，并对每个返回 timeout 的 provider 线性扫成员（`slices.ContainsFunc(pd.Proxies(), …)`）；1000 节点 × N provider 时每次调用 O(providers × members) | 单次成本远小于 URLTest 网络往返，暂不动；若要改，按 `proxy.ProxyInfo().ProviderName` 直接定位 provider（语义差异：同名节点跨 provider 时只认隧道表里那一个，需先确认可接受） |
 | `adapter.Proxy` 的 `extra` xsync.Map 读路径初始化 | `BenchmarkHandleGetProxies` 内存剖析：活对象的 30% 来自 `xsync.newMapTable[string,*internalProxyState]`，且**纯读取**（`AliveForTestUrl`/`LastDelayForTestUrl`）就会触发惰性建表 | 可加 `hasExtra atomic.Bool` 让纯读取不建表；但真实使用中节点都会被测速、表反正要建，收益有限，记账备查 |
 | 连接轮询的 `row.stale(info)` 与 `Manager.Range` | 剖析：stale ~25ns/行；Range 桶遍历约占该基准采样的 10% | 要再降需要 `TrackerInfo` 侧提供元数据版本号（改动面覆盖全部元数据写入点），维持不做 |
-| `BenchmarkGetConnectionsDelta` 仍走 `json.Marshal` | 基准内自行 `json.Marshal(handleGetConnections(...))`，而生产路径走 `frameFor` | 基准与生产路径不一致，应改为 `frameFor` 后重测（本轮未改，避免把测量修正与重构混在同一提交） |
 | 连接 resync 答案的行级链路 | 剖析（500 行）：`TrackerInfo.AppendJSON` 约 74ns/行、行管理（Info/查表/stale）约 8ns/行、`rowAnswerSize` 仅占 2.5%，GC 占 45%（378KB/答案）；答案缓冲池化只在 spill 路径安全，而 resync 只发生在页面打开与漂移重同步，真实收益有限 | `rowAnswerSize` 不值得缓存；`stale` 与 `Manager.Range` 的再削减需要 `TrackerInfo` 元数据版本号或 xsync  relaxed 遍历（后者改变子模块共享语义），维持不做 |
 | `handleGetExternalProviders` 答案 | 43.6µs/答案：逐条 `AppendString` 占 26%、每次答案全量排序占 19%； Dart 侧只在 provider 更新后 `syncProviders()` 调用 | 文档缓存要把 version/count/updateAt/subscription-info 五个易变值都纳入键（其中 subscription-info 是指向可变结构的指针），而该路径只在订阅刷新后跑一次，风险收益不相称，维持不做 |
 
