@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-09（答案传输层重构 + 只读代理不建表 + 名单按身份做键 + singledo/handler/溢出三批测试）
-- FlClash main：`5c786c8d`
-- Clash.Meta main：`80f6d03f4`
+- 最近核对日期：2026-11-09（答案传输层重构 + 只读代理不建表 + 名单按身份做键 + singledo/handler/溢出三批测试 + 选中代数做键）
+- FlClash main：`7a92f96a`
+- Clash.Meta main：`39ce557da`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 116 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 117 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -474,6 +474,20 @@
 | 覆盖帧写入器答案的溢出落盘 + 落盘失败的降级：前者钉住「落盘文件字节 == 传输层本该写出的字节」（阈值压到答案长度减一，强制走 spill），后者把 home 指到一个已存在文件上让 MkdirAll 失败，钉住「失败时原样内联返回，绝不指向一个没被创建的文件」 | -（仅 wrapper） | `5c786c8d` | `TestHandleMethodCallSpillsAFrameWriterDocument`、`TestSpillFailureAnswersInline` 两个新用例；`spillFrame` 覆盖 57.1% → 85.7%、`makeSpilledResponseDir` 80% → 100%；wrapper 全量 + vet + focused race 通过。剩余未覆盖是 `writeSpilledFrame` 里 Chmod/Write 失败的防御分支，需注入文件系统错误，留着 |
 
 **审计结论（记录备查，未改动）**：`connectionRow.stale()` 在生产线永远不会为真。子模块 `NewTCPTracker` 用 `tt.metadata = *metadata` 做值拷贝，`TrackerInfo.Metadata` 指向 tracker 自己的副本（`TestTrackerClonesMetadataIntoCreationSnapshot` 钉住：创建后改原 metadata 不影响快照），而全子模块对 `TrackerInfo.Metadata` 的写入只发生在构造期。因此这 10 个字段比较是防御性死代码。**不删**：删除属于行为变更，且「没有任何路径会写」这个否定命题无法在跨模块范围内被证明；它每轮每行约 25ns，留着当保险。
+
+
+### 2026-11-09 选中代数做键轮次
+
+账本第 5 节挂了很久的第一条待办：「把缓存键换成组选中代数」。先前只在 URLTest 场景做过剖析，本轮先对**全场景**做 CPU 剖析再动手：命中路径里 `groupDocKeyOf`（导出键所必需的实时选中读取）cum **69.5%**，其中 `outbound.(*Base).Name` 16.84% flat、`providerVersionsEqual` 15.44% flat。也就是说「只为确认没变而去解析当前选中」就是命中路径的主体。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `ProxyGroup` 增加 `SelectionVersion`：Selector 的选中就是它拨号用的那个，`setSelected`（`Set`/`ForceSet` 两个唯一入口）是其唯一写入口，计数完整；URLTest/Fallback 计数的是 `fixed` 钉选的变动（live 选中仍自行改选，不在计数内）；LoadBalance 无选中，报 0（与它 `Now()` 报空串同一范式） | `39ce557da` | `7a92f96a` | 见下一行 |
+| wrapper 的 Selector 文档键改用「选中代数 + provider 版本」，不再解析当前选中；其余 kind 维持原样读自己文档写到的值 | -（仅 wrapper，含上一行） | `7a92f96a` | 交替运行两个编译产物（同窗口、n=8）：Selector 20 组 **-42.14%**、200 组 **-65.76%**、200 组+1000 节点 **-64.81%**（均 p=0.000）；urltest p=0.205、urltest+千节点 p=0.426、fallback p=0.442、loadbalance p=0.279，全部落在「同二进制自比」的 ±2.5% 伪影带内；geomean 5.97µ → 4.10µ **-31.37%**。wrapper 全量 + vet + focused race + 四平台 vet 通过；子模块 104 包全量通过 |
+
+**第一次尝试被撤销并记录（勿重做）**：把 `selection uint64` 放进共享的 `groupDocKey`，键从 32 字节变 40 字节，结果每个 kind 的键比较都变慢——loadbalance +31.36%、urltest +13.51%、fallback +10.33%（n=8，p≤0.001），而 Selector 收益同样拿到（-41% ~ -67%）。计数器改为挂在槽位旁（`selectedAt uint64`，槽位仍是 144 字节、size class 不变）后回归消失。**教训：给所有 kind 共享的热结构加字段，即便只有一个 kind 用它，也要按「会不会改变结构大小/布局」来评估，不能只算自己那条路径。**
+
+方法论备注：本轮先做了「同二进制对自己比」的对照实验（4 轮交替 benchstat，geomean +0.71%，个别场景 ±2.5% 且 p 可低至 0.021），本机噪声带因此有了实测依据，后续所有 A/B 都以它为准绳。
 
 
 ## 4. 当前验证矩阵
