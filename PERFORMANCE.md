@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-09（答案传输层重构轮次）
-- FlClash main：`b1869f25`
-- Clash.Meta main：`640f8a50a`
+- 最近核对日期：2026-11-09（答案传输层重构 + 只读代理不建表）
+- FlClash main：`08fe568b`
+- Clash.Meta main：`ebe6dbb18`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 111 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 112 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -256,6 +256,17 @@
 **已否决策略（勿重做）**：把整帧缓存键做成"帧 + 调用 id"。宿主每次调用都换自增 id，命中率恒为 0，只会让答案路径多背一次 id 比较与整帧缓存。文档缓存必须建在结果文档上，信封由传输层分担。
 
 本轮验证：wrapper `go build ./...`、`go vet ./...`、`go test ./... -count=1` 全绿；`GOOS=android/linux/darwin` 交叉 `go vet ./...` 均通过（`lib.go`、`server.go`、`spill.go` 三平台一致）；`go test . -race -count=1` 仅剩既有失败 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent`（`route.go` 的刷新 worker 与 `recordRoutes` 清理的数据竞争，已在**基线代码**上复现，与本轮无关）；答案路径 focused race（Proxy/Proxies/Group/Connection/Spill/Send/Frame/Dispatch/Traffic/Memory/Provider）全绿。
+### 2026-11-09 只读代理不再建表轮次
+
+上一轮留下一条内存线索：`BenchmarkHandleGetProxies` 的内存剖析里，**超过一半的分配字节来自 `xsync.newMapTable`**——`xsync.Map` 在任何入口（含纯读）都惰性建表，于是「只被读过、从未被写过」的代理也各自持有一张空表。URLTest 组的挑选循环会遍历每个成员读一次延迟状态，所以一千个节点的订阅会建一千张什么都不装的表。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 只读代理不再建 per-URL 状态表：写入路径（`testState`，全部写入都收敛于此）在触表前先发布 `hasExtra`，纯读路径先看这个标志，标志为清就知道表为空、不需要建表；`xsync.Map` 增补 `Initialized()` 让该不变量可测 | `ebe6dbb18` | `08fe568b` | 交替运行前后两个编译产物（各 4 轮 × count=2，n=8）：urltest 场景 223.5B/答案 → **103.0B/答案（-53.91%，p=0.000）**，allocs 3→3，时间 11.89µ → 11.82µ（p=0.721，无变化）；基准整个过程分配总量 78.3MiB → 40.8MiB、对象 634.6k → 527.1k，`newMapTable` 从剖析中完全消失。`TestProxyExtraStateIsBuiltOnlyByAWrite`（新增）钉住：纯读不建表、写入后建表、写过的值仍读得回；既有 `TestProxyAliveForTestUrl`、`TestProxyMarshalJSONCarriesDelayState`、URLTest 系列与 xsync 全量不受影响 |
+
+说明：本轮只改内存与分配，不动时间。读取路径对「确有状态」的代理多付一次原子加载，对「从未写过」的代理从「initOnce + 哈希 + 探查」降为一次原子加载；挑选循环的实测成本不在这里，故时间持平。真实收益是大型订阅的常驻内存：只读成员不再各持一张 ~450B 的空表。
+
+
 ### 2026-11-05 测量记录（审计后刻意未动）
 
 | 位置 | 测量 | 结论 |
