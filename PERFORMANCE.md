@@ -2,8 +2,8 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-09（答案传输层重构 + 只读代理不建表 + 名单按身份做键 + singledo 读路径测试 + handler 分发测试）
-- FlClash main：`76247f64`
+- 最近核对日期：2026-11-09（答案传输层重构 + 只读代理不建表 + 名单按身份做键 + singledo/handler/溢出三批测试）
+- FlClash main：`5c786c8d`
 - Clash.Meta main：`80f6d03f4`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 115 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 116 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -463,6 +463,17 @@
 | 让每个已注册 handler 都通过 dispatcher 真跑一遍：流量重置、关闭全部连接、重置连接、清 DNS 缓存、上报网络变更、关闭单个未知连接、外部 provider 列表/单读、inline provider 的 sideLoad 拒绝、profile clearEffect 在 core 未初始化/已初始化两种状态 | -（仅 wrapper） | `76247f64` | 覆盖 `traffic.reset`/`connection.closeAll`/`connection.reset`/`dns.clearCache`/`network.changed`/`connection.close`/`provider.list`/`provider.get`/`provider.sideLoad`/`profile.clearEffect` 共 10 个方法，断言各自的 result/error 与副作用（非 closeAll 不得动连接行、closeAll 后表空、provider 名单含转义名、clearEffect 真删目录）。wrapper 全量 + vet + focused race 通过 |
 
 覆盖率：wrapper `go test . -coverprofile` 统计 **81.6% → 82.8%**（statements）。剩余 0% 集中在三类：进程入口（`StartServer`/`ExitOnTermination`）、非 Windows 平台文件（`ownership_other.go` 上的 `initOwnership`/`reclaimDirOwnership`）、以及 service_rules 的 unlock 检查器（需真实外网，靠 `handleServiceCheck` 走注入源覆盖）。前两类不适合在 wrapper 单测里构造；第三类已有 service_check 测试覆盖其框架。
+
+
+### 2026-11-09 溢出路径测试轮次（覆盖，不是性能）
+
+传输层重构把「帧写入器答案」也送进了溢出路径（`spillFrame` 按段写临时文件），而这条分支此前**没有任何测试**——原有三个 spill 用例走的都是反射结果（`config.read`）或 profile 构建。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 覆盖帧写入器答案的溢出落盘 + 落盘失败的降级：前者钉住「落盘文件字节 == 传输层本该写出的字节」（阈值压到答案长度减一，强制走 spill），后者把 home 指到一个已存在文件上让 MkdirAll 失败，钉住「失败时原样内联返回，绝不指向一个没被创建的文件」 | -（仅 wrapper） | `5c786c8d` | `TestHandleMethodCallSpillsAFrameWriterDocument`、`TestSpillFailureAnswersInline` 两个新用例；`spillFrame` 覆盖 57.1% → 85.7%、`makeSpilledResponseDir` 80% → 100%；wrapper 全量 + vet + focused race 通过。剩余未覆盖是 `writeSpilledFrame` 里 Chmod/Write 失败的防御分支，需注入文件系统错误，留着 |
+
+**审计结论（记录备查，未改动）**：`connectionRow.stale()` 在生产线永远不会为真。子模块 `NewTCPTracker` 用 `tt.metadata = *metadata` 做值拷贝，`TrackerInfo.Metadata` 指向 tracker 自己的副本（`TestTrackerClonesMetadataIntoCreationSnapshot` 钉住：创建后改原 metadata 不影响快照），而全子模块对 `TrackerInfo.Metadata` 的写入只发生在构造期。因此这 10 个字段比较是防御性死代码。**不删**：删除属于行为变更，且「没有任何路径会写」这个否定命题无法在跨模块范围内被证明；它每轮每行约 25ns，留着当保险。
 
 
 ## 4. 当前验证矩阵
