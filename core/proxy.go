@@ -238,7 +238,25 @@ func refreshGroupDocs(snapshot *sortedProxyNameCache) bool {
 
 // refreshGroupDoc rebuilds a slot's document when the values the live encode
 // would write have moved.
+//
+// A Selector is keyed on the group's own selection counter beside the provider
+// versions, so its row is answered without resolving the selection -- which is
+// the expensive half of answering the table, since every other kind's document
+// names the selection it currently holds. A group that publishes no counter is
+// answered live, exactly like a URLTest or Fallback with no pinned reader.
 func refreshGroupDoc(slot *groupDocSlot) {
+	if slot.typ == constant.Selector {
+		if slot.doc != nil && slot.selectedAt == slot.group.SelectionVersion() &&
+			groupDocVersionsMatch(slot.group, slot.versions) {
+			return
+		}
+		doc := appendGroupDocument(nil, slot.proxy)
+		slot.selectedAt = slot.group.SelectionVersion()
+		slot.versions, slot.doc = groupDocVersions(slot.group), doc
+		groupDocGeneration++
+		return
+	}
+
 	key := groupDocKeyOf(slot)
 	if slot.doc != nil && slot.key == key &&
 		groupDocVersionsMatch(slot.group, slot.versions) {
@@ -406,6 +424,10 @@ type groupDocSlot struct {
 	// dispatching into the proxy for them on every group.
 	typ   constant.AdapterType
 	fixed interface{ SelectedName() string }
+	// The selection count the stored document was encoded under. A Selector's
+	// document is keyed on the group's own counter beside the provider
+	// versions, so answering it never resolves the selection.
+	selectedAt uint64
 	key      groupDocKey
 	versions []uint32
 	doc      []byte
@@ -437,8 +459,6 @@ func newGroupDocSlot(proxy constant.Proxy) *groupDocSlot {
 // groupDocKeyOf reads the values the live encode would write.
 func groupDocKeyOf(slot *groupDocSlot) groupDocKey {
 	switch slot.typ {
-	case constant.Selector:
-		return groupDocKey{now: slot.group.Now()}
 	case constant.LoadBalance:
 		return groupDocKey{}
 	}
