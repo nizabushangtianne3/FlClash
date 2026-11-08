@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-08（核心轮次 + Dart compute 轮次）
-- FlClash main：`30851bf7`
+- FlClash main：`9982a0ce`
 - Clash.Meta main：`640f8a50a`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -376,6 +376,7 @@
 | `computeSort`/`computeHideTimeout`/`_resolveDelayTestTargets` 的「成员是否为组」改 `GroupTypeExtension.isEnumName(proxy.type)` | 该检查零分配且仓库 UI 层（`lib/views/proxies/card.dart`）已在用同一语义，但 `isEnumName` 只认枚举名拼写，而 `groupsByName` 含 `isGroupType` 接受的全部拼写（含 lowercase 别名与 `value` 拼写）；用户自定义分组若用非枚举名拼写，会被误判为叶子、用错延迟测错序。把逐代理查找换成类型检查没有既快又完全等价的形态（先查类型再回落查表会让占比最高的叶子更慢），记账备查 |
 | `lib/views/profiles/custom/members.dart` 与 `lib/providers/actions/profiles.dart` 的 name→type/name→id 表 | 两处都是资料编辑器/导入路径（非持续热路径），且表本身已按状态 Expando 缓存；同一病灶但收益面不在热门路径上，暂不动 |
 | `computeSort` 延迟排序两项微优化（`_sameOrder` 同列表短路 + 排序键缓冲跨组复用） | 3 轮交替配对（每轮新进程、50 次 warm-up 后测 100 次）：1000 节点全量排序 17.82ms → 18.46ms（**+3.6%**）、100 组×10 嵌套组 46.22ms → 48.99ms（**+6.0%**）、已有序的两个场景在 ±4% 内；缓冲复用虽把每组 2 次 TypedData 分配降到每 computation 2 次，但没有转化为时间收益。撤销两项改动。结论：Dart JIT 下 <15% 的计时差需要 ≥7 组交替配对才可判定，微优化应先做分配/操作数论证再上基准 |
+| `RecordFacet.optionsOf` 选项终排预计算（rank 表 + 折叠键） | `test/models/facet_options_benchmark_test.dart` 7 轮交替配对（前 2 轮受机器负载污染，取稳定 5 轮）：全去重场景 50.4µs → 51.3µs（+1.7%）、3 个 offered facet 44.8µs → 44.0µs（-1.6%），均在噪声内。剖析确认该路径 80% 以上是 `countInto` 的逐行 map 计数与 `_mostFrequent` 的有界选取（前者每次插入本身就是两次哈希），选项终排占比过小；撤销 |
 | Selector 选中名缓存进 `selectorSelection`（稳态 `Now()` 少两次接口分发） | 3 轮交替配对 n=15（千节点 selector 场景）：75.90µ ±20% → 79.48µ ±23%（p=0.902，无显著差异）。itab 热时分发成本只有个位数 ns，与在子模块最基础的选择缓存里多加一个字段的风险不相称，撤销并记录 |
 | 代理解表组文档键改「组选中代数」 | 剖析确认 `groupDocKeyOf` 仍是答案路径最大单项（URLTest 场景约 25%），但把键换成子模块导出的选择代数量，任何漏记的变更点都会让 UI 显示过期选中态；需先枚举 URLTest/Fallback/LoadBalance 的全部选中变更点并逐点补计数，本轮未做，留在待优化项 |
 
