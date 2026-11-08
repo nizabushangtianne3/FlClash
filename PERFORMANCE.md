@@ -2,8 +2,8 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-08（核心轮次 + 死代码清理）
-- FlClash main：`054a893c`
+- 最近核对日期：2026-11-08（核心轮次 + Dart compute 轮次）
+- FlClash main：`30851bf7`
 - Clash.Meta main：`640f8a50a`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 99 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 100 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -216,6 +216,7 @@
 | 代理解表组文档缓存槽位化：`groupDocs`（按代理查 map + 快照比对）改为随快照预建的 `groupSlots`，每组每答案省掉 `Type()`、类型断言、map 查找与快照比较，整表锁保持不变 | -（仅 wrapper） | 本轮提交 | `BenchmarkHandleGetProxies` 3 轮交替配对 n=15：groups=20 5.105µ → 4.152µ（**-18.67%**，p=0.000）、groups=200 71.28µ → 53.08µ（**-25.54%**，p=0.002）、千节点 70.05µ → 57.58µ（**-17.80%**，p=0.001）、urltest 50.35µ → 42.35µ（**-15.90%**，p=0.000）、千节点 urltest 68.58µ → 55.79µ（**-18.65%**，p=0.000）、fallback **-18.86%**、loadbalance **-18.56%**，geomean **-19.19%**，分配/内存不变；wrapper 全量 + focused race + vet 通过 |
 | Profile 读档缓存直接持有 `wire` 字节（省掉每次读档的整份拷贝） | -（仅 wrapper） | `881b74ba` | `BenchmarkProfileReadAndMerge` 与 `BenchmarkMergeProfileBase` 3 轮交替配对 n=15：分配字节 geomean **-2.79%**（p=0.000），时间持平（该路径 50% 在 `os.ReadFile`、21% 在 yaml，属 I/O 主导）；wrapper 全量 + vet 通过 |
 | IPv6 支持检查按进程缓存 + 网络变更失效：`verifyIP6()` 原先每次配置解析都走一遍 `net.InterfaceAddrs()`（实测单次 1.52ms，占 800 节点解析 CPU 采样的 16.7%）；子模块缓存答案并导出 `ResetIPV6Support()`，wrapper 的 `handleNetworkChanged`（桌面 connectivity 变更与 Android NetworkObserver 都走这条路径）调用它失效 | 本轮提交 | 本轮提交 | `BenchmarkParseConfig` 800 节点 paired n=3：13.02ms → 11.31ms（**-13.1%**），分配 89953 → 89895 基本不变；新增 `TestVerifyIP6CachesUntilTheNetworkChanges` 钉住缓存命中、`SKIP_SYSTEM_IPV6_CHECK` 逃逸口与重置后重新询问系统；子模块全量（104 包）+`go vet ./...`、wrapper 全量 +`go vet .`、config 包 race 全部通过 |
+| 隐藏超时节点：代理类型改从对象读，删掉整张按名缓存表 | -（仅 Dart） | `30851bf7` | `computeHideTimeout` 原本对每个代理查一次 `_proxyTypesFor` 建的 name→type 表，而该表内容就是 `proxy.name: proxy.type`。改为直接读 `proxy.type`，每个成员少一次字符串键查找，整张缓存表（含 Expando）随之删除。`test/common/compute_hide_timeout_benchmark_test.dart` 7 轮交替配对（每轮新进程）：100 组×20 成员 126.9µs → 89.3µs（**-29.6%**，7/7 全部更快）；2000 节点单组（healthy）中位 10.22µs → 9.26µs（**-9.4%**，逐轮 4/7）。`test/common/compute_test.dart` 41 例、focused 8 个文件 136 例与 `dart analyze` 全绿 |
 
 本轮验证：子模块 `go test ./... -count=1 -p=1`（104 包 ok）与 `go vet ./...`、wrapper `go test . -count=1` 与 `go vet .`、`go test -race . -run 'Proxy|Proxies|Group|Connection|TestMessageBatch|TestResetNetwork'`（CGO_ENABLED=1）与子模块 `go test -race ./adapter/outboundgroup/... ./common/singledo/...` 全部通过。
 
@@ -370,6 +371,10 @@
 | `delay`/`delayTestPhase` 去掉 `realTestUrlProvider` 家族跳，改为直接 `watch(patchClashConfigProvider.select)` | 新增 `test/providers/delay_provider_benchmark_test.dart`（1000 行 ×10 次 `refresh(delayProvider)`）三次交替配对（A=HEAD 带家族跳，B=直连 select）：A 8080833/8259448/8660959µs（均值 8333747）→ B 9154707/9247181/9358151µs（均值 9253346），**+11.0%**，三轮全慢。家族元素按参数缓存后只是一次读，`select` 订阅每次重建都要付闭包与通知器成本；撤销，保留 `realTestUrlProvider` |
 | `computeSort`/`computeHideTimeout` 把 `takeFirstValid` 的 fallback 列表提出循环 | 2026-11-08 三次交替配对（A=HEAD，B=hoist，每轮新进程）：`computeHideTimeoutGroups` 100 组 11963µs → 11561µs（**-3.4%**，但 3 个配对只有 1 个为负）、`computeSortDelaySorted` 100 组 10447µs → 11521µs（**+10.3%**）、新增的 `computeSortDelayNested`（100 组 ×10 嵌套组）45406µs → 46556µs（**+2.5%**），全部落在 ±5% 进程噪声内、无稳定收益；且实现时极易把嵌套组 fallback 从「外层组 testUrl」误提升成「全局默认 testUrl」（语义偏差，这次已由新增回归测试钉住后回退）。撤销 compute.dart 改动；本轮只落地测试增量：`test/common/compute_sort_delay_benchmark_test.dart` 新增多组/嵌套组两个场景、`test/common/compute_hide_timeout_benchmark_test.dart` 新增多组场景、`test/common/compute_test.dart` 新增「嵌套组无自己的 testUrl 时读外层组 testUrl」用例（41 例全绿） |
 | `adapter.Proxy` 构造时固化 Name/Type（少一次接口分发） | 5 轮交替配对 n=15（groups=200 场景）：119.1µ ±38% → 125.9µ ±42%（p=0.902，无显著差异）。本机在跑用户自己的 FlClash 实例，CPU 负载 ~52%，该场景方差 ±38% 以上，只有大幅收益才可判定；理论收益仅省一次分发，与风险（改动全项目最基础的代理包装类型）不相称，撤销并记录 |
+| `computeSort` 排序键 TypedData 缓冲跨组复用 + `_sameOrder` 同列表短路 | 3 轮交替配对（每轮新进程、50 次 warm-up 后测 100 次）：1000 节点全量排序 17.82ms → 18.46ms（**+3.6%**）、100 组×10 嵌套组 46.22ms → 48.99ms（**+6.0%**）、已有序的两个场景在 ±4% 内。缓冲复用虽把每组 2 次 TypedData 分配降到每 computation 2 次，但没有转化为时间收益；撤销 |
+| `computeSort` 按 Group 对象缓存「成员是否为组」位图（`Expando<Uint8List>`） | 7 轮交替配对：单组 1000 节点 17.68ms → 17.66ms（7/7 一致，约 **-4.2%**），但 100 组×2、嵌套两组场景 +1.9%/+2.2%——Dart 的 `Expando`（WeakMap + 身份哈希）查找比短字符串 map 查找更贵，只有上千成员的单个组才划算。撤销；结论：Dart JIT 下 <15% 的计时差需要 ≥7 组交替配对才可判定 |
+| `computeSort`/`computeHideTimeout`/`_resolveDelayTestTargets` 的「成员是否为组」改 `GroupTypeExtension.isEnumName(proxy.type)` | 该检查零分配且仓库 UI 层（`lib/views/proxies/card.dart`）已在用同一语义，但 `isEnumName` 只认枚举名拼写，而 `groupsByName` 含 `isGroupType` 接受的全部拼写（含 lowercase 别名与 `value` 拼写）；用户自定义分组若用非枚举名拼写，会被误判为叶子、用错延迟测错序。把逐代理查找换成类型检查没有既快又完全等价的形态（先查类型再回落查表会让占比最高的叶子更慢），记账备查 |
+| `lib/views/profiles/custom/members.dart` 与 `lib/providers/actions/profiles.dart` 的 name→type/name→id 表 | 两处都是资料编辑器/导入路径（非持续热路径），且表本身已按状态 Expando 缓存；同一病灶但收益面不在热门路径上，暂不动 |
 | `computeSort` 延迟排序两项微优化（`_sameOrder` 同列表短路 + 排序键缓冲跨组复用） | 3 轮交替配对（每轮新进程、50 次 warm-up 后测 100 次）：1000 节点全量排序 17.82ms → 18.46ms（**+3.6%**）、100 组×10 嵌套组 46.22ms → 48.99ms（**+6.0%**）、已有序的两个场景在 ±4% 内；缓冲复用虽把每组 2 次 TypedData 分配降到每 computation 2 次，但没有转化为时间收益。撤销两项改动。结论：Dart JIT 下 <15% 的计时差需要 ≥7 组交替配对才可判定，微优化应先做分配/操作数论证再上基准 |
 | Selector 选中名缓存进 `selectorSelection`（稳态 `Now()` 少两次接口分发） | 3 轮交替配对 n=15（千节点 selector 场景）：75.90µ ±20% → 79.48µ ±23%（p=0.902，无显著差异）。itab 热时分发成本只有个位数 ns，与在子模块最基础的选择缓存里多加一个字段的风险不相称，撤销并记录 |
 | 代理解表组文档键改「组选中代数」 | 剖析确认 `groupDocKeyOf` 仍是答案路径最大单项（URLTest 场景约 25%），但把键换成子模块导出的选择代数量，任何漏记的变更点都会让 UI 显示过期选中态；需先枚举 URLTest/Fallback/LoadBalance 的全部选中变更点并逐点补计数，本轮未做，留在待优化项 |
