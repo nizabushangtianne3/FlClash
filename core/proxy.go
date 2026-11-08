@@ -189,8 +189,7 @@ func (a *proxiesAnswer) appendProxyTable(buf []byte, snapshot *sortedProxyNameCa
 // edit, spliced in place instead of a decode/marshal round trip.
 // The caller holds the document cache lock.
 func appendGroupDoc(dst []byte, slot *groupDocSlot) []byte {
-	// A slot for a kind the document cache does not cover still carries the
-	// proxy, and its document is encoded live.
+	// A group whose document cannot be keyed is encoded live on every answer.
 	if slot.group == nil {
 		return appendGroupDocument(dst, slot.proxy)
 	}
@@ -318,16 +317,18 @@ type groupDocKey struct {
 	fixed string
 }
 
-var (
-	groupDocsMu       sync.Mutex
-)
+// One lock per answer: the table is answered in a single pass, and the slots
+// it writes ride the snapshot, so a rebuilt table starts with empty slots.
+var groupDocsMu sync.Mutex
 
 // groupDocSlot is one group row's document cache. The slots ride the snapshot
 // they were built for, so a rebuilt table starts with empty slots and an
 // answer needs no map lookup to reach the row it is writing.
 type groupDocSlot struct {
 	proxy    constant.Proxy
-	group    outboundgroup.ProxyGroup // nil for a kind the cache does not cover
+	// nil when the document cannot be keyed: the adapter is not a group, or
+	// a URLTest or Fallback exposes no pinned selection to key on.
+	group outboundgroup.ProxyGroup
 	// The adapter type and the pinned-selection reader are fixed for the
 	// proxy's life, so the answer path reads them from the slot instead of
 	// dispatching into the proxy for them on every group.
