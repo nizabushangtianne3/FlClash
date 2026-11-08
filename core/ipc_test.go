@@ -156,32 +156,43 @@ func captureSingleFrame(t *testing.T, run func()) []byte {
 }
 
 func TestWriteFrameReadFrameRoundTrip(t *testing.T) {
-	payloads := [][]byte{
-		[]byte(""),
-		[]byte("{}"),
-		bytes.Repeat([]byte("x"), 70000),
+	answers := []frame{
+		{head: []byte("")},
+		{head: []byte("{}")},
+		{head: bytes.Repeat([]byte("x"), 70000)},
+		// A document past one write rides beside its envelope, so the reader
+		// gets the same bytes from either path.
+		{
+			head:     []byte(`{"id":"x","result":`),
+			document: bytes.Repeat([]byte("y"), 70000),
+			tail:     []byte(`}`),
+		},
 	}
 
 	buffer := &bytes.Buffer{}
-	for _, payload := range payloads {
-		if _, err := writeFrame(buffer, payload); err != nil {
+	for _, answer := range answers {
+		if _, err := writeFrame(buffer, answer); err != nil {
 			t.Fatalf("writeFrame error: %v", err)
 		}
 	}
 
-	for i, payload := range payloads {
+	for i, answer := range answers {
+		want := answer.bytes()
 		got, err := readFrame(buffer)
 		if err != nil {
 			t.Fatalf("readFrame %d error: %v", i, err)
 		}
-		if !bytes.Equal(got, payload) {
-			t.Errorf("frame %d length = %d, want %d", i, len(got), len(payload))
+		if !bytes.Equal(got, want) {
+			t.Errorf("frame %d = %d bytes, want %d", i, len(got), len(want))
 		}
 	}
 }
 
 func TestWriteFrameRejectsOversizedPayload(t *testing.T) {
-	written, err := writeFrame(&bytes.Buffer{}, make([]byte, maxIPCFrameSize+1))
+	written, err := writeFrame(&bytes.Buffer{}, frame{
+		head:     make([]byte, maxIPCFrameSize),
+		document: []byte("x"),
+	})
 
 	if written != 0 {
 		t.Errorf("writeFrame wrote %d bytes for a rejected payload, want 0", written)
@@ -314,7 +325,7 @@ func TestDecodeMethodArgumentsAcceptsValidPayload(t *testing.T) {
 }
 
 func TestHandleMethodCallReportsUnknownMethod(t *testing.T) {
-	frame := handleMethodCall(&MethodCall{ID: "9", Method: CoreMethod("nopeMethod")})
+	frame := answerBytes(MethodCall{ID: "9", Method: CoreMethod("nopeMethod")})
 
 	var envelope struct {
 		Error *MethodError `json:"error"`
@@ -367,7 +378,13 @@ func TestSendWithoutConnectionDoesNotPanic(t *testing.T) {
 	previous := swapConn(nil)
 	defer swapConn(previous)
 
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
+}
+
+// sendPayload delivers a raw payload the way an event does, so a transport
+// test drives send without building an answer.
+func sendPayload(data []byte) {
+	send(frame{head: data})
 }
 
 func withMethodHandler(t *testing.T, method CoreMethod, handler methodHandler) {
@@ -381,7 +398,7 @@ func withMethodHandler(t *testing.T, method CoreMethod, handler methodHandler) {
 func dispatchReplies(t *testing.T, call *MethodCall) [][]byte {
 	t.Helper()
 	replies := make(chan []byte, 2)
-	dispatchMethodCall(call, func(data []byte) { replies <- data })
+	dispatchMethodCall(call, func(answer frame) { replies <- answer.bytes() })
 
 	var frames [][]byte
 	select {
@@ -437,7 +454,7 @@ func TestMethodHandlerErrorsBecomeFailureEnvelopes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			withMethodHandler(t, method, test.handler)
 
-			frame := handleMethodCall(&MethodCall{Method: method, Arguments: json.RawMessage(`"x"`)})
+			frame := answerBytes(MethodCall{Method: method, Arguments: json.RawMessage(`"x"`)})
 
 			var envelope struct {
 				Result string       `json:"result"`
@@ -474,7 +491,7 @@ func TestSendMessageBatchDoesNotDoubleEncodeArguments(t *testing.T) {
 }
 
 func TestHandleMethodCallReportsMissingArguments(t *testing.T) {
-	frame := handleMethodCall(&MethodCall{ID: "3", Method: trafficStatsMethod})
+	frame := answerBytes(MethodCall{ID: "3", Method: trafficStatsMethod})
 
 	var envelope struct {
 		Error *MethodError `json:"error"`
@@ -492,8 +509,8 @@ func TestSendArmsAWriteDeadlineOnEveryFrame(t *testing.T) {
 	previous := swapConn(fake)
 	defer swapConn(previous)
 
-	send([]byte("{}"))
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
+	sendPayload([]byte("{}"))
 
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
@@ -507,8 +524,8 @@ func TestSendWritesEachFrameInOneTransfer(t *testing.T) {
 	previous := swapConn(fake)
 	defer swapConn(previous)
 
-	send([]byte("{}"))
-	send([]byte(`{"traffic":true}`))
+	sendPayload([]byte("{}"))
+	sendPayload([]byte(`{"traffic":true}`))
 
 	if got := fake.writeCount(); got != 2 {
 		t.Errorf("write calls = %d, want one per frame", got)
@@ -524,7 +541,7 @@ func TestSendResumesAFrameThatStalledOnTheWriteDeadline(t *testing.T) {
 	previous := swapConn(fake)
 	defer swapConn(previous)
 
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
 
 	if fake.isClosed() {
 		t.Fatal("a host that stopped reading for one deadline window killed the connection, and with it the tunnel")
@@ -544,7 +561,7 @@ func TestSendWaitsOutAHostSuspendedForManyDeadlineWindows(t *testing.T) {
 	previous := swapConn(fake)
 	defer swapConn(previous)
 
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
 
 	if fake.isClosed() {
 		t.Fatal("a host asleep for an hour of deadline windows had its connection closed, and with it the Core")
@@ -568,7 +585,7 @@ func TestSendResumesAFrameThatStalledOnANamedPipeTimeout(t *testing.T) {
 	previous := swapConn(fake)
 	defer swapConn(previous)
 
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
 
 	if fake.isClosed() {
 		t.Fatal("a Windows pipe timeout on a half-written frame closed the connection instead of resuming it")
@@ -589,7 +606,7 @@ func TestSendDropsTheConnectionWhenTimeoutReportsFalse(t *testing.T) {
 	previous := swapConn(fake)
 	defer swapConn(previous)
 
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
 
 	if !fake.isClosed() {
 		t.Error("an error that implements Timeout() but reports false was treated as a stall instead of a dead host")
@@ -607,7 +624,7 @@ func TestSendDropsTheConnectionWhenAStalledFrameCannotRearmItsDeadline(t *testin
 	previous := swapConn(fake)
 	defer swapConn(previous)
 
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
 
 	if !fake.isClosed() {
 		t.Error("a half-written frame whose deadline could not be re-armed left the connection open; the stream is desynchronized")
@@ -622,7 +639,7 @@ func TestSendDropsTheConnectionAfterAPartialWriteFailure(t *testing.T) {
 	previous := swapConn(fake)
 	defer swapConn(previous)
 
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
 
 	if !fake.isClosed() {
 		t.Error("a half-written frame left the connection open; the stream is desynchronized")
@@ -631,7 +648,7 @@ func TestSendDropsTheConnectionAfterAPartialWriteFailure(t *testing.T) {
 		t.Error("conn still points at the dead connection")
 	}
 
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
 }
 
 func TestSendKeepsTheConnectionWhenNoBytesReachedTheWire(t *testing.T) {
@@ -639,7 +656,7 @@ func TestSendKeepsTheConnectionWhenNoBytesReachedTheWire(t *testing.T) {
 	previous := swapConn(fake)
 	defer swapConn(previous)
 
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
 
 	if fake.isClosed() {
 		t.Error("write backpressure closed the only control channel; the Core would have to be restarted")
@@ -652,7 +669,7 @@ func TestSendKeepsTheConnectionWhenNoBytesReachedTheWire(t *testing.T) {
 	}
 
 	fake.setWriteErr(nil)
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
 	if frames := fake.frames(t); len(frames) != 1 {
 		t.Errorf("delivered %d frames after the stall, want the retried one", len(frames))
 	}
@@ -667,13 +684,13 @@ func TestSendRearmsTheFailureReportAfterAFrameGetsThrough(t *testing.T) {
 		deliveryFailureReported.Store(false)
 	}()
 
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
 	if !deliveryFailureReported.Load() {
 		t.Fatal("the first delivery failure was not reported")
 	}
 
 	fake.setWriteErr(nil)
-	send([]byte("{}"))
+	sendPayload([]byte("{}"))
 
 	if deliveryFailureReported.Load() {
 		t.Error("a successful frame left the report latched; every later failure stays silent")
@@ -749,7 +766,7 @@ func TestSendFailureIsNotReportedThroughTheLogStream(t *testing.T) {
 	}()
 
 	for i := 0; i < 8; i++ {
-		send([]byte("{}"))
+		sendPayload([]byte("{}"))
 	}
 
 	echoed := drainLogStream(t, subscriber, 100*time.Millisecond, func(payload string) bool {

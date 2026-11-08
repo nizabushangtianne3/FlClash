@@ -18,9 +18,9 @@ func TestMemoryStatsFrameMatchesTheEnvelope(t *testing.T) {
 
 	withID, err := json.Marshal(MethodResponse{ID: "memory", Result: &stats})
 	require.NoError(t, err)
-	require.Equal(t, withID, stats.frameFor("memory"))
+	require.Equal(t, string(withID), string(answerFrame(&stats, "memory")))
 
 	withoutID, err := json.Marshal(MethodResponse{Result: &stats})
 	require.NoError(t, err)
-	require.Equal(t, withoutID, stats.frameFor(""))
+	require.Equal(t, string(withoutID), string(answerFrame(&stats, "")))
 }

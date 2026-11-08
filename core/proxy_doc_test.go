@@ -70,8 +70,8 @@ func TestGroupDocsAnswerWhatTheirGroupsChange(t *testing.T) {
 				config.SetProxyNameList(nil)
 			})
 
-			first := handleGetProxies().frameFor("call")
-			second := handleGetProxies().frameFor("call")
+			first := answerFrame(handleGetProxies(), "call")
+			second := answerFrame(handleGetProxies(), "call")
 			require.Equal(t, string(first), string(second), "the steady state must copy bytes")
 
 			doc := decodeGroupDoc(t, decodeProxiesFrame(t, first), "group")
@@ -86,7 +86,7 @@ func TestGroupDocsAnswerWhatTheirGroupsChange(t *testing.T) {
 				selectable, ok := adapterAs[outboundgroup.SelectAble](group)
 				require.True(t, ok)
 				require.NoError(t, selectable.Set("member-b"))
-				pinned := decodeGroupDoc(t, decodeProxiesFrame(t, handleGetProxies().frameFor("call")), "group")
+				pinned := decodeGroupDoc(t, decodeProxiesFrame(t, answerFrame(handleGetProxies(), "call")), "group")
 				require.Equal(t, groupNow(t, group), pinned.Now)
 				switch kind {
 				case "selector":
@@ -100,7 +100,7 @@ func TestGroupDocsAnswerWhatTheirGroupsChange(t *testing.T) {
 			// A subscription refresh rewrites the member list behind the same
 			// document, with the versions as the only signal it happened.
 			provider.setProxies("member-a", "member-c")
-			refreshed := decodeGroupDoc(t, decodeProxiesFrame(t, handleGetProxies().frameFor("call")), "group")
+			refreshed := decodeGroupDoc(t, decodeProxiesFrame(t, answerFrame(handleGetProxies(), "call")), "group")
 			require.Equal(t, []string{"member-a", "member-c"}, refreshed.All,
 				"a provider reload must not be answered from the cached document")
 			if kind != "loadbalance" {
@@ -108,7 +108,7 @@ func TestGroupDocsAnswerWhatTheirGroupsChange(t *testing.T) {
 			}
 
 			allocations := testing.AllocsPerRun(20, func() {
-				if data := handleGetProxies().frameFor("call"); len(data) == 0 {
+				if data := answerFrame(handleGetProxies(), "call"); len(data) == 0 {
 					t.Fatal("empty answer")
 				}
 			})

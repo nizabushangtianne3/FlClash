@@ -31,19 +31,19 @@ func makeSpilledResponseDir() (string, error) {
 	return dir, nil
 }
 
-func spillResponse(id string, data []byte) []byte {
-	if len(data) <= spillThreshold {
-		return data
+func spillFrame(id string, answer frame) frame {
+	if answer.size() <= spillThreshold {
+		return answer
 	}
-	path, err := writeSpilledResponse(data)
+	path, err := writeSpilledFrame(answer)
 	if err != nil {
 		logError("spill response %s: %v", id, err)
-		return data
+		return answer
 	}
-	return encodeResponse(MethodResponse{ID: id, File: path})
+	return frame{head: encodeResponse(MethodResponse{ID: id, File: path})}
 }
 
-func writeSpilledResponse(data []byte) (path string, err error) {
+func writeSpilledFrame(answer frame) (path string, err error) {
 	dir, err := makeSpilledResponseDir()
 	if err != nil {
 		return "", err
@@ -63,9 +63,11 @@ func writeSpilledResponse(data []byte) (path string, err error) {
 		_ = file.Close()
 		return "", err
 	}
-	if _, err := file.Write(data); err != nil {
-		_ = file.Close()
-		return "", err
+	for _, piece := range [][]byte{answer.head, answer.document, answer.tail} {
+		if _, err := file.Write(piece); err != nil {
+			_ = file.Close()
+			return "", err
+		}
 	}
 	if err := file.Close(); err != nil {
 		return "", err

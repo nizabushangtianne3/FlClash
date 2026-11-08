@@ -92,10 +92,10 @@ func TestConnectionDeltaAnswersWhatTheHostReads(t *testing.T) {
 	response, err := json.Marshal(MethodResponse{ID: "call-1", Result: delta})
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(response, &frame))
-	require.Equal(t, response, delta.frameFor("call-1"))
+	require.Equal(t, string(response), string(answerFrame(delta, "call-1")))
 	anonymous, err := json.Marshal(MethodResponse{Result: delta})
 	require.NoError(t, err)
-	require.Equal(t, anonymous, delta.frameFor(""))
+	require.Equal(t, string(anonymous), string(answerFrame(delta, "")))
 	require.Equal(t, "call-1", frame.ID)
 
 	document := struct {
@@ -142,7 +142,12 @@ func BenchmarkGetConnectionsDelta(b *testing.B) {
 				// The answer reaches the host as its own frame, so the
 				// benchmark measures the frame path, not the reflection
 				// envelope the shape test decodes it with.
-				if data := handleGetConnections(ConnectionsQuery{}).frameFor("benchmark"); len(data) == 0 {
+				call := MethodCall{
+					ID:        "benchmark",
+					Method:    connectionListMethod,
+					Arguments: json.RawMessage(`{}`),
+				}
+				if data := answerBytes(call); len(data) == 0 {
 					b.Fatal("empty answer")
 				}
 			}
@@ -183,8 +188,12 @@ func BenchmarkGetConnectionsResyncFrame(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				data := handleGetConnections(ConnectionsQuery{Resync: true}).frameFor("benchmark")
-				if len(data) == 0 {
+				call := MethodCall{
+					ID:        "benchmark",
+					Method:    connectionListMethod,
+					Arguments: json.RawMessage(`{"resync":true}`),
+				}
+				if data := answerBytes(call); len(data) == 0 {
 					b.Fatal("empty answer")
 				}
 			}
@@ -199,10 +208,10 @@ func TestConnectionCountFrameMatchesTheEnvelope(t *testing.T) {
 	count := handleGetConnectionCount()
 	withID, err := json.Marshal(MethodResponse{ID: "call-1", Result: count})
 	require.NoError(t, err)
-	require.Equal(t, withID, count.frameFor("call-1"))
+	require.Equal(t, string(withID), string(answerFrame(count, "call-1")))
 	anonymous, err := json.Marshal(MethodResponse{Result: count})
 	require.NoError(t, err)
-	require.Equal(t, anonymous, count.frameFor(""))
+	require.Equal(t, string(anonymous), string(answerFrame(count, "")))
 }
 
 func BenchmarkConnectionCountDispatch(b *testing.B) {
@@ -219,7 +228,7 @@ func BenchmarkConnectionCountDispatch(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if data := handleMethodCall(call); len(data) == 0 {
+				if data := answerBytes(*call); len(data) == 0 {
 					b.Fatal("empty count answer")
 				}
 			}

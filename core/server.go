@@ -30,6 +30,9 @@ const (
 	ipcWriteTimeout = 10 * time.Second
 
 	maxPooledFrameSize = 1 << 20
+	// Below this a frame is cheaper to write as one pooled buffer than as
+	// three separate writes.
+	singleWriteFrameSize = 32 * 1024
 )
 
 var deliveryFailureReported atomic.Bool
@@ -45,7 +48,7 @@ func logDeliveryError(format string, args ...any) {
 }
 
 func deliverEvent(data []byte) {
-	send(data)
+	send(frame{head: data})
 }
 
 // The desktop core exits with its host connection, so it is always heard.
@@ -53,30 +56,51 @@ func hasEventListener() bool {
 	return true
 }
 
-// One write per frame: the header and the payload share a pooled buffer.
+// One write per frame while the payload is small: the header and the pieces
+// share a pooled buffer.
 var frameBuffers = sync.Pool{New: func() any {
 	buffer := make([]byte, 0, 4096)
 	return &buffer
 }}
 
-func writeFrame(w io.Writer, data []byte) (int, error) {
-	if len(data) > maxIPCFrameSize {
+func writeFrame(w io.Writer, answer frame) (int, error) {
+	total := answer.size()
+	if total > maxIPCFrameSize {
 		return 0, fmt.Errorf("IPC frame exceeds %d bytes", maxIPCFrameSize)
 	}
-	pooled, _ := frameBuffers.Get().(*[]byte)
-	buffer := *pooled
-	if cap(buffer) < 4+len(data) {
-		buffer = make([]byte, 4+len(data))
+	if len(answer.document) <= singleWriteFrameSize {
+		pooled, _ := frameBuffers.Get().(*[]byte)
+		buffer := *pooled
+		if cap(buffer) < 4+total {
+			buffer = make([]byte, 4+total)
+		}
+		buffer = buffer[:4+total]
+		binary.LittleEndian.PutUint32(buffer, uint32(total))
+		head := copy(buffer[4:], answer.head)
+		head += copy(buffer[4+head:], answer.document)
+		copy(buffer[4+head:], answer.tail)
+		written, err := writeAll(w, buffer)
+		if cap(buffer) <= maxPooledFrameSize {
+			*pooled = buffer[:0]
+			frameBuffers.Put(pooled)
+		}
+		return written, err
 	}
-	buffer = buffer[:4+len(data)]
-	binary.LittleEndian.PutUint32(buffer, uint32(len(data)))
-	copy(buffer[4:], data)
-	written, err := writeAll(w, buffer)
-	if cap(buffer) <= maxPooledFrameSize {
-		*pooled = buffer[:0]
-		frameBuffers.Put(pooled)
+	// A document that large is written beside its envelope: the answer never
+	// fits a pooled buffer anyway, and two more writes cost less than a copy
+	// of the whole table.
+	header := make([]byte, 4+len(answer.head))
+	binary.LittleEndian.PutUint32(header, uint32(total))
+	copy(header[4:], answer.head)
+	written := 0
+	for _, piece := range [][]byte{header, answer.document, answer.tail} {
+		count, err := writeAll(w, piece)
+		written += count
+		if err != nil {
+			return written, err
+		}
 	}
-	return written, err
+	return written, nil
 }
 
 type resumingWriter struct {
@@ -149,7 +173,7 @@ func readFrame(r io.Reader) ([]byte, error) {
 	return data, nil
 }
 
-func send(data []byte) {
+func send(answer frame) {
 	writeMu.Lock()
 	defer writeMu.Unlock()
 
@@ -164,7 +188,7 @@ func send(data []byte) {
 	if err := c.SetWriteDeadline(time.Now().Add(ipcWriteTimeout)); err != nil {
 		logDeliveryError("server write deadline error: %v", err)
 	}
-	written, err := writeFrame(&resumingWriter{conn: c}, data)
+	written, err := writeFrame(&resumingWriter{conn: c}, answer)
 	if err == nil {
 		deliveryFailureReported.Store(false)
 		return

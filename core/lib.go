@@ -249,13 +249,17 @@ func InvokeMethod(data string, reply func([]byte)) {
 	defer recoverExport("invokeMethod")
 	call := &MethodCall{}
 	if err := json.Unmarshal([]byte(data), call); err != nil {
-		reply(encodeResponse(MethodResponse{Error: &MethodError{
+		reply(frame{head: encodeResponse(MethodResponse{Error: &MethodError{
 			Code:    "invalid_method_call",
 			Message: err.Error(),
-		}}))
+		}})}.bytes())
 		return
 	}
-	dispatchMethodCall(call, reply)
+	// gobind hands the host one slice, so the pieces are joined here rather
+	// than at the answer.
+	dispatchMethodCall(call, func(answer frame) {
+		reply(answer.bytes())
+	})
 }
 
 func StartTun(callbacks TunCallbacks, fd int, stack, address, dns, options string) bool {

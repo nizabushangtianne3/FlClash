@@ -8,7 +8,7 @@ func BenchmarkTrafficPoll(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		call.ID = "traffic"
-		if data := handleMethodCall(call); len(data) == 0 {
+		if data := answerBytes(*call); len(data) == 0 {
 			b.Fatal("empty traffic answer")
 		}
 	}

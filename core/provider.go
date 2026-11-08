@@ -125,17 +125,10 @@ func handleGetExternalProviders() externalProviderEntryList {
 
 type externalProviderEntryList []externalProviderEntry
 
-// frameFor implements frameWriter. Entries arrive sorted and deduplicated, so
-// the resources screen can turn each provider into its frame bytes directly.
-func (l externalProviderEntryList) frameFor(id string) []byte {
+// document implements frameWriter. Entries arrive sorted and deduplicated, so
+// the resources screen can turn each provider into its document bytes directly.
+func (l externalProviderEntryList) document() []byte {
 	buf := make([]byte, 0, len(l)*256+64)
-	if id != "" {
-		buf = append(buf, `{"id":`...)
-		buf = jsonutil.AppendString(buf, id)
-		buf = append(buf, `,"result":`...)
-	} else {
-		buf = append(buf, `{"result":`...)
-	}
 	buf = append(buf, '[')
 	emitted := false
 	for _, entry := range l {
@@ -149,7 +142,7 @@ func (l externalProviderEntryList) frameFor(id string) []byte {
 		buf = appendExternalProviderJSON(buf, view)
 		emitted = true
 	}
-	return append(buf, ']', '}')
+	return append(buf, ']')
 }
 
 func appendExternalProviderJSON(dst []byte, view ExternalProvider) []byte {

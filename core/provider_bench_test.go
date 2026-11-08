@@ -31,7 +31,7 @@ func BenchmarkProviderListDispatch(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		data := handleGetExternalProviders().frameFor("benchmark")
+		data := answerBytes(MethodCall{ID: "benchmark", Method: providerListMethod})
 		if len(data) == 0 {
 			b.Fatal("empty provider answer")
 		}

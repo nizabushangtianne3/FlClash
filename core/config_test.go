@@ -110,7 +110,7 @@ func TestUpdateConfigRejectsAnUnappliedConfig(t *testing.T) {
 func TestUpdateConfigMethodReportsAnUnappliedConfigAsAnError(t *testing.T) {
 	withCurrentConfig(t, nil)
 
-	frame := handleMethodCall(&MethodCall{
+	frame := answerBytes(MethodCall{
 		ID:        "1",
 		Method:    configUpdateMethod,
 		Arguments: json.RawMessage(`{}`),

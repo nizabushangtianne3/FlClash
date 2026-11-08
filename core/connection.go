@@ -38,26 +38,17 @@ type ConnectionDelta struct {
 // MarshalJSON writes the rows with the Core's own connection table encoder, so
 // the answer does not pay for a second reflection pass.
 func (d *ConnectionDelta) MarshalJSON() ([]byte, error) {
-	return d.appendJSON(make([]byte, 0, d.answerSize())), nil
+	return d.appendDocument(make([]byte, 0, d.documentSize())), nil
 }
 
-// frameFor implements frameWriter. It writes the response envelope around the
-// rows in the buffer that already encoded them, instead of copying the answer
-// through MethodResponse reflection a second time.
-func (d *ConnectionDelta) frameFor(id string) []byte {
-	if id == "" {
-		buf := append(make([]byte, 0, d.answerSize()+24), `{"result":`...)
-		return append(d.appendJSON(buf), '}')
-	}
-	buf := make([]byte, 0, d.answerSize()+len(id)+32)
-	buf = append(buf, `{"id":`...)
-	buf = jsonutil.AppendString(buf, id)
-	buf = append(buf, `,"result":`...)
-	buf = d.appendJSON(buf)
-	return append(buf, '}')
+// document implements frameWriter. The rows are encoded with the Core's own
+// connection table encoder, so the answer does not pay for a second reflection
+// pass over them.
+func (d *ConnectionDelta) document() []byte {
+	return d.appendDocument(make([]byte, 0, d.documentSize()))
 }
 
-func (d *ConnectionDelta) answerSize() int {
+func (d *ConnectionDelta) documentSize() int {
 	size := 96 + len(d.Removed)*40
 	for _, info := range d.Added {
 		if info == nil {
@@ -69,7 +60,7 @@ func (d *ConnectionDelta) answerSize() int {
 	return size
 }
 
-func (d *ConnectionDelta) appendJSON(dst []byte) []byte {
+func (d *ConnectionDelta) appendDocument(dst []byte) []byte {
 	buf := append(dst, `{"added":[`...)
 	for i, info := range d.Added {
 		if i > 0 {
@@ -211,21 +202,13 @@ func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 	return delta
 }
 
-// connectionCount writes its own one-value envelope, so a dashboard that only
-// polls the number of live rows skips MethodResponse reflection.
+// connectionCount is a document of one value, so a dashboard that only polls
+// the number of live rows skips MethodResponse reflection.
 type connectionCount int
 
-func (count connectionCount) frameFor(id string) []byte {
-	buf := make([]byte, 0, len(id)+32)
-	if id != "" {
-		buf = append(buf, `{"id":`...)
-		buf = jsonutil.AppendString(buf, id)
-		buf = append(buf, `,"result":`...)
-	} else {
-		buf = append(buf, `{"result":`...)
-	}
-	buf = strconv.AppendInt(buf, int64(count), 10)
-	return append(buf, '}')
+// document implements frameWriter.
+func (count connectionCount) document() []byte {
+	return strconv.AppendInt(make([]byte, 0, 8), int64(count), 10)
 }
 
 func handleGetConnectionCount() connectionCount {

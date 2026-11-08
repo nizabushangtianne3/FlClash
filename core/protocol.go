@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/provider"
-	"github.com/metacubex/mihomo/common/jsonutil"
 	P "github.com/metacubex/mihomo/component/process"
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
@@ -277,25 +276,12 @@ type TrafficStats struct {
 	TotalDown int64 `json:"total-down"`
 }
 
-// frameFor implements frameWriter. Traffic is polled every second, so the four
+// document implements frameWriter. Traffic is polled every second, so the four
 // counters are written directly rather than copied through response reflection.
-func (s *TrafficStats) frameFor(id string) []byte {
+func (s *TrafficStats) document() []byte {
 	counters := [4]int64{s.Up, s.Down, s.TotalUp, s.TotalDown}
 	labels := [4]string{`"up":`, `"down":`, `"total-up":`, `"total-down":`}
-	if id == "" {
-		buf := append(make([]byte, 0, 128), `{"result":{"up":`...)
-		for i, value := range counters {
-			if i > 0 {
-				buf = append(buf, ',')
-			}
-			buf = strconv.AppendInt(buf, value, 10)
-		}
-		return append(buf, '}')
-	}
-	buf := make([]byte, 0, 128+len(id))
-	buf = append(buf, `{"id":`...)
-	buf = jsonutil.AppendString(buf, id)
-	buf = append(buf, `,"result":{`...)
+	buf := append(make([]byte, 0, 128), '{')
 	for i, value := range counters {
 		if i > 0 {
 			buf = append(buf, ',')
@@ -303,7 +289,7 @@ func (s *TrafficStats) frameFor(id string) []byte {
 		buf = append(buf, labels[i]...)
 		buf = strconv.AppendInt(buf, value, 10)
 	}
-	return append(buf, '}', '}')
+	return append(buf, '}')
 }
 
 type MemoryStats struct {
@@ -314,20 +300,13 @@ type MemoryStats struct {
 	RuntimeOther uint64 `json:"runtime-other"`
 }
 
-// frameFor implements frameWriter. Memory is polled while the dashboard is
+// document implements frameWriter. Memory is polled while the dashboard is
 // visible, so the five counters are written directly rather than copied through
 // response reflection.
-func (s *MemoryStats) frameFor(id string) []byte {
+func (s *MemoryStats) document() []byte {
 	counters := [5]uint64{s.Rss, s.HeapInuse, s.HeapIdle, s.StackInuse, s.RuntimeOther}
 	labels := [5]string{`"rss":`, `"heap-inuse":`, `"heap-idle":`, `"stack-inuse":`, `"runtime-other":`}
-	buf := make([]byte, 0, 144)
-	if id != "" {
-		buf = append(buf, `{"id":`...)
-		buf = jsonutil.AppendString(buf, id)
-		buf = append(buf, `,"result":{`...)
-	} else {
-		buf = append(buf, `{"result":{`...)
-	}
+	buf := append(make([]byte, 0, 144), '{')
 	for i, value := range counters {
 		if i > 0 {
 			buf = append(buf, ',')
@@ -335,7 +314,7 @@ func (s *MemoryStats) frameFor(id string) []byte {
 		buf = append(buf, labels[i]...)
 		buf = strconv.AppendUint(buf, value, 10)
 	}
-	return append(buf, '}', '}')
+	return append(buf, '}')
 }
 
 type ExternalProvider struct {

@@ -32,7 +32,7 @@ func TestProxiesAnswerAnswersWhatTheHostReads(t *testing.T) {
 			All     []string                  `json:"all"`
 		} `json:"result"`
 	}{}
-	require.NoError(t, json.Unmarshal(handleGetProxies().frameFor("call-1"), &frame))
+	require.NoError(t, json.Unmarshal(answerFrame(handleGetProxies(), "call-1"), &frame))
 	require.Equal(t, "call-1", frame.ID)
 
 	group := frame.Result.Proxies["group-1"]
@@ -54,14 +54,14 @@ func TestProxiesAnswerAnswersWhatTheHostReads(t *testing.T) {
 	proxies["member-b"] = namedProxy("member-b")
 	tunnel.UpdateProxies(proxies, nil)
 	frame.Result.Proxies = nil
-	require.NoError(t, json.Unmarshal(handleGetProxies().frameFor("call-2"), &frame))
+	require.NoError(t, json.Unmarshal(answerFrame(handleGetProxies(), "call-2"), &frame))
 	require.Contains(t, frame.Result.Proxies, "member-b",
 		"the answer carries the snapshot it was built from, not a stale name list")
 
 	// One answer, one buffer: the hand written encoder costs a slice of names,
 	// the answer itself, and little else.
 	allocations := testing.AllocsPerRun(20, func() {
-		if data := handleGetProxies().frameFor("call-1"); len(data) == 0 {
+		if data := answerFrame(handleGetProxies(), "call-1"); len(data) == 0 {
 			t.Fatal("empty answer")
 		}
 	})

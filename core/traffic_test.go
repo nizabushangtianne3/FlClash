@@ -18,9 +18,9 @@ func TestTrafficStatsFrameMatchesTheEnvelope(t *testing.T) {
 		Result: handleGetTrafficStats(TrafficParams{OnlyProxy: true}),
 	})
 	require.NoError(t, err)
-	require.Equal(t, want, handleMethodCall(call))
+	require.Equal(t, string(want), string(answerBytes(*call)))
 
 	stats := handleGetTrafficStats(TrafficParams{OnlyProxy: true})
 	anonymous := &MethodCall{Method: trafficStatsMethod, Arguments: call.Arguments}
-	require.Equal(t, stats.frameFor(""), handleMethodCall(anonymous))
+	require.Equal(t, answerFrame(stats, ""), answerBytes(*anonymous))
 }

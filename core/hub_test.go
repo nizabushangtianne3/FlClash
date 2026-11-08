@@ -117,7 +117,12 @@ func encodeGroupDoc(proxy constant.Proxy) []byte {
 	if !isProxyGroupType(proxy.Type()) {
 		return appendNodeView(nil, proxy)
 	}
-	return appendGroupDoc(nil, newGroupDocSlot(proxy))
+	slot := newGroupDocSlot(proxy)
+	if slot.group == nil {
+		return appendGroupDocument(nil, proxy)
+	}
+	refreshGroupDoc(slot)
+	return slot.doc
 }
 
 // patchSelectGroup restores selections before the providers behind the groups

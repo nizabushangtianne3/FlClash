@@ -226,6 +226,36 @@
 
 本轮验证：子模块 `go test ./... -count=1 -p=1`（104 包 ok）与 `go vet ./...`、wrapper `go test . -count=1` 与 `go vet .`、`go test -race . -run 'Proxy|Proxies|Group|Connection|TestMessageBatch|TestResetNetwork'`（CGO_ENABLED=1）与子模块 `go test -race ./adapter/outboundgroup/... ./common/singledo/...` 全部通过。
 
+### 2026-11-09 答案传输层重构轮次
+
+本轮按"彻底重构、不留兼容"的要求重做了 wrapper 的答案输出链。起因是上一轮只缓存了**每组的文档**，帧仍每次重组，且桌面传输层还会把整帧再拷进池化缓冲；更重要的是宿主每次调用都换 id（`lib/core/lib.dart` 的 `'${++_methodCallId}'`），所以任何"按整帧+ id"做的缓存在生产里永远命中不了。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 答案分层为信封/文档/尾段：`frameWriter.frameFor(id)` 改为 `frameWriter.document()`，`handleMethodCall` 返回 `frame{head,document,tail}`，信封按调用现建（`envelope(id)`），文档就是结果自己编码出的字节 | -（仅 wrapper） | 本轮提交 | 六类答案（proxies/connections/count/traffic/memory/providers）统一到同一契约，`frameFor` 删除；字节形状由既有测试逐类钉住（`TestProxiesAnswerAnswersWhatTheHostReads`、`TestConnectionDeltaAnswersWhatTheHostReads`、`TestTrafficStatsFrameMatchesTheEnvelope`、`TestMemoryStatsFrameMatchesTheEnvelope`、`TestProviderListFrameMatchesTheEnvelope`、`TestConnectionCountFrameMatchesTheEnvelope`，全部为 json 反射信封与手写文档的逐字节比对） |
+| 桌面传输层对大文档分段写：`writeFrame(w, frame)` 在文档 ≤32KB 时仍整帧进池化缓冲一次写出，超过则写「长度+信封」「文档」「尾段」三段，文档本身不再被拷贝 | -（仅 wrapper） | 本轮提交 | `TestWriteFrameReadFrameRoundTrip` 增设大文档分段用例（帧读回与 `frame.bytes()` 逐字节相等）；`TestSendWritesEachFrameInOneTransfer` 仍证明小帧一次写出 |
+| 溢出响应分段落盘：`spillResponse` → `spillFrame`，临时文件按三段顺序写，不再为落盘凑一整帧 | -（仅 wrapper） | 本轮提交 | `TestHandleMethodCallSpillsALargeResultToAFile`、`TestHandleMethodCallAnswersInlineUnderTheThreshold`、`TestClearSpilledResponsesKeepsTheDirectory` 全绿 |
+| 代理表按表缓存整个文档（键不含调用 id）：`document()` 先用 `refreshGroupDocs` 逐个槽位校验（`refreshGroupDoc` + `groupDocGeneration` 代数），毫无变化才把上次的文档交出去；键为快照同一性 + 显示名单 + 代数 | -（仅 wrapper） | 本轮提交 | 见本节末的配对测量：生产答案路径 geomean **-86.07%**、分配 -99.94%、allocs -44.83%；`TestProxiesFrameAnswersTheSameBytesUntilSomethingMoves`（新增）钉住：表未变时同一文档、换 id 只换信封、选中移动/订阅刷新/快照重建三类变更都必须重建文档；`TestProxiesAnswerEncodesALiveGroupOnEveryAnswer`（新增）钉住无法键入的组仍逐次实编码 |
+| Android 回复路径在 gobind 边界拼接（`InvokeMethod` 的 reply 适配） | -（仅 wrapper） | 本轮提交 | gobind 只收一个切片，故在边界 join；桌面走分段写。两边字节一致，由 `frame.bytes()` 与 `writeFrame` 的往返测试共同保证 |
+
+配对测量方法：同一二进制内同时跑「旧生产路径模型」（每轮强制未命中，走 校验→重组→join→池化拷贝，即旧代码每次答案的真实成本）与新生产路径（`handleMethodCall` + `writeFrame(io.Discard, frame)`），3 轮交替、每轮 count=2，benchstat n=6，p=0.002：
+
+| 场景 | 旧生产路径 | 新生产路径 | 时间 | B/op |
+|---|---|---|---|---|
+| 200 组 Selector | 67.56µ ±12% / 259.4Ki / 5 allocs | 8.35µ ±7% / 101B / 3 allocs | **-87.64%** | -99.96% |
+| 20 组 Selector | 6.18µ ±21% / 28.3Ki | 0.99µ ±3% / 64B | **-83.98%** | -99.77% |
+| 200 组 + 1000 节点 | 91.95µ ±12% / 377.9Ki | 9.06µ ±3% / 105B | **-90.15%** | -99.97% |
+| 200 组 urltest | 53.79µ ±4% / 258.2Ki | 12.39µ ±3% / 226.5B | **-76.97%** | -99.91% |
+| 200 组 fallback | 68.45µ ±8% / 260.2Ki | 14.37µ ±4% / 119B | **-79.00%** | -99.95% |
+| 200 组 loadbalance | 56.52µ ±5% / 259.1Ki | 3.69µ ±5% / 98B | **-93.48%** | -99.96% |
+| 200 组 + 1000 节点 urltest | 77.45µ ±3% / 375.8Ki | 12.83µ ±4% / 233.5B | **-83.44%** | -99.94% |
+| **geomean** | **48.37µ / 205.3Ki / 5.13 allocs** | **6.74µ / 122.7B / 2.83 allocs** | **-86.07%** | **-99.94%**（allocs -44.83%） |
+
+变更表路径（`BenchmarkHandleGetProxiesMiss`，新增：每轮真实切换一个组的选中，测的是"表变了之后的答案"）与旧生产路径同窗口配对：Selector 71.50µ → 49.22µ（**-31.17%**）、urltest 54.63µ → 42.75µ（**-21.76%**），p=0.002。即未命中路径没有因"先校验再组装"的两段式而变慢——省下的 join 与池化拷贝抵消了校验 pass 的额外遍历。
+
+**已否决策略（勿重做）**：把整帧缓存键做成"帧 + 调用 id"。宿主每次调用都换自增 id，命中率恒为 0，只会让答案路径多背一次 id 比较与整帧缓存。文档缓存必须建在结果文档上，信封由传输层分担。
+
+本轮验证：wrapper `go build ./...`、`go vet ./...`、`go test ./... -count=1` 全绿；`GOOS=android/linux/darwin` 交叉 `go vet ./...` 均通过（`lib.go`、`server.go`、`spill.go` 三平台一致）；`go test . -race -count=1` 仅剩既有失败 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent`（`route.go` 的刷新 worker 与 `recordRoutes` 清理的数据竞争，已在**基线代码**上复现，与本轮无关）；答案路径 focused race（Proxy/Proxies/Group/Connection/Spill/Send/Frame/Dispatch/Traffic/Memory/Provider）全绿。
 ### 2026-11-05 测量记录（审计后刻意未动）
 
 | 位置 | 测量 | 结论 |
@@ -433,7 +463,7 @@ dart run tool/test.dart   # exit 0
 
 | 位置 | 实测基线 | 结论 / 下一步 |
 |---|---|---|
-| `getProxies` 答案的 `groupDocKeyOf` → `Now()` | 剖析：URLTest 场景答案路径 CPU 的约 25%（200 组 × ~90ns/答案） | **本轮已减半但仍是最大单项**：把缓存键换成"组选中代数"（由子模块导出选择代数量）可再降，但任何漏记的变更点都会让 UI 显示过期选中态。需先在子模块枚举 URLTest/Fallback/LoadBalance 的全部选中变更点，再逐点补代数并重测 |
+| `getProxies` 答案的 `groupDocKeyOf` → `Now()` | 剖析：URLTest 场景答案路径 CPU 的约 25%（200 组 × ~90ns/答案） | **2026-11-09 稳态的整表组装与拷贝已消除，`Now()` 读取成为命中路径的主要剩余成本**（200 组 × ~90ns/答案）：把缓存键换成"组选中代数"（由子模块导出选择代数量）可再降，但任何漏记的变更点都会让 UI 显示过期选中态。需先在子模块枚举 URLTest/Fallback/LoadBalance 的全部选中变更点，再逐点补代数并重测 |
 | `configuredTestTimeout`（`core/delay.go`） | 每次 delay 测试遍历全部 provider，并对每个返回 timeout 的 provider 线性扫成员（`slices.ContainsFunc(pd.Proxies(), …)`）；1000 节点 × N provider 时每次调用 O(providers × members) | 单次成本远小于 URLTest 网络往返，暂不动；若要改，按 `proxy.ProxyInfo().ProviderName` 直接定位 provider（语义差异：同名节点跨 provider 时只认隧道表里那一个，需先确认可接受） |
 | `adapter.Proxy` 的 `extra` xsync.Map 读路径初始化 | `BenchmarkHandleGetProxies` 内存剖析：活对象的 30% 来自 `xsync.newMapTable[string,*internalProxyState]`，且**纯读取**（`AliveForTestUrl`/`LastDelayForTestUrl`）就会触发惰性建表 | 可加 `hasExtra atomic.Bool` 让纯读取不建表；但真实使用中节点都会被测速、表反正要建，收益有限，记账备查 |
 | 连接轮询的 `row.stale(info)` 与 `Manager.Range` | 剖析：stale ~25ns/行；Range 桶遍历约占该基准采样的 10% | 要再降需要 `TrackerInfo` 侧提供元数据版本号（改动面覆盖全部元数据写入点），维持不做 |
@@ -497,3 +527,4 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 - `sqlite3` v3.7.0 的 Windows 原生资产钩子会失败：GitHub release `sqlite3-3.7.0` 的 `sqlite3.x64.windows.dll` 已于 2026-09-30 重新上传（官方 API 摘要 `98b4be67...`），与包内 `asset_hashes.dart` 钉住的 `3a29878d...` 不一致。已在本地 pub 缓存（`D:\Codex\tools\pub-cache-task`）按 GitHub 官方摘要修正该哈希；上游发布新版本前这是环境级阻塞。跑 `dart run tool/test.dart` 还需 `PUB_CACHE=D:\Codex\tools\pub-cache-task`，并把 Flutter 与 Go 的 bin 放进 PATH（`setup` 包的构建钩子要调 `go`）。
 - 本轮 `dart run tool/test.dart` 的 32 个 bundle 里有 2 个用例失败，单独重跑同一批文件全部通过（bundle 共享 isolate 的跨文件干扰）；工具的结论是退出码 0。Dart 侧本轮零改动。
 - 2026-11-08 在本机复核 `dart run tool/test.dart`：5 个用例失败，且在提交 `3788368c`（本轮改动之前）上同样失败，属既有问题、与 Go 改动无关——`test/common/mitm_trust_test.dart` 的 4 个 `Linux ...` 用例没有 `@TestOn` 限定，在 Windows 上必然失败；`test/common/window_test.dart` 的「an unsupported probe is retried the next time blur is on」期望 4 次平台调用、Windows 实测 3 次。另有一次 `test/providers/clash_providers_action_test.dart`「a set changed while it downloads drops the download of the url it no longer has」在 bundle 里失败、单独重跑 32 个用例全过（既有的 bundle 共享 isolate 跨文件干扰）。其余全部通过。若要在本机跑绿，需给前者加平台注解、后者按平台分支期望
+- 2026-11-09 在 wrapper 上跑 `go test . -race -count=1`：`TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 报 DATA RACE 并失败，竞争发生在 `recordRoutes` 的测试清理写与 `routeRefreshWorker` 到 `applyRouteSnapshot` 的写之间（`core/route_test.go` 与 `core/route.go`）。已在基线代码上复现同样竞争与失败，属既有问题，与 2026-11-09 答案传输层重构无关；要修它得给路由刷新 worker 与测试清理约定同一把锁，留作后续独立议题。

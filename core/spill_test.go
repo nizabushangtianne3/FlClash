@@ -37,7 +37,7 @@ func getConfigCall(t *testing.T, id string) *MethodCall {
 func TestHandleMethodCallSpillsALargeResultToAFile(t *testing.T) {
 	home := withSpillHome(t, 64)
 
-	frame := handleMethodCall(getConfigCall(t, "7"))
+	frame := answerBytes(*getConfigCall(t, "7"))
 
 	var envelope MethodResponse
 	if err := json.Unmarshal(frame, &envelope); err != nil {
@@ -74,7 +74,7 @@ func TestHandleMethodCallSpillsALargeResultToAFile(t *testing.T) {
 func TestHandleMethodCallAnswersInlineUnderTheThreshold(t *testing.T) {
 	home := withSpillHome(t, responseSpillThreshold)
 
-	frame := handleMethodCall(getConfigCall(t, "8"))
+	frame := answerBytes(*getConfigCall(t, "8"))
 
 	var envelope MethodResponse
 	if err := json.Unmarshal(frame, &envelope); err != nil {
@@ -90,7 +90,7 @@ func TestHandleMethodCallAnswersInlineUnderTheThreshold(t *testing.T) {
 
 func TestClearSpilledResponsesKeepsTheDirectory(t *testing.T) {
 	home := withSpillHome(t, 64)
-	handleMethodCall(getConfigCall(t, "9"))
+	answerBytes(*getConfigCall(t, "9"))
 
 	clearSpilledResponses()
 

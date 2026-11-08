@@ -67,11 +67,11 @@ func TestProviderListFrameMatchesTheEnvelope(t *testing.T) {
 
 	withID, err := json.Marshal(MethodResponse{ID: `quote"id`, Result: views})
 	require.NoError(t, err)
-	require.Equal(t, withID, list.frameFor(`quote"id`))
+	require.Equal(t, string(withID), string(answerFrame(list, `quote"id`)))
 
 	withoutID, err := json.Marshal(MethodResponse{Result: views})
 	require.NoError(t, err)
-	require.Equal(t, withoutID, list.frameFor(""))
+	require.Equal(t, string(withoutID), string(answerFrame(list, "")))
 }
 
 func TestEmptyProviderListFrameMatchesTheEnvelope(t *testing.T) {
@@ -79,5 +79,5 @@ func TestEmptyProviderListFrameMatchesTheEnvelope(t *testing.T) {
 
 	want, err := json.Marshal(MethodResponse{ID: "providers", Result: []ExternalProvider{}})
 	require.NoError(t, err)
-	require.Equal(t, want, list.frameFor("providers"))
+	require.Equal(t, string(want), string(answerFrame(list, "providers")))
 }

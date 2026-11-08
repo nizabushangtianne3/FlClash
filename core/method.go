@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"runtime"
 	"sync/atomic"
+
+	"github.com/metacubex/mihomo/common/jsonutil"
 )
 
 type MethodCall struct {
@@ -37,7 +39,7 @@ var methodCallSeq atomic.Uint64
 // Each call runs on its own goroutine, so a handler that must honour the
 // host's latest intent compares seq, stamped here in arrival order; every
 // transport has to deliver calls in the order the host sent them.
-func dispatchMethodCall(call *MethodCall, reply func(data []byte)) {
+func dispatchMethodCall(call *MethodCall, reply func(answer frame)) {
 	call.seq = methodCallSeq.Add(1)
 	// A developer-only fatal-path test. It runs outside every recovery so the
 	// core process terminates; on Android that is the whole application.
@@ -50,44 +52,92 @@ func dispatchMethodCall(call *MethodCall, reply func(data []byte)) {
 	})
 }
 
+// frame is one answer as the transport writes it: the pieces in order, with a
+// document the result already encoded riding as its own piece. Keeping the
+// envelope apart lets a large document reach the host beside it instead of
+// being copied into it.
+type frame struct {
+	head     []byte
+	document []byte
+	tail     []byte
+}
+
+func (answer frame) size() int {
+	return len(answer.head) + len(answer.document) + len(answer.tail)
+}
+
+// bytes is the answer as one slice, for the callers that need it whole.
+func (answer frame) bytes() []byte {
+	buf := make([]byte, 0, answer.size())
+	buf = append(buf, answer.head...)
+	buf = append(buf, answer.document...)
+	return append(buf, answer.tail...)
+}
+
+var (
+	anonymousEnvelope = []byte(`{"result":`)
+	responseTail      = []byte(`}`)
+)
+
+// envelope opens the response a frame document is wrapped in.
+func envelope(id string) []byte {
+	if id == "" {
+		return anonymousEnvelope
+	}
+	buf := make([]byte, 0, len(id)+20)
+	buf = append(buf, `{"id":`...)
+	buf = jsonutil.AppendString(buf, id)
+	return append(buf, `,"result":`...)
+}
+
+// frameWriter is a result that carries its document already encoded, so an
+// answer does not pay for a second reflection pass over the whole table.
+type frameWriter interface {
+	// document returns the result document. One that only changes when the
+	// values it encodes move is reused between answers, so the steady state
+	// builds nothing.
+	document() []byte
+}
+
 func handleCrash() {
 	panic("handle invoke crash")
 }
 
-func handleMethodCall(call *MethodCall) (data []byte) {
+func handleMethodCall(call *MethodCall) (answer frame) {
 	defer func() {
 		if r := recover(); r != nil {
 			logError("panic in %s: %v\n%s", call.Method, r, stackTrace())
-			data = encodeResponse(MethodResponse{ID: call.ID, Error: &MethodError{
+			answer = frame{head: encodeResponse(MethodResponse{ID: call.ID, Error: &MethodError{
 				Code:    "internal_error",
 				Message: fmt.Sprintf("internal panic: %v", r),
-			}})
+			}})}
 		}
 	}()
 
 	handler, exists := methodHandlers[call.Method]
 	if !exists {
-		return encodeResponse(MethodResponse{ID: call.ID, Error: &MethodError{
+		return frame{head: encodeResponse(MethodResponse{ID: call.ID, Error: &MethodError{
 			Code:    "not_implemented",
 			Message: fmt.Sprintf("unknown method: %s", call.Method),
-		}})
+		}})}
 	}
 	result, err := handler(call)
 	if err != nil {
-		return encodeResponse(MethodResponse{ID: call.ID, Error: asMethodError(err)})
+		return frame{head: encodeResponse(MethodResponse{ID: call.ID, Error: asMethodError(err)})}
 	}
 	if writer, ok := result.(frameWriter); ok {
-		return spillResponse(call.ID, writer.frameFor(call.ID))
+		answer = frame{
+			head:     envelope(call.ID),
+			document: writer.document(),
+			tail:     responseTail,
+		}
+	} else {
+		answer = frame{head: encodeResponse(MethodResponse{ID: call.ID, Result: result})}
 	}
-	return spillResponse(call.ID, encodeResponse(MethodResponse{ID: call.ID, Result: result}))
-}
-
-// frameWriter is a result that writes its own response envelope. The writer
-// marshals an envelope around the result and then reformats the document the
-// result just built, which for the connections answer is a second copy of the
-// whole table on every page open.
-type frameWriter interface {
-	frameFor(id string) []byte
+	if answer.size() > spillThreshold {
+		return spillFrame(call.ID, answer)
+	}
+	return answer
 }
 
 func encodeResponse(response MethodResponse) []byte {

@@ -136,23 +136,47 @@ type proxiesAnswer struct {
 	names   []string
 }
 
-// frameFor implements frameWriter.
-func (a *proxiesAnswer) frameFor(id string) []byte {
-	buf := make([]byte, 0, a.answerSize()+len(id)+32)
-	buf = append(buf, `{"id":`...)
-	buf = jsonutil.AppendString(buf, id)
-	buf = append(buf, `,"result":`...)
-	buf = a.appendJSON(buf)
-	return append(buf, '}')
+// document implements frameWriter.
+func (a *proxiesAnswer) document() []byte {
+	snapshot := cachedProxiesSnapshot(a.proxies)
+
+	// Refreshing the documents and assembling the answer share one lock: a
+	// table is answered in a single pass, so a second answer cannot splice a
+	// half-refreshed table into the cache.
+	groupDocsMu.Lock()
+	defer groupDocsMu.Unlock()
+
+	liveDocs := refreshGroupDocs(snapshot)
+	// The document is a pure function of the snapshot, the name list and the
+	// documents the slots hold, so a table nothing moved in since the last
+	// answer hands that document back instead of reassembling a byte per node.
+	if cache := cachedProxiesFrame; cache != nil && !liveDocs && cache.matches(a) &&
+		cache.generation == groupDocGeneration {
+		return cache.document
+	}
+
+	buf := make([]byte, 0, a.documentSize())
+	buf = a.appendDocument(buf, snapshot)
+	// A table carrying a live-encoded group changes on every answer, so only
+	// a fully keyed one gets its document remembered.
+	if !liveDocs {
+		cachedProxiesFrame = &proxiesFrameCache{
+			snapshot:   a.proxies,
+			names:      a.names,
+			document:   buf,
+			generation: groupDocGeneration,
+		}
+	}
+	return buf
 }
 
-func (a *proxiesAnswer) answerSize() int {
+func (a *proxiesAnswer) documentSize() int {
 	return 64 + len(a.names)*24 + cachedProxiesSnapshot(a.proxies).sizeBase
 }
 
-func (a *proxiesAnswer) appendJSON(dst []byte) []byte {
-	snapshot := cachedProxiesSnapshot(a.proxies)
-
+// appendDocument writes the whole proxy table and the display order the host
+// reads it in.
+func (a *proxiesAnswer) appendDocument(dst []byte, snapshot *sortedProxyNameCache) []byte {
 	buf := append(dst, `{"proxies":{`...)
 	buf = a.appendProxyTable(buf, snapshot)
 	buf = append(buf, `},"all":[`...)
@@ -165,46 +189,60 @@ func (a *proxiesAnswer) appendJSON(dst []byte) []byte {
 	return append(buf, `]}`...)
 }
 
-// appendProxyTable writes the whole table under one document-cache lock: a
-// lock per group was paid on every answer, and a table is answered in one
-// pass anyway.
+// appendProxyTable writes the whole table from the documents the caller has
+// already refreshed, so the pass only copies bytes. A node's fields never
+// change while the snapshot lives, so a node view rides the same identity
+// cache as the sorted names.
 func (a *proxiesAnswer) appendProxyTable(buf []byte, snapshot *sortedProxyNameCache) []byte {
-	groupDocsMu.Lock()
-	defer groupDocsMu.Unlock()
 	for i := range snapshot.names {
 		buf = append(buf, snapshot.keySpans[i]...)
 		if view := snapshot.nodeViews[i]; view != nil {
-			// Node fields never change while the snapshot lives, so the view
-			// rides the same identity cache as the sorted names.
 			buf = append(buf, view...)
 			continue
 		}
-		buf = appendGroupDoc(buf, snapshot.groupSlots[i])
+		slot := snapshot.groupSlots[i]
+		if slot.doc != nil {
+			buf = append(buf, slot.doc...)
+			continue
+		}
+		buf = appendGroupDocument(buf, slot.proxy)
 	}
 	return buf
+}
+
+// refreshGroupDocs revalidates every group's document and reports whether the
+// table holds one that is encoded live, which no frame cache covers.
+func refreshGroupDocs(snapshot *sortedProxyNameCache) bool {
+	live := false
+	for _, slot := range snapshot.groupSlots {
+		if slot == nil {
+			continue
+		}
+		if slot.group == nil {
+			live = true
+			continue
+		}
+		refreshGroupDoc(slot)
+	}
+	return live
+}
+
+// refreshGroupDoc rebuilds a slot's document when the values the live encode
+// would write have moved.
+func refreshGroupDoc(slot *groupDocSlot) {
+	key := groupDocKeyOf(slot)
+	if slot.doc != nil && slot.key == key &&
+		groupDocVersionsMatch(slot.group, slot.versions) {
+		return
+	}
+	doc := appendGroupDocument(nil, slot.proxy)
+	slot.key, slot.versions, slot.doc = key, groupDocVersions(slot.group), doc
+	groupDocGeneration++
 }
 
 // A group document carries its own name, so it reaches the host exactly as its
 // AppendJSON writes it; the built-in GLOBAL is the one document that needs an
 // edit, spliced in place instead of a decode/marshal round trip.
-// The caller holds the document cache lock.
-func appendGroupDoc(dst []byte, slot *groupDocSlot) []byte {
-	// A group whose document cannot be keyed is encoded live on every answer.
-	if slot.group == nil {
-		return appendGroupDocument(dst, slot.proxy)
-	}
-	key := groupDocKeyOf(slot)
-	if slot.doc != nil && slot.key == key &&
-		groupDocVersionsMatch(slot.group, slot.versions) {
-		return append(dst, slot.doc...)
-	}
-	start := len(dst)
-	dst = appendGroupDocument(dst, slot.proxy)
-	slot.key, slot.versions = key, groupDocVersions(slot.group)
-	slot.doc = slices.Clone(dst[start:])
-	return dst
-}
-
 func appendGroupDocument(dst []byte, proxy constant.Proxy) []byte {
 	// AppendJSON is part of ProxyAdapter, so a group document always has one.
 	dst = proxy.Adapter().AppendJSON(dst)
@@ -320,6 +358,31 @@ type groupDocKey struct {
 // One lock per answer: the table is answered in a single pass, and the slots
 // it writes ride the snapshot, so a rebuilt table starts with empty slots.
 var groupDocsMu sync.Mutex
+
+// groupDocGeneration counts the documents rebuilt behind that lock. A frame
+// assembled under one count answers exactly the documents that count stands
+// for, so an unchanged count says every byte it still carries is the slot's.
+var groupDocGeneration uint64
+
+// cachedProxiesFrame is the document the last answer built. It rides the same
+// lock as the documents it copies, so an answer either reads a table whose
+// every document is already refreshed or builds the document from the ones it
+// just did.
+var cachedProxiesFrame *proxiesFrameCache
+
+type proxiesFrameCache struct {
+	snapshot   any
+	names      []string
+	document   []byte
+	generation uint64
+}
+
+// matches reports whether the cached document still answers exactly this
+// table: the same tunnel snapshot behind it and the same display order.
+func (cache *proxiesFrameCache) matches(answer *proxiesAnswer) bool {
+	return sameProxySnapshot(cache.snapshot, answer.proxies) &&
+		slices.Equal(cache.names, answer.names)
+}
 
 // groupDocSlot is one group row's document cache. The slots ride the snapshot
 // they were built for, so a rebuilt table starts with empty slots and an
