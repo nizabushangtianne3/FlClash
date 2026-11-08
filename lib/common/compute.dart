@@ -201,23 +201,10 @@ List<Proxy> visibleTrayProxies(Group group, String? selectedName) {
   return selected == null ? others : [selected, ...others];
 }
 
-Map<String, String>? _proxyTypesCache;
-List<Group>? _proxyTypesSource;
 final _groupsByNameCache = Expando<Map<String, Group>>();
 
 Map<String, Group> groupsByNameFor(List<Group> allGroups) {
   return _groupsByNameCache[allGroups] ??= _indexGroups(allGroups);
-}
-
-Map<String, String> _proxyTypesFor(List<Group> allGroups) {
-  if (identical(allGroups, _proxyTypesSource) && _proxyTypesCache != null) {
-    return _proxyTypesCache!;
-  }
-  _proxyTypesSource = allGroups;
-  return _proxyTypesCache = {
-    for (final group in allGroups)
-      for (final proxy in group.all) proxy.name: proxy.type,
-  };
 }
 
 List<Group> computeHideTimeout({
@@ -232,7 +219,6 @@ List<Group> computeHideTimeout({
     return groups;
   }
   final groupsByName = groupsByNameFor(allGroups);
-  final proxyTypes = _proxyTypesFor(allGroups);
   List<Group>? nextGroups;
   for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
     final group = groups[groupIndex];
@@ -252,7 +238,7 @@ List<Group> computeHideTimeout({
       }
       // What reaches here is not a group, so it resolves to itself: the delay
       // measured for its own name under the group's test url is its own.
-      if (_unprobeableProxyTypes.contains(proxyTypes[proxy.name])) {
+      if (_unprobeableProxyTypes.contains(proxy.type)) {
         return true;
       }
       final delay = delays?[proxy.name];
