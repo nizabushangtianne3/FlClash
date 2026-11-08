@@ -2,8 +2,8 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-08（核心轮次 + Dart 复核收尾）
-- FlClash main：`a8f7413c`
+- 最近核对日期：2026-11-08（核心轮次 + 死代码清理）
+- FlClash main：`054a893c`
 - Clash.Meta main：`640f8a50a`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 98 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 99 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -342,6 +342,7 @@
 |---|---|---|---|
 | Windows process probe FFI symbol/library 缓存 | `lib/core/desktop/process_probe.dart` | `1db374ff` | 避免每次探测重新打开 DLL 和查找 4 个符号 |
 | URLTest 已有状态复用 | `core/Clash.Meta/adapter/adapter.go` | `dcdbe4d1` | 精准基准 146ns / 400B / 3 allocs → 16.5ns / 0B / 0 allocs |
+| 清理不可达的事件流开关（`refactor(core)`，`054a893c`） | -（仅 wrapper） | `054a893c` | 协议里没有启停 request/dns 事件流的方法，`handleStartRequestMessages`/`handleStopRequestMessages`/`handleStartDnsMessages`/`handleStopDnsMessages` 四个处理器连同两个标志位永远为 true，`sendMessage` 每个事件要为常量付一次 switch；删除该机制与只测它的用例，`routeState`（只被测试调用）移入测试文件。行为不变（标志位恒定 true），wrapper 全量 + vet 通过 |
 
 ## 3. 已拒绝或已撤销实验
 
