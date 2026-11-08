@@ -534,7 +534,7 @@ dart run tool/test.dart   # exit 0
 
 | 位置 | 实测基线 | 结论 / 下一步 |
 |---|---|---|
-| `getProxies` 答案的 `groupDocKeyOf` → `Now()` | 剖析：URLTest 场景答案路径 CPU 的约 25%（200 组 × ~90ns/答案） | **2026-11-09 稳态的整表组装与拷贝已消除，`Now()` 读取成为命中路径的主要剩余成本**（200 组 × ~90ns/答案）：把缓存键换成"组选中代数"（由子模块导出选择代数量）可再降，但任何漏记的变更点都会让 UI 显示过期选中态。需先在子模块枚举 URLTest/Fallback/LoadBalance 的全部选中变更点，再逐点补代数并重测 |
+| `getProxies` 答案的 `groupDocKeyOf` → `Now()` | 剖析：URLTest 场景答案路径 CPU 的约 25%（200 组 × ~90ns/答案） | **2026-11-09 已完结：Selector 场景 -42% ~ -66%，geomean -31.37%**（见「选中代数做键轮次」）。全场景剖析显示 `groupDocKeyOf` 从 69.5% 降到 56.7%；剩余两部分都判定为「必须做」：wrapper 自己的 provider 版本遍历（约 14%）是唯一能抓到「订阅刷新不重建代理表」的读取点，删不得；URLTest/Fallback 的 `Now()` 解析无法用计数器替代——它们的选中会随 fastSingle TTL 到期自行改选，计数器会滞后一个 TTL，UI 会显示过期选中态（这正是本轮只做 Selector 的原因：`setSelected` 是 Selector 选中的唯一写入口，计数完整；URLTest/Fallback 没有这个性质）。若将来要做，唯一正路是子模块提供「选中变更即通知」的主动失效钩子，而不是计数器 |
 | `configuredTestTimeout`（`core/delay.go`） | 每次 delay 测试遍历全部 provider，并对每个返回 timeout 的 provider 线性扫成员（`slices.ContainsFunc(pd.Proxies(), …)`）；1000 节点 × N provider 时每次调用 O(providers × members) | 单次成本远小于 URLTest 网络往返，暂不动；若要改，按 `proxy.ProxyInfo().ProviderName` 直接定位 provider（语义差异：同名节点跨 provider 时只认隧道表里那一个，需先确认可接受） |
 | `adapter.Proxy` 的 `extra` xsync.Map 读路径初始化 | `BenchmarkHandleGetProxies` 内存剖析：活对象的 30% 来自 `xsync.newMapTable[string,*internalProxyState]`，且**纯读取**（`AliveForTestUrl`/`LastDelayForTestUrl`）就会触发惰性建表 | 可加 `hasExtra atomic.Bool` 让纯读取不建表；但真实使用中节点都会被测速、表反正要建，收益有限，记账备查 |
 | 连接轮询的 `row.stale(info)` 与 `Manager.Range` | 剖析：stale ~25ns/行；Range 桶遍历约占该基准采样的 10% | 要再降需要 `TrackerInfo` 侧提供元数据版本号（改动面覆盖全部元数据写入点），维持不做 |
