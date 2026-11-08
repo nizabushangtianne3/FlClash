@@ -2,8 +2,8 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-09（答案传输层重构 + 只读代理不建表 + 名单按身份做键 + singledo 读路径测试）
-- FlClash main：`219c3645`
+- 最近核对日期：2026-11-09（答案传输层重构 + 只读代理不建表 + 名单按身份做键 + singledo 读路径测试 + handler 分发测试）
+- FlClash main：`76247f64`
 - Clash.Meta main：`80f6d03f4`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 114 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 115 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -452,6 +452,17 @@
 | `Requests.updateTraffic` 加未变行提前返回与 identical 守卫（对齐 `Connections.updateTraffic` 的既有写法） | `test/manager/core_manager_feed_benchmark_test.dart` 7 轮交替配对：稳定段（前 3 轮）980.2µs → 999.5µs/批（+2.0%），后 4 轮 1076.8µs → 1094.5µs（+1.6%）。Core 的 `requestTrafficWatch.collect` 本就只发送计数变化的请求，到达 provider 的条目几乎必然与本行不同，提前比较只是多一次整数比较；撤销。feed 每事件约 1.02–1.19µs 的剩余成本在 flush 的 4 个容器拷贝、`FixedList.appendAll` 的逐项 key 建索引与 Riverpod 通知上，要再降需先埋点拆分 |
 | Selector 选中名缓存进 `selectorSelection`（稳态 `Now()` 少两次接口分发） | 3 轮交替配对 n=15（千节点 selector 场景）：75.90µ ±20% → 79.48µ ±23%（p=0.902，无显著差异）。itab 热时分发成本只有个位数 ns，与在子模块最基础的选择缓存里多加一个字段的风险不相称，撤销并记录 |
 | 代理解表组文档键改「组选中代数」 | 剖析确认 `groupDocKeyOf` 仍是答案路径最大单项（URLTest 场景约 25%），但把键换成子模块导出的选择代数量，任何漏记的变更点都会让 UI 显示过期选中态；需先枚举 URLTest/Fallback/LoadBalance 的全部选中变更点并逐点补计数，本轮未做，留在待优化项 |
+
+### 2026-11-09 handler 分发测试轮次（覆盖，不是性能）
+
+任务要求"测试流程必须覆盖全部核心代码"。此前 method 表只被 `TestEveryCoreMethodConstantIsDispatchable` 检查**注册**，从不执行；十余个 action handler 覆盖率 0%。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 让每个已注册 handler 都通过 dispatcher 真跑一遍：流量重置、关闭全部连接、重置连接、清 DNS 缓存、上报网络变更、关闭单个未知连接、外部 provider 列表/单读、inline provider 的 sideLoad 拒绝、profile clearEffect 在 core 未初始化/已初始化两种状态 | -（仅 wrapper） | `76247f64` | 覆盖 `traffic.reset`/`connection.closeAll`/`connection.reset`/`dns.clearCache`/`network.changed`/`connection.close`/`provider.list`/`provider.get`/`provider.sideLoad`/`profile.clearEffect` 共 10 个方法，断言各自的 result/error 与副作用（非 closeAll 不得动连接行、closeAll 后表空、provider 名单含转义名、clearEffect 真删目录）。wrapper 全量 + vet + focused race 通过 |
+
+覆盖率：wrapper `go test . -coverprofile` 统计 **81.6% → 82.8%**（statements）。剩余 0% 集中在三类：进程入口（`StartServer`/`ExitOnTermination`）、非 Windows 平台文件（`ownership_other.go` 上的 `initOwnership`/`reclaimDirOwnership`）、以及 service_rules 的 unlock 检查器（需真实外网，靠 `handleServiceCheck` 走注入源覆盖）。前两类不适合在 wrapper 单测里构造；第三类已有 service_check 测试覆盖其框架。
+
 
 ## 4. 当前验证矩阵
 
