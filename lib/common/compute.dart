@@ -308,15 +308,20 @@ SelectedProxyState _resolveRealSelectedProxyState(
   if (group == null) {
     return cache[state.proxyName] = state;
   }
-  final newState = state.copyWith(group: true);
   final currentSelectedName = group.getCurrentSelectedName(
-    selectedMap[newState.proxyName] ?? '',
+    selectedMap[state.proxyName] ?? '',
   );
   if (currentSelectedName.isEmpty) {
-    return cache[state.proxyName] = newState;
+    return cache[state.proxyName] = state.copyWith(group: true);
   }
   final resolved = _resolveRealSelectedProxyState(
-    newState.copyWith(proxyName: currentSelectedName, testUrl: group.testUrl),
+    // One copy carries the whole step: the group flag, the name the group
+    // resolved to and its test url.
+    state.copyWith(
+      group: true,
+      proxyName: currentSelectedName,
+      testUrl: group.testUrl,
+    ),
     cache,
     groups: groups,
     groupsByName: groupIndex,
