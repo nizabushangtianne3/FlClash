@@ -19,6 +19,8 @@ import (
 // mostly leaf nodes rather than groups. The kind suffixes cover the group
 // types a real profile mixes in; the kindless cases stay Selector so their
 // names and numbers keep pairing across rounds.
+// The name list carries every proxy the config parsed, as a real profile's
+// does, so the answer walks a list of the size the host configured.
 func BenchmarkHandleGetProxies(b *testing.B) {
 	for _, tc := range []struct {
 		groups int
@@ -44,7 +46,7 @@ func BenchmarkHandleGetProxies(b *testing.B) {
 				members[index] = fmt.Sprintf("member-%03d", index)
 			}
 
-			names := make([]string, 0, tc.groups)
+			names := make([]string, 0, tc.groups+tc.nodes)
 			proxies := make(map[string]C.Proxy, tc.groups+tc.nodes)
 			for index := range tc.groups {
 				name := fmt.Sprintf("group-%03d", index)
@@ -53,6 +55,7 @@ func BenchmarkHandleGetProxies(b *testing.B) {
 			}
 			for index := range tc.nodes {
 				name := fmt.Sprintf("node-%04d", index)
+				names = append(names, name)
 				proxies[name] = namedProxy(name)
 			}
 			tunnel.UpdateProxies(proxies, nil)
@@ -95,7 +98,7 @@ func BenchmarkHandleGetProxiesMiss(b *testing.B) {
 				members[index] = fmt.Sprintf("member-%03d", index)
 			}
 
-			names := make([]string, 0, tc.groups)
+			names := make([]string, 0, tc.groups+tc.nodes)
 			proxies := make(map[string]C.Proxy, tc.groups+tc.nodes)
 			for index := range tc.groups {
 				name := fmt.Sprintf("group-%03d", index)
@@ -104,6 +107,7 @@ func BenchmarkHandleGetProxiesMiss(b *testing.B) {
 			}
 			for index := range tc.nodes {
 				name := fmt.Sprintf("node-%04d", index)
+				names = append(names, name)
 				proxies[name] = namedProxy(name)
 			}
 			tunnel.UpdateProxies(proxies, nil)

@@ -101,12 +101,21 @@ func sameProxySnapshot(left, right any) bool {
 	return reflect.ValueOf(left).Pointer() == reflect.ValueOf(right).Pointer()
 }
 
+// sameProxyNameList reports whether two lists are the same one. The configured
+// list is replaced rather than edited in place — SetProxyNameList is called
+// once per config parse with the slice that parse built — so a shared identity
+// is the same list, and a profile of a thousand nodes is not walked to learn
+// what it already says.
+func sameProxyNameList(left, right []string) bool {
+	return len(left) == len(right) && (len(left) == 0 || &left[0] == &right[0])
+}
+
 func handleGetProxies() *proxiesAnswer {
 	proxies := tunnel.AllProxies()
 	source := config.GetProxyNameList()
 
 	if cache := groupProjection.Load(); cache != nil &&
-		sameProxySnapshot(cache.snapshot, proxies) && slices.Equal(source, cache.source) {
+		sameProxySnapshot(cache.snapshot, proxies) && sameProxyNameList(cache.source, source) {
 		return &proxiesAnswer{proxies: proxies, names: cache.names}
 	}
 
@@ -119,7 +128,7 @@ func handleGetProxies() *proxiesAnswer {
 	})
 	groupProjection.Store(&groupProjectionCache{
 		snapshot: proxies,
-		source:   slices.Clone(source),
+		source:   source,
 		names:    names,
 	})
 
@@ -381,7 +390,7 @@ type proxiesFrameCache struct {
 // table: the same tunnel snapshot behind it and the same display order.
 func (cache *proxiesFrameCache) matches(answer *proxiesAnswer) bool {
 	return sameProxySnapshot(cache.snapshot, answer.proxies) &&
-		slices.Equal(cache.names, answer.names)
+		sameProxyNameList(cache.names, answer.names)
 }
 
 // groupDocSlot is one group row's document cache. The slots ride the snapshot
