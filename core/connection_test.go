@@ -139,9 +139,11 @@ func BenchmarkGetConnectionsDelta(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				data, err := json.Marshal(handleGetConnections(ConnectionsQuery{}))
-				if err != nil || len(data) == 0 {
-					b.Fatalf("answer: %v", err)
+				// The answer reaches the host as its own frame, so the
+				// benchmark measures the frame path, not the reflection
+				// envelope the shape test decodes it with.
+				if data := handleGetConnections(ConnectionsQuery{}).frameFor("benchmark"); len(data) == 0 {
+					b.Fatal("empty answer")
 				}
 			}
 		})
