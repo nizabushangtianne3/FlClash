@@ -88,7 +88,9 @@ func readProfile(path string) (*profileSnapshot, error) {
 	}
 
 	profileCache.mu.Lock()
-	profileCache.buf = append([]byte(nil), wire...)
+	// ReadFile hands back a buffer nobody else holds, and the parse keeps its
+	// own copies, so the wire bytes can be cached as they are.
+	profileCache.buf = wire
 	profileCache.snapshot = snapshot
 	profileCache.mu.Unlock()
 	return snapshot, nil
