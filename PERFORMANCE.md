@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-08（核心答案路径轮次）
-- FlClash main：`3788368c`
-- Clash.Meta main：`89fad1edd`
+- 最近核对日期：2026-11-08（核心轮次 + Dart 复核收尾）
+- FlClash main：`a8f7413c`
+- Clash.Meta main：`640f8a50a`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -367,6 +367,7 @@
 | `delay`/`delayTestPhase` 去掉 `realTestUrlProvider` 家族跳，改为直接 `watch(patchClashConfigProvider.select)` | 新增 `test/providers/delay_provider_benchmark_test.dart`（1000 行 ×10 次 `refresh(delayProvider)`）三次交替配对（A=HEAD 带家族跳，B=直连 select）：A 8080833/8259448/8660959µs（均值 8333747）→ B 9154707/9247181/9358151µs（均值 9253346），**+11.0%**，三轮全慢。家族元素按参数缓存后只是一次读，`select` 订阅每次重建都要付闭包与通知器成本；撤销，保留 `realTestUrlProvider` |
 | `computeSort`/`computeHideTimeout` 把 `takeFirstValid` 的 fallback 列表提出循环 | 2026-11-08 三次交替配对（A=HEAD，B=hoist，每轮新进程）：`computeHideTimeoutGroups` 100 组 11963µs → 11561µs（**-3.4%**，但 3 个配对只有 1 个为负）、`computeSortDelaySorted` 100 组 10447µs → 11521µs（**+10.3%**）、新增的 `computeSortDelayNested`（100 组 ×10 嵌套组）45406µs → 46556µs（**+2.5%**），全部落在 ±5% 进程噪声内、无稳定收益；且实现时极易把嵌套组 fallback 从「外层组 testUrl」误提升成「全局默认 testUrl」（语义偏差，这次已由新增回归测试钉住后回退）。撤销 compute.dart 改动；本轮只落地测试增量：`test/common/compute_sort_delay_benchmark_test.dart` 新增多组/嵌套组两个场景、`test/common/compute_hide_timeout_benchmark_test.dart` 新增多组场景、`test/common/compute_test.dart` 新增「嵌套组无自己的 testUrl 时读外层组 testUrl」用例（41 例全绿） |
 | `adapter.Proxy` 构造时固化 Name/Type（少一次接口分发） | 5 轮交替配对 n=15（groups=200 场景）：119.1µ ±38% → 125.9µ ±42%（p=0.902，无显著差异）。本机在跑用户自己的 FlClash 实例，CPU 负载 ~52%，该场景方差 ±38% 以上，只有大幅收益才可判定；理论收益仅省一次分发，与风险（改动全项目最基础的代理包装类型）不相称，撤销并记录 |
+| `computeSort` 延迟排序两项微优化（`_sameOrder` 同列表短路 + 排序键缓冲跨组复用） | 3 轮交替配对（每轮新进程、50 次 warm-up 后测 100 次）：1000 节点全量排序 17.82ms → 18.46ms（**+3.6%**）、100 组×10 嵌套组 46.22ms → 48.99ms（**+6.0%**）、已有序的两个场景在 ±4% 内；缓冲复用虽把每组 2 次 TypedData 分配降到每 computation 2 次，但没有转化为时间收益。撤销两项改动。结论：Dart JIT 下 <15% 的计时差需要 ≥7 组交替配对才可判定，微优化应先做分配/操作数论证再上基准 |
 
 ## 4. 当前验证矩阵
 
@@ -474,3 +475,4 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 - 任务缓存清理工具此前被执行器安全策略拦截，`D:\Codex\tmp` 下仍有 benchmark/profile 缓存目录；继续前可按任务名确认是否可清理。
 - `sqlite3` v3.7.0 的 Windows 原生资产钩子会失败：GitHub release `sqlite3-3.7.0` 的 `sqlite3.x64.windows.dll` 已于 2026-09-30 重新上传（官方 API 摘要 `98b4be67...`），与包内 `asset_hashes.dart` 钉住的 `3a29878d...` 不一致。已在本地 pub 缓存（`D:\Codex\tools\pub-cache-task`）按 GitHub 官方摘要修正该哈希；上游发布新版本前这是环境级阻塞。跑 `dart run tool/test.dart` 还需 `PUB_CACHE=D:\Codex\tools\pub-cache-task`，并把 Flutter 与 Go 的 bin 放进 PATH（`setup` 包的构建钩子要调 `go`）。
 - 本轮 `dart run tool/test.dart` 的 32 个 bundle 里有 2 个用例失败，单独重跑同一批文件全部通过（bundle 共享 isolate 的跨文件干扰）；工具的结论是退出码 0。Dart 侧本轮零改动。
+- 2026-11-08 在本机复核 `dart run tool/test.dart`：5 个用例失败，且在提交 `3788368c`（本轮改动之前）上同样失败，属既有问题、与 Go 改动无关——`test/common/mitm_trust_test.dart` 的 4 个 `Linux ...` 用例没有 `@TestOn` 限定，在 Windows 上必然失败；`test/common/window_test.dart` 的「an unsupported probe is retried the next time blur is on」期望 4 次平台调用、Windows 实测 3 次。其余全部通过。若要在本机跑绿，需给前者加平台注解、后者按平台分支期望
