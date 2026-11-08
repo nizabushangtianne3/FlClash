@@ -191,7 +191,7 @@ func appendGroupDoc(dst []byte, slot *groupDocSlot) []byte {
 	if slot != nil && slot.group != nil {
 		// The key is read once and reused for the store, so a group's live
 		// selection is walked once per answer instead of twice more.
-		if key, ok := groupDocKeyOf(slot.proxy, slot.group); ok {
+		if key, ok := groupDocKeyOf(slot); ok {
 			if slot.doc != nil && slot.key == key &&
 				groupDocVersionsMatch(slot.group, slot.versions) {
 				return append(dst, slot.doc...)
@@ -348,34 +348,44 @@ var (
 type groupDocSlot struct {
 	proxy    constant.Proxy
 	group    outboundgroup.ProxyGroup // nil for a kind the cache does not cover
+	// The adapter type and the pinned-selection reader are fixed for the
+	// proxy's life, so the answer path reads them from the slot instead of
+	// dispatching into the proxy for them on every group.
+	typ   constant.AdapterType
+	fixed interface{ SelectedName() string }
 	key      groupDocKey
 	versions []uint32
 	doc      []byte
 }
 
 func newGroupDocSlot(proxy constant.Proxy) *groupDocSlot {
-	slot := &groupDocSlot{proxy: proxy}
-	if !isCacheableGroupDoc(proxy.Type()) {
+	adapterType := proxy.Type()
+	slot := &groupDocSlot{proxy: proxy, typ: adapterType}
+	if !isCacheableGroupDoc(adapterType) {
 		return slot
 	}
-	if group, ok := adapterAs[outboundgroup.ProxyGroup](proxy); ok {
-		slot.group = group
+	group, ok := adapterAs[outboundgroup.ProxyGroup](proxy)
+	if !ok {
+		return slot
+	}
+	slot.group = group
+	if fixed, ok := proxy.Adapter().(interface{ SelectedName() string }); ok {
+		slot.fixed = fixed
 	}
 	return slot
 }
 
 // groupDocKeyOf reads the values the live encode would write. The bool is
 // false for the kinds the cache does not cover.
-func groupDocKeyOf(proxy constant.Proxy, group outboundgroup.ProxyGroup) (groupDocKey, bool) {
-	switch proxy.Type() {
+func groupDocKeyOf(slot *groupDocSlot) (groupDocKey, bool) {
+	switch slot.typ {
 	case constant.Selector:
-		return groupDocKey{now: group.Now()}, true
+		return groupDocKey{now: slot.group.Now()}, true
 	case constant.URLTest, constant.Fallback:
-		selected, ok := proxy.Adapter().(interface{ SelectedName() string })
-		if !ok {
+		if slot.fixed == nil {
 			return groupDocKey{}, false
 		}
-		return groupDocKey{now: group.Now(), fixed: selected.SelectedName()}, true
+		return groupDocKey{now: slot.group.Now(), fixed: slot.fixed.SelectedName()}, true
 	case constant.LoadBalance:
 		return groupDocKey{}, true
 	default:
