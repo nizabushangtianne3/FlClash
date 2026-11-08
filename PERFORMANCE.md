@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-08（核心轮次 + Dart compute 轮次 + 槽位读键）
-- FlClash main：`089d726b`
+- FlClash main：`e7eedd42`
 - Clash.Meta main：`640f8a50a`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -378,6 +378,7 @@
 | `computeSort`/`computeHideTimeout` 把 `takeFirstValid` 的 fallback 列表提出循环 | 2026-11-08 三次交替配对（A=HEAD，B=hoist，每轮新进程）：`computeHideTimeoutGroups` 100 组 11963µs → 11561µs（**-3.4%**，但 3 个配对只有 1 个为负）、`computeSortDelaySorted` 100 组 10447µs → 11521µs（**+10.3%**）、新增的 `computeSortDelayNested`（100 组 ×10 嵌套组）45406µs → 46556µs（**+2.5%**），全部落在 ±5% 进程噪声内、无稳定收益；且实现时极易把嵌套组 fallback 从「外层组 testUrl」误提升成「全局默认 testUrl」（语义偏差，这次已由新增回归测试钉住后回退）。撤销 compute.dart 改动；本轮只落地测试增量：`test/common/compute_sort_delay_benchmark_test.dart` 新增多组/嵌套组两个场景、`test/common/compute_hide_timeout_benchmark_test.dart` 新增多组场景、`test/common/compute_test.dart` 新增「嵌套组无自己的 testUrl 时读外层组 testUrl」用例（41 例全绿） |
 | `adapter.Proxy` 构造时固化 Name/Type（少一次接口分发） | 5 轮交替配对 n=15（groups=200 场景）：119.1µ ±38% → 125.9µ ±42%（p=0.902，无显著差异）。本机在跑用户自己的 FlClash 实例，CPU 负载 ~52%，该场景方差 ±38% 以上，只有大幅收益才可判定；理论收益仅省一次分发，与风险（改动全项目最基础的代理包装类型）不相称，撤销并记录 |
 | `handleGetExternalProviders` 的条目顺序按 provider 表地图身份缓存 | 剖析确认排序占该答案 14%（100 个 provider），但该答案只有两个调用方：`CoreAction.initCore`（Core 已初始化时的重连）与资料应用的 setup 流程——都是每次事件一次、且紧跟在地图变化之后，缓存必然每次都未命中；Dart 侧 `syncProviders` 也非轮询。为一个只在基准紧凑循环里生效的缓存增加「锁 + 身份簿记」状态，收益不真实，撤销 |
+| Profile 读档按 `os.Stat` 跳读（省掉重复读盘） | 剖析：`BenchmarkProfileReadAndMerge` 中 `os.ReadFile` 占 50%（17.15ms/周期中约 8.5ms），而一次真实 Apply 会读同一文件 2–3 次（`profile.build`、`config.setup` 的 `loadConfigWithBase`、以及宿主侧的 `profile.base`/`outbounds`），只有第一次付出 yaml 解析 | 现有缓存按「读文件 + 逐字节比较」判定未变，解析已覆盖；若改为按 (size, mtime) 跳过读盘，可省约 25% 的 Apply 时间，但宿主改写走 `profile.clearEffect` 显式失效、Core 自身改写走 `forgetProfileRaw`，唯一敞口是外部编辑器「同大小 + 同一时钟 tick 内」的两次保存——本机 Windows 文件时间戳粒度约 15.6ms，脚本化双击保存可落入同一 tick，届时会返回过期配置。无既快又等价的判据（任何局部内容探针都能被中部等长编辑绕过），与账本既有「不信任宿主 digest」的决议同因，维持不做 |
 | `computeSort` 排序键 TypedData 缓冲跨组复用 + `_sameOrder` 同列表短路 | 3 轮交替配对（每轮新进程、50 次 warm-up 后测 100 次）：1000 节点全量排序 17.82ms → 18.46ms（**+3.6%**）、100 组×10 嵌套组 46.22ms → 48.99ms（**+6.0%**）、已有序的两个场景在 ±4% 内。缓冲复用虽把每组 2 次 TypedData 分配降到每 computation 2 次，但没有转化为时间收益；撤销 |
 | `computeSort` 按 Group 对象缓存「成员是否为组」位图（`Expando<Uint8List>`） | 7 轮交替配对：单组 1000 节点 17.68ms → 17.66ms（7/7 一致，约 **-4.2%**），但 100 组×2、嵌套两组场景 +1.9%/+2.2%——Dart 的 `Expando`（WeakMap + 身份哈希）查找比短字符串 map 查找更贵，只有上千成员的单个组才划算。撤销；结论：Dart JIT 下 <15% 的计时差需要 ≥7 组交替配对才可判定 |
 | `computeSort`/`computeHideTimeout`/`_resolveDelayTestTargets` 的「成员是否为组」改 `GroupTypeExtension.isEnumName(proxy.type)` | 该检查零分配且仓库 UI 层（`lib/views/proxies/card.dart`）已在用同一语义，但 `isEnumName` 只认枚举名拼写，而 `groupsByName` 含 `isGroupType` 接受的全部拼写（含 lowercase 别名与 `value` 拼写）；用户自定义分组若用非枚举名拼写，会被误判为叶子、用错延迟测错序。把逐代理查找换成类型检查没有既快又完全等价的形态（先查类型再回落查表会让占比最高的叶子更慢），记账备查 |
