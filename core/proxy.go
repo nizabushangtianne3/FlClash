@@ -153,16 +153,7 @@ func (a *proxiesAnswer) appendJSON(dst []byte) []byte {
 	snapshot := cachedProxiesSnapshot(a.proxies)
 
 	buf := append(dst, `{"proxies":{`...)
-	for i := range snapshot.names {
-		buf = append(buf, snapshot.keySpans[i]...)
-		if view := snapshot.nodeViews[i]; view != nil {
-			// Node fields never change while the snapshot lives, so the view
-			// rides the same identity cache as the sorted names.
-			buf = append(buf, view...)
-		} else {
-			buf = appendProxyView(buf, snapshot, a.proxies[snapshot.names[i]])
-		}
-	}
+	buf = a.appendProxyTable(buf, snapshot)
 	buf = append(buf, `},"all":[`...)
 	for i, name := range a.names {
 		if i > 0 {
@@ -173,18 +164,55 @@ func (a *proxiesAnswer) appendJSON(dst []byte) []byte {
 	return append(buf, `]}`...)
 }
 
+// appendProxyTable writes the whole table under one document-cache lock: a
+// lock per group was paid on every answer, and a table is answered in one
+// pass anyway.
+func (a *proxiesAnswer) appendProxyTable(buf []byte, snapshot *sortedProxyNameCache) []byte {
+	groupDocsMu.Lock()
+	defer groupDocsMu.Unlock()
+	for i := range snapshot.names {
+		buf = append(buf, snapshot.keySpans[i]...)
+		if view := snapshot.nodeViews[i]; view != nil {
+			// Node fields never change while the snapshot lives, so the view
+			// rides the same identity cache as the sorted names.
+			buf = append(buf, view...)
+			continue
+		}
+		buf = appendGroupDoc(buf, snapshot, a.proxies[snapshot.names[i]])
+	}
+	return buf
+}
+
 // A group document carries its own name, so it reaches the host exactly as its
 // AppendJSON writes it; the built-in GLOBAL is the one document that needs an
 // edit, spliced in place instead of a decode/marshal round trip.
-func appendProxyView(dst []byte, snapshot *sortedProxyNameCache, proxy constant.Proxy) []byte {
-	if !isProxyGroupType(proxy.Type()) {
+// The caller holds the document cache lock.
+func appendGroupDoc(dst []byte, snapshot *sortedProxyNameCache, proxy constant.Proxy) []byte {
+	proxyType := proxy.Type()
+	if !isProxyGroupType(proxyType) {
 		return appendNodeView(dst, proxy)
 	}
+	if groupDocsSnapshot != snapshot {
+		groupDocsSnapshot = snapshot
+		clear(groupDocs)
+	}
 
-	cached := isCacheableGroupDoc(proxy.Type())
-	if cached {
-		if doc, ok := cachedGroupDoc(snapshot, proxy); ok {
-			return append(dst, doc...)
+	var (
+		keyed bool
+		key   groupDocKey
+		group outboundgroup.ProxyGroup
+	)
+	if isCacheableGroupDoc(proxyType) {
+		if g, ok := adapterAs[outboundgroup.ProxyGroup](proxy); ok {
+			// The key is read once and reused for the store, so a group's live
+			// selection is walked once per answer instead of twice more.
+			if k, ok := groupDocKeyOf(proxy, g); ok {
+				keyed, key, group = true, k, g
+				if entry, exist := groupDocs[proxy]; exist &&
+					entry.key == key && groupDocVersionsMatch(group, entry.versions) {
+					return append(dst, entry.doc...)
+				}
+			}
 		}
 	}
 	start := len(dst)
@@ -202,8 +230,12 @@ func appendProxyView(dst []byte, snapshot *sortedProxyNameCache, proxy constant.
 	if isBuiltInGlobal(proxy) {
 		dst = appendGlobalHidden(dst)
 	}
-	if cached {
-		storeGroupDoc(snapshot, proxy, slices.Clone(dst[start:]))
+	if keyed {
+		groupDocs[proxy] = &groupDocEntry{
+			key:      key,
+			versions: groupDocVersions(group),
+			doc:      slices.Clone(dst[start:]),
+		}
 	}
 	return dst
 }
@@ -347,30 +379,6 @@ func groupDocKeyOf(proxy constant.Proxy, group outboundgroup.ProxyGroup) (groupD
 	}
 }
 
-func cachedGroupDoc(snapshot *sortedProxyNameCache, proxy constant.Proxy) ([]byte, bool) {
-	group, ok := adapterAs[outboundgroup.ProxyGroup](proxy)
-	if !ok {
-		return nil, false
-	}
-	key, ok := groupDocKeyOf(proxy, group)
-	if !ok {
-		return nil, false
-	}
-
-	groupDocsMu.Lock()
-	defer groupDocsMu.Unlock()
-	if groupDocsSnapshot != snapshot {
-		groupDocsSnapshot = snapshot
-		clear(groupDocs)
-		return nil, false
-	}
-	entry, exist := groupDocs[proxy]
-	if !exist || entry.key != key || !groupDocVersionsMatch(group, entry.versions) {
-		return nil, false
-	}
-	return entry.doc, true
-}
-
 func groupDocVersions(group outboundgroup.ProxyGroup) []uint32 {
 	providers := group.Providers()
 	versions := make([]uint32, 0, len(providers))
@@ -393,28 +401,6 @@ func groupDocVersionsMatch(group outboundgroup.ProxyGroup, versions []uint32) bo
 		}
 	}
 	return true
-}
-
-func storeGroupDoc(snapshot *sortedProxyNameCache, proxy constant.Proxy, doc []byte) {
-	group, ok := adapterAs[outboundgroup.ProxyGroup](proxy)
-	if !ok {
-		return
-	}
-	key, ok := groupDocKeyOf(proxy, group)
-	if !ok {
-		return
-	}
-	groupDocsMu.Lock()
-	defer groupDocsMu.Unlock()
-	if groupDocsSnapshot != snapshot {
-		groupDocsSnapshot = snapshot
-		clear(groupDocs)
-	}
-	groupDocs[proxy] = &groupDocEntry{
-		key:      key,
-		versions: groupDocVersions(group),
-		doc:      doc,
-	}
 }
 
 // mihomo builds its own GLOBAL over the reserved provider, which no configured

@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/gofrs/uuid/v5"
 	"github.com/metacubex/mihomo/common/jsonutil"
 	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/dns"
@@ -115,6 +114,8 @@ func rowAnswerSize(info *statistic.TrackerInfo) int {
 }
 
 type connectionRow struct {
+	tracker     statistic.Tracker
+	id          string
 	host        string
 	sniffHost   string
 	dstIP       netip.Addr
@@ -130,9 +131,10 @@ type connectionRow struct {
 
 var connectionRows = struct {
 	mu         sync.Mutex
-	rows       map[uuid.UUID]*connectionRow
+	rows       map[statistic.Tracker]*connectionRow
+	order      []*connectionRow
 	generation uint64
-}{rows: map[uuid.UUID]*connectionRow{}}
+}{rows: map[statistic.Tracker]*connectionRow{}}
 
 func (row *connectionRow) stale(info *statistic.TrackerInfo) bool {
 	metadata := info.Metadata
@@ -148,9 +150,11 @@ func (row *connectionRow) stale(info *statistic.TrackerInfo) bool {
 		!slices.Equal(metadata.DstGeoIP, row.dstGeoIP)
 }
 
-func newConnectionRow(info *statistic.TrackerInfo) *connectionRow {
+func newConnectionRow(tracker statistic.Tracker, info *statistic.TrackerInfo) *connectionRow {
 	metadata := info.Metadata
 	return &connectionRow{
+		tracker:     tracker,
+		id:          info.UUID.String(),
 		host:        metadata.Host,
 		sniffHost:   metadata.SniffHost,
 		dstIP:       metadata.DstIP,
@@ -173,13 +177,14 @@ func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 	delta := &ConnectionDelta{}
 	statistic.DefaultManager.Range(func(tracker statistic.Tracker) bool {
 		info := tracker.Info()
-		row := connectionRows.rows[info.UUID]
+		row := connectionRows.rows[tracker]
 		if row == nil {
-			row = newConnectionRow(info)
-			connectionRows.rows[info.UUID] = row
+			row = newConnectionRow(tracker, info)
+			connectionRows.rows[tracker] = row
+			connectionRows.order = append(connectionRows.order, row)
 			delta.Added = append(delta.Added, info)
 		} else if row.stale(info) {
-			*row = *newConnectionRow(info)
+			*row = *newConnectionRow(tracker, info)
 			delta.Added = append(delta.Added, info)
 		} else if query.Resync {
 			delta.Added = append(delta.Added, info)
@@ -188,14 +193,20 @@ func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 		delta.Count++
 		return true
 	})
-	for id, row := range connectionRows.rows {
+	// What the poll did not see is gone: the manager is the only witness of a
+	// close, and the live order compacts in place rather than walking the map.
+	live := connectionRows.order[:0]
+	for _, row := range connectionRows.order {
 		if row.generation != connectionRows.generation {
 			if !query.Resync {
-				delta.Removed = append(delta.Removed, id.String())
+				delta.Removed = append(delta.Removed, row.id)
 			}
-			delete(connectionRows.rows, id)
+			delete(connectionRows.rows, row.tracker)
+			continue
 		}
+		live = append(live, row)
 	}
+	connectionRows.order = live
 	return delta
 }
 

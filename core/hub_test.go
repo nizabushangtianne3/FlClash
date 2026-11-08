@@ -109,6 +109,14 @@ func groupNow(t *testing.T, proxy constant.Proxy) string {
 	return group.Now()
 }
 
+// encodeGroupDoc answers one proxy's document the way an answer writes it: the
+// table lock is held for the whole pass, so a single document takes it too.
+func encodeGroupDoc(proxy constant.Proxy) []byte {
+	groupDocsMu.Lock()
+	defer groupDocsMu.Unlock()
+	return appendGroupDoc(nil, nil, proxy)
+}
+
 // patchSelectGroup restores selections before the providers behind the groups
 // have loaded - executor.loadProvider never waits for them - so it has to write
 // names through unvalidated and let Selector resolve them at dial time. A name
@@ -1116,7 +1124,7 @@ func TestProxyViewKeepsWhatTheHostReads(t *testing.T) {
 	encode := func(proxy constant.Proxy) map[string]any {
 		t.Helper()
 		view := map[string]any{}
-		if err := json.Unmarshal(appendProxyView(nil, nil, proxy), &view); err != nil {
+		if err := json.Unmarshal(encodeGroupDoc(proxy), &view); err != nil {
 			t.Fatalf("unmarshal %s: %v", proxy.Name(), err)
 		}
 		return view
@@ -1185,7 +1193,7 @@ func TestProxyViewHidesOnlyTheBuiltInGlobal(t *testing.T) {
 			t.Fatalf("NewSelector: %v", err)
 		}
 		view := map[string]any{}
-		if err := json.Unmarshal(appendProxyView(nil, nil, adapter.NewProxy(selector)), &view); err != nil {
+		if err := json.Unmarshal(encodeGroupDoc(adapter.NewProxy(selector)), &view); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
 		return view["hidden"]
