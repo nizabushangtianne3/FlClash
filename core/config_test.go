@@ -958,7 +958,10 @@ func blackHoleServer(t *testing.T) net.Addr {
 // back of the queue.
 func TestTestDelayDoesNotSpendTheProbeBudgetQueueing(t *testing.T) {
 	const (
-		timeout  = 200 * time.Millisecond
+		// The slot must come free well inside this deadline, or a loaded
+		// machine fails the test for a scheduling delay rather than for the
+		// inherited-deadline behaviour it is about.
+		timeout  = 400 * time.Millisecond
 		queueFor = 150 * time.Millisecond
 	)
 

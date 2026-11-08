@@ -17,7 +17,6 @@ import (
 	"github.com/metacubex/mihomo/common/jsonutil"
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
-	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel"
 )
 
@@ -208,32 +207,12 @@ func appendGroupDoc(dst []byte, slot *groupDocSlot) []byte {
 }
 
 func appendGroupDocument(dst []byte, proxy constant.Proxy) []byte {
-	appender, ok := proxy.Adapter().(interface{ AppendJSON([]byte) []byte })
-	if !ok {
-		data, err := proxy.Adapter().MarshalJSON()
-		if err != nil {
-			log.Warnln("[APP] encode group %s: %v", proxy.Name(), err)
-			return appendNodeView(dst, proxy)
-		}
-		dst = append(dst, data...)
-	} else {
-		dst = appender.AppendJSON(dst)
-	}
+	// AppendJSON is part of ProxyAdapter, so a group document always has one.
+	dst = proxy.Adapter().AppendJSON(dst)
 	if isBuiltInGlobal(proxy) {
 		dst = appendGlobalHidden(dst)
 	}
 	return dst
-}
-
-// A document the cache keys on values the answer reads anyway; a Relay's
-// MarshalJSON stays on the live path.
-func isCacheableGroupDoc(adapterType constant.AdapterType) bool {
-	switch adapterType {
-	case constant.Selector, constant.URLTest, constant.Fallback, constant.LoadBalance:
-		return true
-	default:
-		return false
-	}
 }
 
 func appendNodeView(dst []byte, proxy constant.Proxy) []byte {
@@ -359,12 +338,11 @@ type groupDocSlot struct {
 	doc      []byte
 }
 
+// newGroupDocSlot builds the cache row for one group: the caller has already
+// decided the proxy is a group, and every kind that parses is cacheable.
 func newGroupDocSlot(proxy constant.Proxy) *groupDocSlot {
 	adapterType := proxy.Type()
 	slot := &groupDocSlot{proxy: proxy, typ: adapterType}
-	if !isCacheableGroupDoc(adapterType) {
-		return slot
-	}
 	group, ok := adapterAs[outboundgroup.ProxyGroup](proxy)
 	if !ok {
 		return slot
