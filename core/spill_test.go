@@ -8,6 +8,9 @@ import (
 	"testing"
 
 	"github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/config"
+	"github.com/stretchr/testify/require"
+	"github.com/metacubex/mihomo/tunnel"
 )
 
 func withSpillHome(t *testing.T, threshold int) string {
@@ -85,6 +88,69 @@ func TestHandleMethodCallAnswersInlineUnderTheThreshold(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, spilledResponseDirName)); !os.IsNotExist(err) {
 		t.Errorf("stat spill directory = %v, want nothing written", err)
+	}
+}
+
+// A frame writer's answer is written to the spill file in pieces, so the file
+// the host reads has to hold the very bytes the transport would have written.
+func TestHandleMethodCallSpillsAFrameWriterDocument(t *testing.T) {
+	home := withSpillHome(t, responseSpillThreshold)
+
+	group := proxyGroup(t, "group", "selector", "member-a", "member-b")
+	tunnel.UpdateProxies(map[string]constant.Proxy{"group": group}, nil)
+	config.SetProxyNameList([]string{"group"})
+	t.Cleanup(func() {
+		tunnel.UpdateProxies(nil, nil)
+		config.SetProxyNameList(nil)
+	})
+
+	call := MethodCall{ID: "spill", Method: proxyListMethod}
+	inline := answerBytes(call)
+
+	// One byte under the answer's size is enough to force the spill.
+	spillThreshold = len(inline) - 1
+	spilled := handleMethodCall(&call)
+
+	var envelope MethodResponse
+	require.NoError(t, json.Unmarshal(spilled.bytes(), &envelope))
+	if envelope.ID != "spill" || envelope.Result != nil || envelope.Error != nil {
+		t.Fatalf("envelope = %+v, want only the id and the file", envelope)
+	}
+	if filepath.Dir(envelope.File) != filepath.Join(home, spilledResponseDirName) {
+		t.Fatalf("file = %s, want it under the home directory's spill directory", envelope.File)
+	}
+	written, err := os.ReadFile(envelope.File)
+	if err != nil {
+		t.Fatalf("read spilled response: %v", err)
+	}
+	if string(written) != string(inline) {
+		t.Errorf("spilled response is %d bytes, want the %d the transport would have written",
+			len(written), len(inline))
+	}
+}
+// A spill that cannot be written must not lose the answer: the host reads it
+// inline, over the frame limit, rather than getting a file that is not there.
+func TestSpillFailureAnswersInline(t *testing.T) {
+	home := withSpillHome(t, 64)
+	blocker := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o600))
+	constant.SetHomeDir(blocker)
+	t.Cleanup(func() { constant.SetHomeDir(home) })
+
+	group := proxyGroup(t, "group", "selector", "member-a", "member-b")
+	tunnel.UpdateProxies(map[string]constant.Proxy{"group": group}, nil)
+	config.SetProxyNameList([]string{"group"})
+	t.Cleanup(func() {
+		tunnel.UpdateProxies(nil, nil)
+		config.SetProxyNameList(nil)
+	})
+
+	call := MethodCall{ID: "unwritable", Method: proxyListMethod}
+	inline := answerBytes(call)
+
+	spilled := handleMethodCall(&call)
+	if string(spilled.bytes()) != string(inline) {
+		t.Errorf("answer = %d bytes, want the inline answer of %d", spilled.size(), len(inline))
 	}
 }
 
