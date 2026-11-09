@@ -2,8 +2,8 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-10（资料页缓存命中零分配化）
-- FlClash main：`0d66c43f`
+- 最近核对日期：2026-11-10（资料页缓存命中零分配化 + 代理表组刷新只走组行）
+- FlClash main：`d1387757`
 - Clash.Meta main：`3d6e4cbe8`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 118 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 119 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -691,6 +691,16 @@
 
 验证：wrapper 全量 ok；四平台 vet（windows/linux/darwin/amd64 + android/arm64）exit 0；focused race（`-run 'Profile\|Route\|Base\|Merge'`）除 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿——该例在 HEAD 基线上同样复现（本轮把 `profile_cache.go` 单独换回基线后复跑确认），属既有 DATA RACE，与本次改动无关。
 
+### 2026-11-10 代理表组刷新只走组行轮次（性能）
+
+CPU 剖析（`BenchmarkHandleGetProxies`）显示答案路径 58% 落在 `refreshGroupDocs`/`refreshGroupDoc`：刷新组文档要先遍历**行对齐**的槽位表，为找 200 个组先扫过 1000+ 个节点行的 nil 检查。现在快照另带一张只含可建键组的紧凑表，且「表里有不可建键组 ⇒ 答案必须现场编码」这个事实在建快照时数一次（`unkeyed`），刷新循环里一个分支都不留。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 快照新增 `groupRows`（只收 `slot.group != nil` 的组）与 `unkeyed` 计数；`refreshGroupDocs` 只遍历紧凑表并直接返回 `snapshot.unkeyed > 0` | -（仅 wrapper） | `d1387757` | n=7 交替 A/B：`BenchmarkHandleGetProxies` sec/op 200 组/1000 节点 **-28.30%**、同形态 urltest **-28.85%**、200 组无节点 **-9.24%**、urltest 无节点 -10.27%、fallback 无节点 -13.01%、loadbalance 无节点 -5.35%、20 组无节点 -3.61%，geomean **-14.66%**（各 p≤0.002）；分配不变（2–3 allocs/答案） |
+
+**中间实验（已撤销，记录路径本身）**：只加紧凑表、循环内保留 `slot.group == nil` 分支时，1000 节点形态 -18%，但纯组表（nodes=0）+9%~+10%；把该分支换成永假的 `slot == nil` 检查能把回退压到 +1.8%（判定为代码布局效应）。最终把分支整体移出循环（`unkeyed` 建快照时数一次）后两种形态才同时获益，保留了有效代码、没有无效分支。
+
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
@@ -706,6 +716,7 @@
 | wrapper vet | `go vet ./...` | 通过 |
 | wrapper 跨平台 vet | `GOOS=windows/linux/darwin/amd64` 与 `GOOS=android GOARCH=arm64` | 四个目标全部 exit 0 |
 | focused race | `go test -race . -run 'TestGroupDoc|TestProxies|TestProxy|TestFrame|TestSpill|TestDispatched|TestConnection|TestRefreshRouteVersions|TestRouteStamp'`（CGO_ENABLED=1，mingw64 在 PATH） | 通过 |
+| 本轮 focused race | `go test -race . -run 'Proxy|Group|Proxies|Profile'`（CGO_ENABLED=1，mingw64 在 PATH） | 除既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿（2026-11-10，两项性能改动后） |
 | 全量 race | `go test . -race -count=1` | 仅 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 失败——**基线代码上同样复现**（已单独验证：stash 本轮改动后跑同一用例仍报同一 DATA RACE），属既有问题，见第 7 节 |
 | 资料页缓存 focused race | `go test -race . -run 'Profile\|Route\|Base\|Merge'` | 除同一既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿（2026-11-10，`profile_cache.go` 改动后） |
 
