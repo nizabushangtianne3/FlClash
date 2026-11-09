@@ -2,8 +2,8 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-10（资料页缓存命中零分配化 + 代理表组刷新只走组行 + 组槽按缓存行打包 + 组答案全局代号 + ParseProxy 全覆盖）
-- FlClash main：`9b143f7c`
+- 最近核对日期：2026-11-10（资料页缓存命中零分配化 + 代理表组刷新只走组行 + 组槽按缓存行打包 + 组答案全局代号 + 表身份直读 + ParseProxy 全覆盖）
+- FlClash main：`0730546a`
 - Clash.Meta main：`778e0fb67`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 122 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 123 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -731,6 +731,17 @@ CPU 剖析（`BenchmarkHandleGetProxies`）显示答案路径 58% 落在 `refres
 **正确性**：选中变更与订阅刷新两条路径早已被 `TestGroupDocsAnswerWhatTheirGroupsChange` 钉住（`selectable.Set` 后下一答案必须反映 `now`/`fixed`，provider swap 后必须反映成员表），本轮全量通过。miss 路径（换表重建）无回退：+1.55%（p=0.310，噪声内），分配逐项一致。
 
 **为什么不更早做**：它要求子模块先提供"有没有动"的单一真相源。此前轮次只把 URLTest/Fallback 的 `Now()` 解析换成了代号（见 2026-11-09 各轮次），而"逐组问一遍"这件事本身，只有当 wrapper 侧拿着一个可比较的快照级戳记时才能省掉。
+
+
+### 2026-11-10 表身份直读轮次（性能，接上一轮）
+
+上一轮把答案路径压到约 190ns 后，剖析显示 `reflect.Value.Pointer` 仍占 4.3%：每次答案要为「这两张代理表是不是同一张」问 reflect 要地址，一个答案要问约 6 次。map 变量的那一个字就是它指向的表的地址，直接读那一个字即可。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `sameProxySnapshot`/`cachedProxiesSnapshot`/`routeGroupProjections` 的比较改走 `snapshotIdentity`（`*(*uintptr)(unsafe.Pointer(&table))`），四个缓存的 `snapshot any` 字段随之改为具体 map 类型；`reflect` 从 `core/proxy.go` 的 import 中移除 | -（仅 wrapper） | `0730546a` | n=7 交替 A/B：`BenchmarkHandleGetProxies` geomean **-12.93%**（197.8n → 172.2n），各行 **-10.70% ~ -15.46%**（p≤0.026）；分配不变。`TestSnapshotIdentityIsTheTablesOwnAddress` 把「一个字就是表的地址」与 reflect 的答案钉在一起，未来 Go 若改 map 表示，测试失败而不是答案静默出错 |
+
+**本会话答案路径累计**（`BenchmarkHandleGetProxies`，200 组/20 成员）：5.105µ → **0.163µ**（约 31 倍），分配 -96%（101.9KB → 3.6KB 的那一轮见资料页小节）。
 
 ## 4. 当前验证矩阵
 
