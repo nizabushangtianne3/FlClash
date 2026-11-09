@@ -491,18 +491,34 @@
 方法论备注：本轮先做了「同二进制对自己比」的对照实验（4 轮交替 benchstat，geomean +0.71%，个别场景 ±2.5% 且 p 可低至 0.021），本机噪声带因此有了实测依据，后续所有 A/B 都以它为准绳。
 
 
+
+### 2026-11-09 服务规则与日志泵覆盖轮次（覆盖，不是性能）
+
+上一轮把 method 表的 action handler 都跑通之后，剩下的 0% 集中在两类：**400 行没人跑过的 unlock 规则**（`service_rules.go` 14 个检查器，全靠 `handleServiceCheck` 的注入源覆盖其框架）和**日志泵的三条分支**（只有宿主真的开/关日志时才走到）。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `serviceEnv` 改为持有自己拨号用的传输（`request func(probeRequest) *ProbeResult`），规则不再只能拿去打真实外网；`runServiceCheck` 走新的 `newServiceEnv` | -（仅 wrapper） | `0852f7ce` | `service_rules.go` 的 14 个检查器全部有确定性用例：区域读取（Claude/Gemini/YouTube/Spotify/TikTok/Discord/Prime/Netflix/Disney）、状态折叠（`chatGptIosStatus`/`tikTokStatus`/`bilibiliStatus`/`statusFromCode` 的各分支）、Disney 三步握手的四个收尾、以及 Disney 拒绝无浏览器令牌请求的那条 header 合并。`checkClaude`/`checkChatGpt`/`spotifyRegion`/`tikTokStatus`/`tikTokRegion`/`checkBilibili`/`bilibiliStatus`/`netflixServed`/`netflixFromCdn`/`firstSubmatch` 达 100% |
+| 覆盖 `logPump.run()`：低于当前等级的丢弃、已停止后的丢弃、以及「停止后仍继续排空订阅」 | -（仅 wrapper） | `0852f7ce` | 订阅由测试直接喂事件（不经过 mihomo logger），因为「等级已越过 logger 已接受的事件」这个分支只能这样确定性构造；等级/停止两条丢弃都钉住，`run` 100% |
+| 覆盖 `reportDialerLoop`：同一轮 dialer loop 只上报一次 | -（仅 wrapper） | `0852f7ce` | 两次上报只产生一帧；`reportDialerLoop` 100% |
+| 覆盖 `watchRouteHandler`：答案就是当前状态，读不动的调用不动轮询器 | -（仅 wrapper） | `0852f7ce` | 经 `answerBytes` 走 handler 表；另加 cleanup，断言中途失败也不会把轮询器留给后面的用例；`watchRouteHandler` 100% |
+| 删掉没有调用方的 `fallibleWithoutArguments` | -（仅 wrapper） | `fc0e3a43` | 纯死代码：method 表的每个条目都从 `command`/`withArguments`/`withFallible`/`withoutArguments`/`action` 之一进入，该适配器不回答任何方法 |
+
+覆盖率：wrapper `go test ./... -coverprofile` **85.2% → 91.3%**（statements）。剩余 0% 全部落在「单测里构造不出来」的三类：进程/信号入口（`main`、`StartServer`、`ExitOnTermination`、windows 的 `dial`）、`ownership_other.go` 的非 Windows 平台空实现、以及桌面端永远为真的 `hasEventListener` 使 `requestTrafficWatch.clear` 不可达（Android 侧才走得到）。另有一处既有台账更正：`MethodError.Error`/`handleCrash`/`handleInit`/`handleInitialized`/`handleStopListener` 仍未覆盖，列入后续，未在本轮做。
+
+**审计结论（记录备查，未改动）**：`netflixRegion` 读的是 `Location` 里第 4 段（`/jp-en/title/80018499` 这类绝对 URL 拆段后的 locale 段），本机无法连 netflix.com 取真实响应，行为按现值钉住；若将来拿到真实响应与此不符，那是行为修正而非测试失败。
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
 
 `core/connection.go` 的 18 个函数现已 **100% 覆盖**（此前 `appendDocument` 68.8%、`documentSize` 71.4%、`rowAnswerSize` 81.8%、`handleResetNetwork` 0%）。补齐的四条都是仪表盘真实会走到的路径：带 GeoIP 的行（答案缓冲按 `rowAnswerSize` 预分配，两个字符串切片若不计入，每次 resync 都会扩容）、nil 行、一次轮询里离开多行的分隔符、按 id 关闭存活行。另外钉住一条不变量：`rowAnswerSize` 永不低于编码后长度（预分配就靠它）。父仓库 `b8bd4801`，包覆盖率 82.9% → 83.3%。
-### 2026-11-09 验证矩阵（当前状态，父仓库 main `41616bd9` / 子模块 `39ce557da`）
+### 2026-11-09 验证矩阵（当前状态，父仓库 main `0852f7ce` / 子模块 `39ce557da`）
 
 | 验证项 | 命令 | 结果 |
 |---|---|---|
 | 子模块全量 | `go test ./... -count=1 -p=1`（Clash.Meta） | **104 包 ok，exit 0** |
 | 子模块 vet | `go vet ./...`（Clash.Meta） | 通过 |
-| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 85.2% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、updateListeners 100%、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
+| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 91.3% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、log.go 5 个函数 100%、service_rules.go 14 个检查器全部有确定性用例、updateListeners 100%、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
 | wrapper vet | `go vet ./...` | 通过 |
 | wrapper 跨平台 vet | `GOOS=windows/linux/darwin/amd64` 与 `GOOS=android GOARCH=arm64` | 四个目标全部 exit 0 |
 | focused race | `go test -race . -run 'TestGroupDoc|TestProxies|TestProxy|TestFrame|TestSpill|TestDispatched|TestConnection|TestRefreshRouteVersions|TestRouteStamp'`（CGO_ENABLED=1，mingw64 在 PATH） | 通过 |
