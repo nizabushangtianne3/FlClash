@@ -250,6 +250,60 @@ func TestDispatchedProviderSideLoadWritesTheContent(t *testing.T) {
 		"the content the host handed over is in the rule set, not just accepted")
 }
 
+// The Android host's first call is init, and every later one reads back what it
+// set; a host that asked before init must be told the core is not ready.
+func TestDispatchedInitAnswersTheStateItSets(t *testing.T) {
+	previousInit := isInit.Load()
+	previousRunning := isRunning.Load()
+	previousHome := C.Path.HomeDir()
+	previousVersion := sdkVersion.Load()
+	t.Cleanup(func() {
+		isInit.Store(previousInit)
+		setRunning(previousRunning)
+		C.SetHomeDir(previousHome)
+		sdkVersion.Store(previousVersion)
+	})
+	isInit.Store(false)
+
+	home := t.TempDir()
+	answer := answerBytes(MethodCall{
+		ID:        "init",
+		Method:    coreInitMethod,
+		Arguments: json.RawMessage(`{"home-dir":"` + filepath.ToSlash(home) + `","version":7}`),
+	})
+
+	var envelope struct {
+		Result json.RawMessage `json:"result"`
+		Error  *MethodError    `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(answer, &envelope))
+	require.Nil(t, envelope.Error, "answer = %s", answer)
+	require.Equal(t, "null", string(envelope.Result), "answer = %s", answer)
+	require.True(t, isInit.Load(), "init left the core uninitialised")
+	require.Equal(t, filepath.ToSlash(home), C.Path.HomeDir(), "the home the host named is not the one the core uses")
+	require.EqualValues(t, 7, sdkVersion.Load())
+
+	answer = answerBytes(MethodCall{ID: "initialized", Method: coreInitializedMethod})
+	require.NoError(t, json.Unmarshal(answer, &envelope))
+	require.Nil(t, envelope.Error, "answer = %s", answer)
+	require.Equal(t, "true", string(envelope.Result), "answer = %s", answer)
+
+	isInit.Store(false)
+	answer = answerBytes(MethodCall{ID: "not-initialized", Method: coreInitializedMethod})
+	require.NoError(t, json.Unmarshal(answer, &envelope))
+	require.Equal(t, "false", string(envelope.Result), "answer = %s", answer)
+
+	setRunning(true)
+	answer = answerBytes(MethodCall{ID: "listener-stop", Method: listenerStopMethod})
+	require.NoError(t, json.Unmarshal(answer, &envelope))
+	require.Nil(t, envelope.Error, "answer = %s", answer)
+	require.False(t, isRunning.Load(), "stopping the listeners left the core running them")
+}
+
+func TestMethodErrorCarriesTheMessageTheHostReads(t *testing.T) {
+	require.EqualError(t, &MethodError{Code: "core_error", Message: "boom"}, "boom")
+}
+
 // The watch entry is the host's only hold on the poller, and it carries the
 // call order, so the answer has to be the state the poll would keep current.
 func TestDispatchedRouteWatchAnswersTheCurrentStateAndTheBadCall(t *testing.T) {
