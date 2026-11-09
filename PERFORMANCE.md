@@ -454,6 +454,7 @@
 | `Requests.updateTraffic` 加未变行提前返回与 identical 守卫（对齐 `Connections.updateTraffic` 的既有写法） | `test/manager/core_manager_feed_benchmark_test.dart` 7 轮交替配对：稳定段（前 3 轮）980.2µs → 999.5µs/批（+2.0%），后 4 轮 1076.8µs → 1094.5µs（+1.6%）。Core 的 `requestTrafficWatch.collect` 本就只发送计数变化的请求，到达 provider 的条目几乎必然与本行不同，提前比较只是多一次整数比较；撤销。feed 每事件约 1.02–1.19µs 的剩余成本在 flush 的 4 个容器拷贝、`FixedList.appendAll` 的逐项 key 建索引与 Riverpod 通知上，要再降需先埋点拆分 |
 | Selector 选中名缓存进 `selectorSelection`（稳态 `Now()` 少两次接口分发） | 3 轮交替配对 n=15（千节点 selector 场景）：75.90µ ±20% → 79.48µ ±23%（p=0.902，无显著差异）。itab 热时分发成本只有个位数 ns，与在子模块最基础的选择缓存里多加一个字段的风险不相称，撤销并记录 |
 | 代理解表组文档键改「组选中代数」 | 剖析确认 `groupDocKeyOf` 仍是答案路径最大单项（URLTest 场景约 25%），但把键换成子模块导出的选择代数量，任何漏记的变更点都会让 UI 显示过期选中态；需先枚举 URLTest/Fallback/LoadBalance 的全部选中变更点并逐点补计数，本轮未做，留在待优化项 |
+| `isJSONSafeASCII` 改 8 字节一组的字长扫描（高位/控制位/五个转义字节全用位运算） | paired n=7：`AppendStringSafeASCII32` 16.61n → 19.79n（**+19.15%**）、`SafeASCII256` +9.27%、`Escaped32` +2.94%，geomean +3.53%，**纯时间回退**。原因：128 字节的表常驻 L1，逐字节「一次比较 + 一次表查」本来就是缓存友好且可预测的形态；字长版要为五个转义字节各做一次 xor+haszero（带循环级依赖），短字符串上反而更贵。已撤销，勿重做 |
 
 ### 2026-11-09 handler 分发测试轮次（覆盖，不是性能）
 
