@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-09（答案传输层重构 + 只读代理不建表 + 名单按身份做键 + singledo/handler/溢出三批测试 + 选中代数做键）
-- FlClash main：`c4264668`
+- FlClash main：`af2c239b`
 - Clash.Meta main：`39ce557da`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -502,7 +502,7 @@
 |---|---|---|
 | 子模块全量 | `go test ./... -count=1 -p=1`（Clash.Meta） | **104 包 ok，exit 0** |
 | 子模块 vet | `go vet ./...`（Clash.Meta） | 通过 |
-| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 82.8% of statements**（本轮起点 81.6%） |
+| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 85.2% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、updateListeners 100%、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
 | wrapper vet | `go vet ./...` | 通过 |
 | wrapper 跨平台 vet | `GOOS=windows/linux/darwin/amd64` 与 `GOOS=android GOARCH=arm64` | 四个目标全部 exit 0 |
 | focused race | `go test -race . -run 'TestGroupDoc|TestProxies|TestProxy|TestFrame|TestSpill|TestDispatched|TestConnection|TestRefreshRouteVersions|TestRouteStamp'`（CGO_ENABLED=1，mingw64 在 PATH） | 通过 |
