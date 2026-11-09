@@ -855,9 +855,11 @@ dart run tool/test.dart   # exit 0
 | profile 读档合并链路（startup） | `BenchmarkProfileReadAndMerge` 18.5–23.6ms / 3.47MB / 73k allocs；逐段剖析：YAML 词法/语法占非 I/O 部分的绝对主体，`cgocall` 51% 来自基准自身 StopTimer 外的 `os.WriteFile` | 维持不做。yaml.v3 主导，换解析器是语义级风险；此前轮次已从 IPv6 缓存等处拿到 -13.1% |
 | 全仓库反模式扫描 | wrapper 与子模块的 `regexp.MustCompile` 全部在包级 var；字符串 `+=` 全部在一次性配置/握手路径（wireguard ipcConf、ssh 版本串、share_link） | 无可清理项 |
 
-### 后续若要继续，唯一有实质收益的方向
+### 后续若要继续（2026-11-10 更新：本节原定方向已完工）
 
-子模块提供**选中/成员变更的主动失效钩子**（provider 版本变化、组选中变化、fast-node 改选时通知 wrapper），把 wrapper 每答案的 provider 版本遍历（约占命中路径 14%）也消掉。这是架构级改动：要覆盖 `updateExternalProvider`（不重建代理表的那条路）、四个组类型的选中变更、以及 LoadBalance 的无选中语义，且任何漏通知都会让 UI 显示过期选中态。做之前必须先有一张「变更点 × 通知点」的覆盖矩阵和对应的并发测试。
+**原方向「主动失效钩子」已于 2026-11-10 落地**：子模块 `adapter/outboundgroup.AnswerGeneration()` 在 pin 与自行改选两条写入口上递增，wrapper 快照记住「上一次全量校验前读到的代号」，稳定态答案只做两次原子读——wrapper 每答案的逐组 provider/选中遍历随之消掉，命中路径 geomean -74.68%（见第 2 节「稳定态答案两次读轮次」）。设计上要求的两件事都已具备：一张覆盖矩阵（写入点只有 `announceAnswer`/`bumpAnswer`/`Selector.setSelected` 三处，全部计入）与对应测试（子模块 `TestAnswerGenerationMovesWhenAGroupsAnswerDoes` + wrapper 既有 `TestGroupDocsAnswerWhatTheirGroupsChange` 钉住选中变更与订阅刷新两条路径）。
+
+**当前剩余方向（均已实测，按收益排序）**：① 信封契约改造：让 `frame` 携带 id 字符串、在 `writeFrame` 写入处才物化 `{"id":...,"result":`，可省掉每答案 1 次 32B 分配（答案路径约 12%），但要动 frame 契约 5 处 + spill + batch 三处消费点，2026-11-09 已否决过一次，2026-11-10 答案降到 145ns 后仍然维持否决——绝对量太小、契约风险太高；② `config.GetProxyNameList` 每答案一次 RWMutex 读锁（约 1.4%），要省得把子模块的名单表换成原子指针，收益不抵改动面；③ 连接轮询的 `connectionRows.rows[tracker]` 接口 map 查询（该基准约 8.5%），轮询周期 2s，绝对量 5µs；④ 子模块 `xsync.Map.Size()` 已是 O(bucket) 而非 O(entry)，`GetConnectionCount` 单次 6.6ns，无进一步空间。
 
 
 ### 全代码复核覆盖面（2026-11-09，含平台层）
@@ -874,7 +876,7 @@ dart run tool/test.dart   # exit 0
 | `services/` + `plugins/` | 约 3000 文件 | 内 vendor 第三方代码（sing-box 等），按仓库规矩不动 |
 | Dart 接收路径（`lib/core/desktop/rpc_client.dart` 等） | - | 曾怀疑 `_handleFrame` 的 `Map<String, Object?>.from(decoded)` 每帧整表拷贝——**证伪**：它只拷顶层 2 个条目（id/result），庞大的 result 是引用传递。Dart 侧真正的大头是 `json` 解码本身（160KB 帧实测 874–1282µs），2026-11-05 已定案「融合进构建 isolate 最多省 ~0.5ms 却要改 RPC 契约」，维持不动 |
 
-**结论**：核心（Go 侧）的优化空间已按实测挖到饱和；平台层无独立热点；剩余唯一有实质收益的方向见第 5 节末「主动失效钩子」。
+**结论**：核心（Go 侧）的优化空间已按实测挖到饱和；平台层无独立热点；剩余唯一有实质收益的方向（主动失效钩子）已于 2026-11-10 落地，答案路径命中路径累计 -74.68%；其余方向均按实测否决，见第 5 节「当前剩余方向」。
 
 
 ### P1：DNS UDP response parsing
