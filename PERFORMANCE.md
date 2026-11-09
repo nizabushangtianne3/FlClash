@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-10（资料页缓存命中零分配化 + 代理表组刷新只走组行 + 组槽按缓存行打包）
-- FlClash main：`40496d06`
-- Clash.Meta main：`3d6e4cbe8`
+- 最近核对日期：2026-11-10（资料页缓存命中零分配化 + 代理表组刷新只走组行 + 组槽按缓存行打包 + ParseProxy 全覆盖）
+- FlClash main：`bbee578c`
+- Clash.Meta main：`21a22f5f2`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 120 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 121 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -709,6 +709,15 @@ CPU 剖析（`BenchmarkHandleGetProxies`）显示答案路径 58% 落在 `refres
 |---|---|---|---|
 | 删除 `groupDocSlot` 的 `typ`/`fixed`/`live`；按「校验读的字段排在前面」重排，使 `answer`/`answerAt`/`generation`/`doc` 落在同一条缓存行 | -（仅 wrapper） | `40496d06` | 相对 `d1387757` n=7 交替 A/B：geomean **-1.71%**、urltest 无节点 **-4.03%**（p=0.001）、loadbalance 无节点 **-5.59%**（p=0.011），其余行在噪声内；分配不变。相对今日改前累计答案路径 **-15.00%** |
 
+
+### 2026-11-10 ParseProxy 全分支覆盖轮次（测试，非性能）
+
+「测试必须覆盖全部核心代码」这条在子模块上一直没做透：`adapter/parser.go` 的 `ParseProxy`（映射变成代理的唯一入口，29 个类型的 switch）此前只有 **8.6%** 覆盖——等于除 `ss` 之外谁都没解析过。
+
+| 覆盖 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 表驱动用例逐个解析全部可达类型（含 fork 自有的 gost-relay/shadowquic/sudoku/masque/trusttunnel/rematch/easytier 与 openvpn/zerotier），外加 missing type、未知类型、解码失败三条错误分支与 options 传入（ProviderName 透传）路径 | `21a22f5f2` | `bbee578c` | `ParseProxy` **8.6% → 75.9%**；`adapter` 包 **62.1% → 85.2%**。密钥由测试现铸：wireguard 用随机 32 字节 base64，masque 现生成 P-256 密钥对（base64 DER/SPKI）。唯一未覆盖是 `tailscale`——默认构建用 build tag 关掉了它，分支存在但无法解析 |
+
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
@@ -727,6 +736,7 @@ CPU 剖析（`BenchmarkHandleGetProxies`）显示答案路径 58% 落在 `refres
 | 本轮 focused race | `go test -race . -run 'Proxy|Group|Proxies|Profile'`（CGO_ENABLED=1，mingw64 在 PATH） | 除既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿（2026-11-10，两项性能改动后） |
 | 全量 race | `go test . -race -count=1` | 仅 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 失败——**基线代码上同样复现**（已单独验证：stash 本轮改动后跑同一用例仍报同一 DATA RACE），属既有问题，见第 7 节 |
 | 资料页缓存 focused race | `go test -race . -run 'Profile\|Route\|Base\|Merge'` | 除同一既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿（2026-11-10，`profile_cache.go` 改动后） |
+| 2026-11-10 三轮性能 + 覆盖 | 见第 2 节各轮次小节 | wrapper 全量 ok；四平台 vet（windows/linux/darwin/amd64 + android/arm64）exit 0；focused race 仅既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 失败（基线对照确认）；子模块全量 104 包 ok + vet 0；`ParseProxy` 8.6%→75.9%、`adapter` 62.1%→85.2% |
 
 **噪声带实测依据**（本轮新增，后续 A/B 准绳）：同一编译产物交替自比 4 轮，benchstat geomean +0.71%，个别场景差异 ±2.5% 且 p 可低至 0.021（loadbalance +2.34%，p=0.021）。因此本机「无差异」判定阈值取 p>0.2 或落在 ±2.5% 内；「有差异」判定沿用仓库规矩（p≤0.02 且幅度 ≥ 仓库认可量级）。
 
