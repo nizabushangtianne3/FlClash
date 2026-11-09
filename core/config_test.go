@@ -798,6 +798,25 @@ func TestHandleSetupConfigKeepsTheListenerWhenTheProfileFails(t *testing.T) {
 	if !isRunning.Load() {
 		t.Error("a failed apply stopped the listeners")
 	}
+
+}
+
+// The host can dispatch a setup before it finished initialising the core; the
+// answer is the refusal, and the apply must not run against no config at all.
+func TestHandleSetupConfigRefusesBeforeInit(t *testing.T) {
+	var applied atomic.Bool
+	withSetupConfig(t, func(*SetupParams) error {
+		applied.Store(true)
+		return nil
+	})
+	isInit.Store(false)
+
+	if err := handleSetupConfig(&SetupParams{}); err != errNotInitialized {
+		t.Fatalf("handleSetupConfig = %v, want %v", err, errNotInitialized)
+	}
+	if applied.Load() {
+		t.Error("an uninitialized core still ran the apply")
+	}
 }
 
 func TestApplyConfigTellsARejectedProfileFromAFailedCall(t *testing.T) {

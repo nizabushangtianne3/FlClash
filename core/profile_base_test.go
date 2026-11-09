@@ -638,6 +638,58 @@ func BenchmarkMergeProfileBaseCached(b *testing.B) {
 	}
 }
 
+// A profile section that leans on a merge key has no key of its own to find,
+// so the lookup walks the sources the decoder would have folded in.
+func TestMappingValueReadsAMergeKey(t *testing.T) {
+	document := `
+shared: &shared
+  port: 7890
+  mode: rule
+also: &also
+  log-level: info
+merged:
+  <<: *shared
+  port: 7891
+listed:
+  <<: [*shared, *also]
+plain:
+  port: 7892
+`
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(document), &root); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	sections := map[string]*yaml.Node{}
+	for index := 0; index+1 < len(root.Content[0].Content); index += 2 {
+		sections[root.Content[0].Content[index].Value] = root.Content[0].Content[index+1]
+	}
+
+	for _, test := range []struct {
+		section string
+		key     string
+		want    string
+	}{
+		{"merged", "port", "7891"},
+		{"merged", "mode", "rule"},
+		{"merged", "log-level", ""},
+		{"listed", "port", "7890"},
+		{"listed", "log-level", "info"},
+		{"plain", "port", "7892"},
+		{"plain", "mode", ""},
+	} {
+		got := mappingValue(sections[test.section], test.key)
+		if test.want == "" {
+			if got != nil {
+				t.Errorf("%s.%s = %v, want it absent", test.section, test.key, got.Value)
+			}
+			continue
+		}
+		if got == nil || got.Value != test.want {
+			t.Errorf("%s.%s = %v, want %s", test.section, test.key, got, test.want)
+		}
+	}
+}
+
 func BenchmarkMergeProfileBase(b *testing.B) {
 	for _, proxyCount := range []int{200, 800} {
 		b.Run(fmt.Sprintf("proxies=%d", proxyCount), func(b *testing.B) {
