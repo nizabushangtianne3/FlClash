@@ -2,7 +2,7 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-10（资料页缓存命中零分配化 + 代理表组刷新只走组行 + 组槽按缓存行打包 + 组答案全局代号 + 表身份直读 + ParseProxy 全覆盖）
+- 最近核对日期：2026-11-10（资料页缓存命中零分配化 + 代理表组刷新只走组行 + 组槽按缓存行打包 + 组答案全局代号 + 表身份直读 + ParseProxy 全覆盖 + 覆盖缺口记账）
 - FlClash main：`0730546a`
 - Clash.Meta main：`778e0fb67`
 - 基准主机：Intel Core i9-9900，Windows/amd64
@@ -743,6 +743,20 @@ CPU 剖析（`BenchmarkHandleGetProxies`）显示答案路径 58% 落在 `refres
 
 **本会话答案路径累计**（`BenchmarkHandleGetProxies`，200 组/20 成员）：5.105µ → **0.163µ**（约 31 倍），分配 -96%（101.9KB → 3.6KB 的那一轮见资料页小节）。
 
+
+### 2026-11-10 wrapper 覆盖缺口记账（哪些 0% 是结构性的，不动代码）
+
+「测试必须覆盖全部核心代码」这条留一个尾巴：wrapper 全量覆盖率 93.6%，剩余 0% 的六个函数逐个查过，结论是**都不该为覆盖而改代码**：
+
+| 位置 | 为什么为 0% |
+|---|---|
+| `core/server.go:StartServer` | IPC 服务端入口，测试直接走 `dispatchMethodCall`；起真监听要占管道/端口，跨平台不稳 |
+| `core/method.go:handleCrash` | `core.crash` 这个 dev 方法就是 `go handleCrash()` 故意让进程崩，测试跑了它也活不下来；`TestEveryCoreMethodConstantIsDispatchable` 已把它单独记账 |
+| `core/request_traffic.go:clear` | 只在「没有事件监听者」时走到，而桌面构建的 `hasEventListener()` 恒返回 true（`server.go:54`，注释即原因）；Android 构建（`lib.go:321`）返回真实标志位，该分支在 Android 上可达 |
+| `core/dial_pipe.go:dial` | 宿主把管道交给核心的那条 dialer，测试用 `dispatchMethodCall` 与真 tracker 绕开了它 |
+| `core/exit.go:ExitOnTermination`、`core/ownership_other.go` 三个 | 平台粘合：桌面/Windows 专有路径，当前宿主不触发 |
+
+余下非 0% 的零散分支（`method.go:encodeResponse` 50%、`server.go:writeAll` 90% 等）都是磁盘/网络错误分支，属「写失败才走到」，与正常答案路径无关。子模块侧剩余缺口另见 2026-11-09 provider 轮次小结（healthcheck 轮询、`*.pb.go` 生成代码、接口方法的运行时覆盖）。
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
