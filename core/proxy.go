@@ -222,21 +222,13 @@ func (a *proxiesAnswer) appendProxyTable(buf []byte, snapshot *sortedProxyNameCa
 // refreshGroupDocs revalidates every group's document and reports whether the
 // table holds one that is encoded live, which no frame cache covers.
 func refreshGroupDocs(snapshot *sortedProxyNameCache) bool {
-	live := false
 	// One read per answer: every group's membership is a function of the same
 	// provider lists, so one generation stands for all of them.
 	generation := providerListGeneration()
-	for _, slot := range snapshot.groupSlots {
-		if slot == nil {
-			continue
-		}
-		if slot.group == nil {
-			live = true
-			continue
-		}
+	for _, slot := range snapshot.groupRows {
 		refreshGroupDoc(slot, generation)
 	}
-	return live
+	return snapshot.unkeyed > 0
 }
 
 // providerListGeneration reads the generation the providers' lists carry. A
@@ -326,6 +318,12 @@ type sortedProxyNameCache struct {
 	// sizeBase is the answer's precomputed share: static key/node bytes, the
 	// escaped all-list length and a conservative scaffold per cached group kind.
 	sizeBase int
+	// groupRows carries the keyable group slots only, so refreshing the
+	// documents walks the groups instead of the whole table's rows.
+	groupRows []*groupDocSlot
+	// unkeyed counts the group rows whose document cannot be keyed: a table
+	// carrying one is answered live, which no frame cache covers.
+	unkeyed int
 }
 
 func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCache {
@@ -341,6 +339,8 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 	keySpans := make([][]byte, len(names))
 	nodeViews := make([][]byte, len(names))
 	groupSlots := make([]*groupDocSlot, len(names))
+	var groupRows []*groupDocSlot
+	unkeyed := 0
 	// A cached group member list commonly dominates its document. One larger
 	// allocation is cheaper than the old 320B scaffold's repeated growslices.
 	const groupScaffold = 768
@@ -355,7 +355,13 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 		keySpans[i] = append(span, ':')
 		sizeBase += len(keySpans[i]) + jsonutil.StringLen(name) + 1
 		if isProxyGroupType(proxy.Type()) {
-			groupSlots[i] = newGroupDocSlot(proxy)
+			slot := newGroupDocSlot(proxy)
+			groupSlots[i] = slot
+			if slot.group == nil {
+				unkeyed++
+			} else {
+				groupRows = append(groupRows, slot)
+			}
 			sizeBase += groupScaffold
 			continue
 		}
@@ -367,8 +373,10 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 		names:      names,
 		keySpans:   keySpans,
 		nodeViews:  nodeViews,
+		groupRows:  groupRows,
 		groupSlots: groupSlots,
 		sizeBase:   sizeBase,
+		unkeyed:    unkeyed,
 	}
 	sortedProxyNames.Store(cache)
 	return cache
