@@ -558,6 +558,23 @@ dart run tool/test.dart   # exit 0
 | 连接 resync 答案的行级链路 | 剖析（500 行）：`TrackerInfo.AppendJSON` 约 74ns/行、行管理（Info/查表/stale）约 8ns/行、`rowAnswerSize` 仅占 2.5%，GC 占 45%（378KB/答案）；答案缓冲池化只在 spill 路径安全，而 resync 只发生在页面打开与漂移重同步，真实收益有限 | `rowAnswerSize` 不值得缓存；`stale` 与 `Manager.Range` 的再削减需要 `TrackerInfo` 元数据版本号或 xsync  relaxed 遍历（后者改变子模块共享语义），维持不做 |
 | `handleGetExternalProviders` 答案 | 43.6µs/答案：逐条 `AppendString` 占 26%、每次答案全量排序占 19%； Dart 侧只在 provider 更新后 `syncProviders()` 调用 | 文档缓存要把 version/count/updateAt/subscription-info 五个易变值都纳入键（其中 subscription-info 是指向可变结构的指针），而该路径只在订阅刷新后跑一次，风险收益不相称，维持不做 |
 
+### 待优化项清单（2026-11-09 复核新增：均已实测，定案如下）
+
+| 位置 | 实测 | 结论 |
+|---|---|---|
+| `handleMethodCall` 里 `envelope(id)` 每次答案分配一个小缓冲 | 全场景 profile：`core.envelope` 占分配空间约 19%（增量轮询场景 ~105B/答案）；绝对量 30–150B/秒 | 不值得改。要消掉它必须让 `frame` 携带 id 字符串、在写入处才物化信封（改 frame 契约 6 处），而收益是每秒几十字节；且小帧路径本来就要把它拷进池化缓冲。维持现状 |
+| `connectionRow.stale()` 十个字段比较 | 子模块 `NewTCPTracker` 用 `tt.metadata = *metadata` 值拷贝，`TrackerInfo.Metadata` 指向 tracker 自己的副本（`TestTrackerClonesMetadataIntoCreationSnapshot` 钉住）；全子模块对 `TrackerInfo.Metadata` 的写入只发生在构造期 | 生产线永不触发的防御代码（每行每轮 ~25ns）。**不删**：删除属行为变更，且「没有任何路径会写」这个否定命题无法在跨模块范围内被证明；留着当保险 |
+| `requestTrafficWatch.collect` 每秒用 `Manager.Range` 遍历整张连接表只为标记存活 | 实测（wrapper 基准，n=3）：10 请求 780ns、100 请求 4.4µs、500 请求 26µs，**0 分配**（xsync 的 bentries 快照被逃逸分析放到栈上）；`Manager.Get` 每次要 `uuid.FromString` 解析，不更便宜 | 维持现状。绝对量 4.4µs/秒，无需改 |
+| 仪表盘内存统计的 `runtime.ReadMemStats`（STW） | `BenchmarkReadMemStatsPause`（4000 代理堆）约 13µs/次；TTL 1s、宿主约 2s 轮询一次 | 维持现状。13µs 远低于 120Hz 的 8ms 帧预算（0.16%），换成 `runtime/metrics` 会改变指标语义，风险收益不相称 |
+| `handleGetExternalProviders` 答案 54µs / 56KB（100 个 provider） | profile：`jsonutil.AppendString` 17.16% cum、排序 11.24% cum、GC ~15% | 维持不做（与 2026-11-08 结论一致）。该路径只在订阅刷新后跑一次，56KB 是答案本身的字节数 |
+| profile 读档合并链路（startup） | `BenchmarkProfileReadAndMerge` 18.5–23.6ms / 3.47MB / 73k allocs；逐段剖析：YAML 词法/语法占非 I/O 部分的绝对主体，`cgocall` 51% 来自基准自身 StopTimer 外的 `os.WriteFile` | 维持不做。yaml.v3 主导，换解析器是语义级风险；此前轮次已从 IPv6 缓存等处拿到 -13.1% |
+| 全仓库反模式扫描 | wrapper 与子模块的 `regexp.MustCompile` 全部在包级 var；字符串 `+=` 全部在一次性配置/握手路径（wireguard ipcConf、ssh 版本串、share_link） | 无可清理项 |
+
+### 后续若要继续，唯一有实质收益的方向
+
+子模块提供**选中/成员变更的主动失效钩子**（provider 版本变化、组选中变化、fast-node 改选时通知 wrapper），把 wrapper 每答案的 provider 版本遍历（约占命中路径 14%）也消掉。这是架构级改动：要覆盖 `updateExternalProvider`（不重建代理表的那条路）、四个组类型的选中变更、以及 LoadBalance 的无选中语义，且任何漏通知都会让 UI 显示过期选中态。做之前必须先有一张「变更点 × 通知点」的覆盖矩阵和对应的并发测试。
+
+
 ### P1：DNS UDP response parsing
 
 - 常见 A/AAAA 简单回复已走单 slab 快速解析，`BenchmarkClientExchangeUDP` 为 11 allocs / 739B（端到端，含 UDP I/O）。
