@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-09（答案传输层重构 + 只读代理不建表 + 名单按身份做键 + singledo/handler/溢出三批测试 + 选中代数做键）
-- FlClash main：`af2c239b`
-- Clash.Meta main：`39ce557da`
+- 最近核对日期：2026-11-10（资料页缓存命中零分配化）
+- FlClash main：`0d66c43f`
+- Clash.Meta main：`3d6e4cbe8`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 117 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 118 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -678,6 +678,19 @@
 `adapter/provider` 覆盖率 **67.1% → 76.8%**（statements）。
 
 **剩余未覆盖（本轮盘点）**：`healthcheck.go` 的 `process` 轮询循环与 `RegisterHealthCheckTask`/`HealthCheck`（要真开 interval 与 HTTP 打点）、`provider.go` 的 compatible provider `Update`/`MarshalJSON`、`override_expr.go` 的 2 个 `eval` 重载（该文件 1683 语句已覆盖 77.8%）、`patch.go` 的 `GetSubscriptionInfo`（走 cachefile）。`adapter/outboundgroup` 剩下的 0% 全是 `DialContext`/`ListenPacketContext`/`SupportUDP` 一类接口方法，由 wrapper 与隧道侧测试在运行时覆盖。
+
+### 2026-11-10 资料页缓存命中零分配轮次（性能）
+
+宿主每打开一个分区就重读一次 base，而旧代码读回来的字节只用来和缓存比一遍，每次却都要一个 100KB 的新缓冲。现在比较走池化缓冲：命中即归还，未命中直接接管刚读到的字节继续解析，不再读第二遍。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `readProfile` 命中走 `profileBytes`：借池 `readFileInto` 读全文 → `bytes.Equal` → 归还；未命中接管池内字节，省掉第二次 `os.ReadFile` | -（仅 wrapper） | `0d66c43f` | n=7 交替 A/B：`BenchmarkMergeProfileBaseCached` sec/op 200 组 67.69µ → 57.75µ（**-14.67%**）、800 组 88.97µ → 62.53µ（**-29.72%**，两者 p=0.001）；B/op 32.5KB → 8.6KB（**-73.48%**）、104.5KB → 8.8KB（**-91.57%**）；allocs -1.75%。`BenchmarkHandleGetProfileBaseCached` 82.1µ/101.9KB/12 allocs → 54.4µ/3.6KB/10 allocs |
+
+冷路径（`BenchmarkProfileReadAndMerge`）B/op +3.22% 已查明原因并接受：该基准 b.N≈66、每轮总分配约 200MB，触发约 50 次 GC，`sync.Pool` 每轮清空后要重建 64KB+101KB 缓冲；真实场景中是每次改配置一次性 165KB，换来 cached 路径每打开一个分区省约 100KB。sec/op 在噪声内（p=0.456）。
+
+验证：wrapper 全量 ok；四平台 vet（windows/linux/darwin/amd64 + android/arm64）exit 0；focused race（`-run 'Profile\|Route\|Base\|Merge'`）除 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿——该例在 HEAD 基线上同样复现（本轮把 `profile_cache.go` 单独换回基线后复跑确认），属既有 DATA RACE，与本次改动无关。
+
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
@@ -694,6 +707,7 @@
 | wrapper 跨平台 vet | `GOOS=windows/linux/darwin/amd64` 与 `GOOS=android GOARCH=arm64` | 四个目标全部 exit 0 |
 | focused race | `go test -race . -run 'TestGroupDoc|TestProxies|TestProxy|TestFrame|TestSpill|TestDispatched|TestConnection|TestRefreshRouteVersions|TestRouteStamp'`（CGO_ENABLED=1，mingw64 在 PATH） | 通过 |
 | 全量 race | `go test . -race -count=1` | 仅 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 失败——**基线代码上同样复现**（已单独验证：stash 本轮改动后跑同一用例仍报同一 DATA RACE），属既有问题，见第 7 节 |
+| 资料页缓存 focused race | `go test -race . -run 'Profile\|Route\|Base\|Merge'` | 除同一既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿（2026-11-10，`profile_cache.go` 改动后） |
 
 **噪声带实测依据**（本轮新增，后续 A/B 准绳）：同一编译产物交替自比 4 轮，benchstat geomean +0.71%，个别场景差异 ±2.5% 且 p 可低至 0.021（loadbalance +2.34%，p=0.021）。因此本机「无差异」判定阈值取 p>0.2 或落在 ±2.5% 内；「有差异」判定沿用仓库规矩（p≤0.02 且幅度 ≥ 仓库认可量级）。
 
