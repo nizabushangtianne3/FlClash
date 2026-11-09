@@ -249,3 +249,67 @@ func TestDispatchedProviderSideLoadWritesTheContent(t *testing.T) {
 	require.NotZero(t, ruleSet.Count(),
 		"the content the host handed over is in the rule set, not just accepted")
 }
+
+// The watch entry is the host's only hold on the poller, and it carries the
+// call order, so the answer has to be the state the poll would keep current.
+func TestDispatchedRouteWatchAnswersTheCurrentStateAndTheBadCall(t *testing.T) {
+	recorder := recordRoutes(t)
+	// An assertion that fails halfway must not leave the poller running over
+	// the tests that follow.
+	t.Cleanup(func() {
+		answerBytes(MethodCall{
+			Method:    routeWatchMethod,
+			Arguments: json.RawMessage(`{"watch":false}`),
+			seq:       methodCallSeq.Add(1),
+		})
+	})
+
+	answered := answerBytes(MethodCall{
+		ID:        "watch-on",
+		Method:    routeWatchMethod,
+		Arguments: json.RawMessage(`{"watch":true}`),
+		seq:       methodCallSeq.Add(1),
+	})
+
+	var envelope struct {
+		Result RouteState   `json:"result"`
+		Error  *MethodError `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(answered, &envelope))
+	require.Nil(t, envelope.Error, "answer = %s", answered)
+	require.Equal(t, routeState(), envelope.Result, "answer = %s", answered)
+	require.Empty(t, recorder.published(), "the watch answers the state it holds and publishes on a change")
+
+	currentRoute.mu.Lock()
+	polling := currentRoute.stopPoll != nil
+	currentRoute.mu.Unlock()
+	require.True(t, polling, "watching starts the poll")
+
+	rejected := answerBytes(MethodCall{
+		ID:        "watch-bad",
+		Method:    routeWatchMethod,
+		Arguments: json.RawMessage(`{"watch":`),
+		seq:       methodCallSeq.Add(1),
+	})
+	var refused struct {
+		Error *MethodError `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(rejected, &refused))
+	require.NotNil(t, refused.Error, "answer = %s", rejected)
+	require.Equal(t, "invalid_arguments", refused.Error.Code)
+	currentRoute.mu.Lock()
+	stillPolling := currentRoute.stopPoll != nil
+	currentRoute.mu.Unlock()
+	require.True(t, stillPolling, "a call that could not be read left the poller alone")
+
+	answerBytes(MethodCall{
+		ID:        "watch-off",
+		Method:    routeWatchMethod,
+		Arguments: json.RawMessage(`{"watch":false}`),
+		seq:       methodCallSeq.Add(1),
+	})
+	currentRoute.mu.Lock()
+	polling = currentRoute.stopPoll != nil
+	currentRoute.mu.Unlock()
+	require.False(t, polling, "releasing the route stops the poll")
+}

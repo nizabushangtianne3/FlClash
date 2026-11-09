@@ -72,6 +72,25 @@ type serviceEnv struct {
 	proxyName string
 	timeout   time.Duration
 	hits      *hitRecorder
+
+	// request is the transport the sweep dials through. Holding it as a field
+	// lets a rule be judged against a recorded answer instead of a live host,
+	// which is the only way its region reading can be pinned down.
+	request func(probeRequest) *ProbeResult
+}
+
+// newServiceEnv dials the sweep's own requests: the probe slots belong to the
+// single probes, and taking both would starve them for the whole sweep.
+func newServiceEnv(ctx context.Context, proxyName string, timeout time.Duration, hits *hitRecorder) serviceEnv {
+	return serviceEnv{
+		ctx:       ctx,
+		proxyName: proxyName,
+		timeout:   timeout,
+		hits:      hits,
+		request: func(req probeRequest) *ProbeResult {
+			return runProbeRequest(ctx, req, nil)
+		},
+	}
 }
 
 func (e serviceEnv) get(url string, maxBody int64) *ProbeResult {
@@ -91,7 +110,7 @@ func (e serviceEnv) send(req probeRequest) *ProbeResult {
 		headers[name] = value
 	}
 	req.headers = headers
-	return runProbeRequest(e.ctx, req, nil)
+	return e.request(req)
 }
 
 type serviceChecker struct {
@@ -164,7 +183,7 @@ func runServiceCheck(ctx context.Context, checker serviceChecker, proxyName stri
 	if ctx.Err() != nil {
 		return item
 	}
-	env := serviceEnv{ctx: ctx, proxyName: proxyName, timeout: timeout, hits: hits}
+	env := newServiceEnv(ctx, proxyName, timeout, hits)
 	item = checker.check(env)
 	if item.Status == serviceTimeout && hasBudget(ctx, timeout) {
 		item = checker.check(env)
