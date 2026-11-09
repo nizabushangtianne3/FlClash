@@ -149,3 +149,40 @@ func TestProxiesAnswerEncodesALiveGroupOnEveryAnswer(t *testing.T) {
 	require.Equal(t, "member-b", proxyViewOf(t, second, "group")["now"],
 		"a live document is not served from the frame cache")
 }
+
+// A selection that moves away and back has to reach the answer both times: the
+// key is a counter that only ever moves forward, so a counter alone cannot tell
+// "back to where it was" from "never left".
+func TestProxiesFrameFollowsASelectionThatMovesBack(t *testing.T) {
+	provider := newCachingProvider("subscription", "member-a", "member-b")
+	group := proxyGroupOver(t, "group", "selector", []cp.ProxyProvider{provider})
+
+	tunnel.UpdateProxies(map[string]C.Proxy{"group": group}, nil)
+	config.SetProxyNameList([]string{"group"})
+	t.Cleanup(func() {
+		tunnel.UpdateProxies(nil, nil)
+		config.SetProxyNameList(nil)
+	})
+
+	selectable, ok := adapterAs[outboundgroup.SelectAble](group)
+	require.True(t, ok)
+
+	readNow := func() string {
+		t.Helper()
+		return proxyViewOf(t, answerFrame(handleGetProxies(), "call"), "group")["now"].(string)
+	}
+
+	require.Equal(t, "member-a", readNow())
+
+	require.NoError(t, selectable.Set("member-b"))
+	require.Equal(t, "member-b", readNow())
+
+	// Back to the first member: the counter moved twice, the document has to
+	// have moved with it, not be served as the one that was cached first.
+	require.NoError(t, selectable.Set("member-a"))
+	require.Equal(t, "member-a", readNow())
+
+	// And once more, so a single stale slot cannot pass for a steady state.
+	require.NoError(t, selectable.Set("member-b"))
+	require.Equal(t, "member-b", readNow())
+}
