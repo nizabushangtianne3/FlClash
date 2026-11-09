@@ -62,6 +62,14 @@ var frameBuffers = sync.Pool{New: func() any {
 	return &buffer
 }}
 
+// A large document is written beside its envelope, and that header is the
+// size of an id rather than of the answer, so one pool serves every answer
+// instead of each answer owning a buffer it fills and drops.
+var frameHeaderBuffers = sync.Pool{New: func() any {
+	buffer := make([]byte, 0, 256)
+	return &buffer
+}}
+
 func writeFrame(w io.Writer, answer frame) (int, error) {
 	total := answer.size()
 	if total > maxIPCFrameSize {
@@ -88,18 +96,34 @@ func writeFrame(w io.Writer, answer frame) (int, error) {
 	// A document that large is written beside its envelope: the answer never
 	// fits a pooled buffer anyway, and two more writes cost less than a copy
 	// of the whole table.
-	header := make([]byte, 4+len(answer.head))
+	pooled, _ := frameHeaderBuffers.Get().(*[]byte)
+	header := (*pooled)[:0]
+	if cap(header) < 4+len(answer.head) {
+		header = make([]byte, 0, 4+len(answer.head))
+	}
+	header = append(header, 0, 0, 0, 0)
 	binary.LittleEndian.PutUint32(header, uint32(total))
-	copy(header[4:], answer.head)
+	header = append(header, answer.head...)
 	written := 0
 	for _, piece := range [][]byte{header, answer.document, answer.tail} {
 		count, err := writeAll(w, piece)
 		written += count
 		if err != nil {
+			returnHeader(pooled, header)
 			return written, err
 		}
 	}
+	returnHeader(pooled, header)
 	return written, nil
+}
+
+// returnHeader gives a pooled header back unless the answer outgrew what the
+// pool is allowed to pin, the same bound the frame buffers keep.
+func returnHeader(pooled *[]byte, header []byte) {
+	if cap(header) <= maxPooledFrameSize {
+		*pooled = header[:0]
+		frameHeaderBuffers.Put(pooled)
+	}
 }
 
 type resumingWriter struct {
