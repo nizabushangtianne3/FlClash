@@ -534,6 +534,18 @@
 包覆盖率：91.8% → **93.8%**（statements）。
 
 **剩余未覆盖（本轮盘点，均需在单测里「造不出来」或价值极低）**：`main`/`StartServer`/`ExitOnTermination`/`dial`（进程与信号入口）、`ownership_other.go` 三个非 Windows 平台空实现、`handleCrash`（开发者专用的主动崩溃路径）、`requestTrafficWatch.clear`（桌面端 `hasEventListener` 恒真，只有 Android 走得到），以及各处的「写文件/Chmod 失败」「compare-and-swap 失败」类防御分支（需注入文件系统错误或并发竞争）。
+
+### 2026-11-09 死代码与残余路径审计轮次（审计，无代码改动）
+
+「不写无效代码」需要证据而不是印象，本轮把 wrapper 的生产函数逐个对账，并给残余的两条路径补了实测依据。
+
+**1. wrapper 无死代码（360 个生产函数全对账）**：对 `core/*.go`（不含测试）里的每个函数名，统计它在生产文件与测试文件里的引用次数。**没有任何函数只被测试引用**（`routeState` 早前轮次已移入测试文件）；引用数为 0 的 12 个全是导出的宿主接口：`ExitOnTermination`/`StartServer`（`core/cmd/core/main.go`）、`ForceGC`/`GetTrafficStats`/`InvokeMethod`/`StartListener`（`lib/core/interface.dart`、`common.dart`、`lib.dart`）、`QuickSetup`/`ResetNetwork`/`UpdateDns`/`StartTun`/`StopTun`/`SetEventListener`（`android` 侧 `Core.kt`/`ServiceController.kt`/`ServicePlugin.kt`/`VpnService.kt`/`NetworkObserver.kt`）。均不可删。
+
+**2. 冷读档路径的瓶颈在文件打开，不在 wrapper**：`BenchmarkMergeProfileBase/proxies=800` CPU 剖析（60x）显示 `os.Open`/`createFile` 占 **48.15%**（每次约 8.2ms）、`yaml.v3` 占 33%，wrapper 自己的合并逻辑远小于两者。8.2ms 的打开耗时来自本机对 %TEMP% 新文件的实时扫描（每轮基准都写新文件），生产环境反复打开同一文件不会有这个代价。**结论不变**：「按 (size, mtime) 跳过读盘」仍否决——宿主改写走 `profile.clearEffect` 显式失效、Core 自身改写走 `forgetProfileRaw`，唯一敞口是外部编辑器同大小 + 同一时钟 tick 内的两次保存（本机 NTFS 时间戳粒度约 15.6ms），既快又等价的判据不存在。
+
+**3. 新否决（勿重做）：把事件批次直接编码进帧缓冲**。设想：`writeFrame` 已有「文档超过 32KB 就分三段写」的路径，若让批次正文直接写进一个预留 4 字节头、写完回填长度的帧缓冲，可省掉一次 14KB 的 memmove 与一个池化缓冲。实测现状：64 条一批已降到 25.5 B/op、1 alloc，剩下的就是那一次拷贝（约 1µs/批，按 21 次/秒合计约 20µs/秒，占 CPU 万分之二以下）。为它新增一条「预组装帧」传输路径不相称，撤销。
+
+**4. 新否决（勿重做）：按槽位缓存每组的 provider 列表**，省掉命中路径里一次 `Providers()` 接口分发。`(*Selector).Providers()` 就是 `return s.providers`（无锁无分配），收益约等于把 200 组的接口分发从 400 次降到 200 次：按剖析占比约 2%（~50ns/答案）。且「providers 构造后不变」只是读代码得到的印象，上游一旦改为可替换，wrapper 会拿着旧列表比版本——为 50ns 背这个风险不相称，撤销。
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
