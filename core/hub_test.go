@@ -121,7 +121,7 @@ func encodeGroupDoc(proxy constant.Proxy) []byte {
 	if slot.group == nil {
 		return appendGroupDocument(nil, proxy)
 	}
-	refreshGroupDoc(slot)
+	refreshGroupDoc(slot, providerListGeneration())
 	return slot.doc
 }
 
@@ -862,6 +862,16 @@ func TestUpdateExternalProviderRunsOneAtATime(t *testing.T) {
 	releaseUpdate(providerUpdateScope + name)
 }
 
+// A provider swapping its list bumps the core's own generation counter, which
+// no provider the tests can build reaches. The wrapper's tests stand in for
+// that counter here, so a swap moves a group's membership the way it does in
+// the core instead of only in the provider's own bookkeeping.
+var providerGenerationStamp atomic.Uint64
+
+func init() {
+	providerListGeneration = providerGenerationStamp.Load
+}
+
 // cachingProvider counts how often the tunnel walked its proxy list, which is
 // exactly what the AllProxies cache exists to avoid.
 type cachingProvider struct {
@@ -903,6 +913,7 @@ func (p *cachingProvider) setProxies(proxyNames ...string) {
 		p.proxies = append(p.proxies, namedProxy(name))
 	}
 	p.version++
+	providerGenerationStamp.Add(1)
 }
 
 func (p *cachingProvider) readCount() int {

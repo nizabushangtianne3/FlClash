@@ -37,14 +37,14 @@ type routeTracker struct {
 	epoch            uint64
 	version          uint64
 	picks            map[string]string
-	providerVersions map[string]uint32
+	providerGeneration uint64
 	ruleSets         map[string]any
 	watched          bool
 	watchSeq         uint64
 	stopPoll         context.CancelFunc
 
 	picksScratch    map[string]string
-	versionsScratch map[string]uint32
+	generationScratch uint64
 	scratchMu       sync.Mutex
 }
 
@@ -209,28 +209,26 @@ func routeGroupProjections(proxies map[string]constant.Proxy) []routeGroup {
 	return groups
 }
 
-func readPicks() (map[string]string, map[string]uint32) {
+func readPicks() (map[string]string, uint64) {
 	picks := map[string]string{}
 	for _, cached := range routeGroupProjections(tunnel.AllProxies()) {
 		if selected := cached.group.Now(); selected != "" {
 			picks[cached.name] = selected
 		}
 	}
-	return picks, readProviderVersions()
+	return picks, readProviderGeneration()
 }
 func (r *routeTracker) fillScratch(proxies map[string]constant.Proxy) {
 	clear(r.picksScratch)
-	clear(r.versionsScratch)
 
 	for _, cached := range routeGroupProjections(proxies) {
 		if selected := cached.group.Now(); selected != "" {
 			r.picksScratch[cached.name] = selected
 		}
 	}
-
-	for name, provider := range tunnel.ProvidersSnapshot() {
-		r.versionsScratch[name] = provider.Version()
-	}
+	// Read before the picks below: a provider that swaps its list during the
+	// scan leaves the stamp ahead of what was read, so the next poll sees it.
+	r.generationScratch = providerListGeneration()
 }
 
 func refreshRouteVersionsFromScratch() {
@@ -238,15 +236,14 @@ func refreshRouteVersionsFromScratch() {
 	defer currentRoute.scratchMu.Unlock()
 	if currentRoute.picksScratch == nil {
 		currentRoute.picksScratch = make(map[string]string, 32)
-		currentRoute.versionsScratch = make(map[string]uint32, 32)
 	}
 	currentRoute.fillScratch(tunnel.AllProxies())
 
 	currentRoute.mu.Lock()
-	providerVersionsChanged := !maps.Equal(currentRoute.versionsScratch, currentRoute.providerVersions)
+	providerVersionsChanged := currentRoute.generationScratch != currentRoute.providerGeneration
 	picksChanged := !maps.Equal(currentRoute.picksScratch, currentRoute.picks)
 	if providerVersionsChanged {
-		currentRoute.providerVersions, currentRoute.versionsScratch = currentRoute.versionsScratch, currentRoute.providerVersions
+		currentRoute.providerGeneration = currentRoute.generationScratch
 	}
 	if picksChanged {
 		currentRoute.picks, currentRoute.picksScratch = currentRoute.picksScratch, currentRoute.picks
@@ -265,13 +262,8 @@ func refreshRouteVersionsFromScratch() {
 	}
 }
 
-func readProviderVersions() map[string]uint32 {
-	providers := tunnel.ProvidersSnapshot()
-	versions := make(map[string]uint32, len(providers))
-	for name, p := range providers {
-		versions[name] = p.Version()
-	}
-	return versions
+func readProviderGeneration() uint64 {
+	return providerListGeneration()
 }
 
 // mihomo swaps in a new strategy each time a rule set, manually or on its
@@ -287,11 +279,11 @@ func readRuleSets() map[string]any {
 
 // The caller holds selectMu. A nil ruleSets skips that scan: the poll leaves
 // rule sets to their update event instead of rescanning them every tick.
-func applyRouteSnapshot(picks map[string]string, versions map[string]uint32, ruleSets map[string]any, change routeChange) {
+func applyRouteSnapshot(picks map[string]string, generation uint64, ruleSets map[string]any, change routeChange) {
 	currentRoute.mu.Lock()
-	if currentRoute.providerVersions != nil && !maps.Equal(versions, currentRoute.providerVersions) {
-		// A provider may bump its version for a rewrite with equivalent rules;
-		// only the resulting picks and rule sets may move the route.
+	if currentRoute.providerGeneration != 0 && generation != currentRoute.providerGeneration {
+		// A provider may swap its list for an equivalent one; only the
+		// resulting picks and rule sets may move the route.
 		change = max(change, routeMoved)
 	}
 	if ruleSets != nil && currentRoute.ruleSets != nil && !maps.Equal(ruleSets, currentRoute.ruleSets) {
@@ -300,7 +292,7 @@ func applyRouteSnapshot(picks map[string]string, versions map[string]uint32, rul
 	if !maps.Equal(picks, currentRoute.picks) {
 		change = max(change, routeMoved)
 	}
-	currentRoute.providerVersions = versions
+	currentRoute.providerGeneration = generation
 	if ruleSets != nil {
 		currentRoute.ruleSets = ruleSets
 	}

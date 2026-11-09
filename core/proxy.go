@@ -223,6 +223,9 @@ func (a *proxiesAnswer) appendProxyTable(buf []byte, snapshot *sortedProxyNameCa
 // table holds one that is encoded live, which no frame cache covers.
 func refreshGroupDocs(snapshot *sortedProxyNameCache) bool {
 	live := false
+	// One read per answer: every group's membership is a function of the same
+	// provider lists, so one generation stands for all of them.
+	generation := providerListGeneration()
 	for _, slot := range snapshot.groupSlots {
 		if slot == nil {
 			continue
@@ -231,39 +234,51 @@ func refreshGroupDocs(snapshot *sortedProxyNameCache) bool {
 			live = true
 			continue
 		}
-		refreshGroupDoc(slot)
+		refreshGroupDoc(slot, generation)
 	}
 	return live
 }
+
+// providerListGeneration reads the generation the providers' lists carry. A
+// generator is a variable so a test can stand in for a provider swapping its
+// list, which only the core's own providers can do.
+var providerListGeneration = provider.ListGeneration
 
 // refreshGroupDoc rebuilds a slot's document when the values the live encode
 // would write have moved.
 //
 // A Selector is keyed on the group's own selection counter beside the provider
-// versions, so its row is answered without resolving the selection -- which is
-// the expensive half of answering the table, since every other kind's document
-// names the selection it currently holds. A group that publishes no counter is
-// answered live, exactly like a URLTest or Fallback with no pinned reader.
-func refreshGroupDoc(slot *groupDocSlot) {
+// list generation, so its row is answered without resolving the selection --
+// which is the expensive half of answering the table, since every other kind's
+// document names the selection it currently holds. A group that publishes no
+// counter is answered live, exactly like a URLTest or Fallback with no pinned
+// reader.
+func refreshGroupDoc(slot *groupDocSlot, generation uint64) {
 	if slot.typ == constant.Selector {
 		if slot.doc != nil && slot.selectedAt == slot.group.SelectionVersion() &&
-			groupDocVersionsMatch(slot.group, slot.versions) {
+			slot.generation == generation {
 			return
 		}
-		doc := appendGroupDocument(nil, slot.proxy)
-		slot.selectedAt = slot.group.SelectionVersion()
-		slot.versions, slot.doc = groupDocVersions(slot.group), doc
+		// The selection counter is read before the encode: a selection that
+		// moves while the document is being written would stamp the newer
+		// counter on a document that does not carry it, and the staleness would
+		// never be seen again. The generation was read once for the whole
+		// answer, ahead of every document in it.
+		selectedAt := slot.group.SelectionVersion()
+		slot.doc = appendGroupDocument(nil, slot.proxy)
+		slot.selectedAt = selectedAt
+		slot.generation = generation
 		groupDocGeneration++
 		return
 	}
 
 	key := groupDocKeyOf(slot)
 	if slot.doc != nil && slot.key == key &&
-		groupDocVersionsMatch(slot.group, slot.versions) {
+		slot.generation == generation {
 		return
 	}
-	doc := appendGroupDocument(nil, slot.proxy)
-	slot.key, slot.versions, slot.doc = key, groupDocVersions(slot.group), doc
+	slot.doc = appendGroupDocument(nil, slot.proxy)
+	slot.key, slot.generation = key, generation
 	groupDocGeneration++
 }
 
@@ -425,11 +440,11 @@ type groupDocSlot struct {
 	typ   constant.AdapterType
 	fixed interface{ SelectedName() string }
 	// The selection count the stored document was encoded under. A Selector's
-	// document is keyed on the group's own counter beside the provider
-	// versions, so answering it never resolves the selection.
+	// document is keyed on the group's own counter beside the provider list
+	// generation, so answering it never resolves the selection.
 	selectedAt uint64
 	key      groupDocKey
-	versions []uint32
+	generation uint64
 	doc      []byte
 }
 
@@ -466,30 +481,6 @@ func groupDocKeyOf(slot *groupDocSlot) groupDocKey {
 	// left is a URLTest or a Fallback, whose document also names its pinned
 	// selection.
 	return groupDocKey{now: slot.group.Now(), fixed: slot.fixed.SelectedName()}
-}
-
-func groupDocVersions(group outboundgroup.ProxyGroup) []uint32 {
-	providers := group.Providers()
-	versions := make([]uint32, 0, len(providers))
-	for _, pd := range providers {
-		versions = append(versions, pd.Version())
-	}
-	return versions
-}
-
-// groupDocVersionsMatch compares without building a slice, so a cache hit
-// allocates nothing.
-func groupDocVersionsMatch(group outboundgroup.ProxyGroup, versions []uint32) bool {
-	providers := group.Providers()
-	if len(providers) != len(versions) {
-		return false
-	}
-	for i, pd := range providers {
-		if pd.Version() != versions[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // mihomo builds its own GLOBAL over the reserved provider, which no configured

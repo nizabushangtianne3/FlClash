@@ -47,7 +47,7 @@ func clearRoute() {
 	currentRoute.epoch = 0
 	currentRoute.version = 0
 	currentRoute.picks = nil
-	currentRoute.providerVersions = nil
+	currentRoute.providerGeneration = 0
 	currentRoute.ruleSets = nil
 	currentRoute.watchSeq = 0
 }
