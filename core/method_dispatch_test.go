@@ -9,8 +9,10 @@ import (
 	"github.com/metacubex/mihomo/component/resource"
 	C "github.com/metacubex/mihomo/constant"
 	cp "github.com/metacubex/mihomo/constant/provider"
-	"github.com/metacubex/mihomo/tunnel/statistic"
+	"github.com/metacubex/mihomo/rules"
 	rp "github.com/metacubex/mihomo/rules/provider"
+	"github.com/metacubex/mihomo/tunnel"
+	"github.com/metacubex/mihomo/tunnel/statistic"
 	"github.com/stretchr/testify/require"
 )
 
@@ -219,4 +221,31 @@ func listedRuleSetProvider(t *testing.T, name string) cp.RuleProvider {
 		nil,
 		nil,
 	)
+}
+
+// A side load writes the subscription's content straight through, which is how
+// a profile whose file the host already holds gets loaded without a download.
+func TestDispatchedProviderSideLoadWritesTheContent(t *testing.T) {
+	rp.SetTunnel(tunnel.Tunnel)
+	ruleSet := rp.NewRuleSetProvider(
+		"ruleset", cp.Domain, cp.YamlRule, 0,
+		resource.NewFileVehicle(filepath.Join(t.TempDir(), "ruleset.yaml")),
+		nil, nil, rules.ParseRule,
+	).(*rp.RuleSetProvider)
+	withTunnelProviders(t, nil, map[string]cp.RuleProvider{"ruleset": ruleSet})
+	require.Zero(t, ruleSet.Count(), "the rule set starts empty")
+
+	answer := answerBytes(MethodCall{
+		ID:        "side",
+		Method:    providerSideLoadMethod,
+		Arguments: json.RawMessage(`{"name":"ruleset","data":"payload:\n  - example.com\n"}`),
+	})
+
+	var envelope struct {
+		Error *MethodError `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(answer, &envelope))
+	require.Nil(t, envelope.Error, "answer = %s", answer)
+	require.NotZero(t, ruleSet.Count(),
+		"the content the host handed over is in the rule set, not just accepted")
 }
