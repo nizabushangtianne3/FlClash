@@ -336,13 +336,15 @@ func marshalResult(value any) string {
 	return string(data)
 }
 
-func deliverEvent(data []byte) {
+// The Android host's callback takes one slice, so the pieces of an answer are
+// joined here rather than beside the envelope.
+func deliverEvent(answer frame) {
 	eventListenerLock.RLock()
 	defer eventListenerLock.RUnlock()
 	if eventListener == nil {
 		return
 	}
-	eventListener(data)
+	eventListener(answer.bytes())
 }
 
 func StopTun() {

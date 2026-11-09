@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/metacubex/mihomo/common/jsonutil"
@@ -194,37 +195,47 @@ func runMessageBatcher(
 // The batch is written the way the connections table is: one hand encoder, no
 // reflection between the queues and the frame. The wire bytes are pinned by
 // TestMessageBatchMatchesReflection.
-func encodeMessageBatch(messages []Message) []byte {
-	buf := make([]byte, 0, encodedBatchSize(messages)+96)
-	buf = append(buf, `{"method":`...)
-	buf = jsonutil.AppendString(buf, string(messageMethod))
-	buf = append(buf, `,"arguments":[`...)
+//
+// The envelope of a batch never changes, so it is built once and the flush
+// only writes the body beside it.
+var (
+	messageBatchHead = func() []byte {
+		buf := make([]byte, 0, 64)
+		buf = append(buf, `{"method":`...)
+		buf = jsonutil.AppendString(buf, string(messageMethod))
+		return append(buf, `,"arguments":[`...)
+	}()
+	messageBatchTail = []byte(`]}`)
+
+	// One buffer per in-flight flush: writeFrame is finished with the body by
+	// the time it returns, and every flush carries the same shape. One that
+	// outgrew the frame pool's bound is dropped rather than kept: a single
+	// oversized flush must not pin its buffer for the rest of the run.
+	messageBatchBuffers = sync.Pool{New: func() any {
+		buffer := make([]byte, 0, 4096)
+		return &buffer
+	}}
+)
+
+// encodeBatchBody writes the comma-joined message documents a flush carries.
+func encodeBatchBody(dst []byte, messages []Message) []byte {
 	for i, message := range messages {
 		if i > 0 {
-			buf = append(buf, ',')
+			dst = append(dst, ',')
 		}
-		buf = appendMessageJSON(buf, message)
+		dst = appendMessageJSON(dst, message)
 	}
-	return append(buf, ']', '}')
+	return dst
 }
 
 func sendMessageBatch(messages []Message) {
-	deliverEvent(encodeMessageBatch(messages))
-}
-
-func encodedBatchSize(messages []Message) int {
-	size := 16 * len(messages)
-	for _, message := range messages {
-		switch message.Data.(type) {
-		case statistic.Tracker:
-			size += 640
-		case DnsQuery:
-			size += 256
-		default:
-			size += 128
-		}
+	pooled, _ := messageBatchBuffers.Get().(*[]byte)
+	body := encodeBatchBody((*pooled)[:0], messages)
+	deliverEvent(frame{head: messageBatchHead, document: body, tail: messageBatchTail})
+	if cap(body) <= maxPooledFrameSize {
+		*pooled = body
+		messageBatchBuffers.Put(pooled)
 	}
-	return size
 }
 
 // appendMessageJSON writes one {"type":...,"data":...} envelope. Every case

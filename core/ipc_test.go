@@ -374,6 +374,37 @@ func TestSendMessageBatchWrapsMessagesInMethodCall(t *testing.T) {
 	}
 }
 
+// A batch past the single-write threshold rides the three-piece frame path,
+// where the envelope, the body and the tail are three separate writes.
+func TestSendMessageBatchWritesAnOversizedBatchInPieces(t *testing.T) {
+	messages := make([]Message, 0, 200)
+	for range 200 {
+		messages = append(messages, Message{Type: LogMessage, Data: log.Event{
+			LogLevel: log.INFO,
+			Payload:  strings.Repeat("payload ", 60),
+		}})
+	}
+
+	frame := captureSingleFrame(t, func() { sendMessageBatch(messages) })
+
+	var call struct {
+		Method    CoreMethod `json:"method"`
+		Arguments []Message  `json:"arguments"`
+	}
+	if err := json.Unmarshal(frame, &call); err != nil {
+		t.Fatalf("oversized batch frame is not one MethodCall: %v", err)
+	}
+	if call.Method != messageMethod {
+		t.Errorf("method = %s, want %s", call.Method, messageMethod)
+	}
+	if len(call.Arguments) != len(messages) {
+		t.Fatalf("decoded %d messages, want %d", len(call.Arguments), len(messages))
+	}
+	if call.Arguments[0].Type != LogMessage || call.Arguments[len(call.Arguments)-1].Type != LogMessage {
+		t.Error("the pieces landed out of order, so the host reads a document clipped at one end")
+	}
+}
+
 func TestSendWithoutConnectionDoesNotPanic(t *testing.T) {
 	previous := swapConn(nil)
 	defer swapConn(previous)

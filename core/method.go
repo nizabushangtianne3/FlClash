@@ -74,6 +74,10 @@ func (answer frame) bytes() []byte {
 	return append(buf, answer.tail...)
 }
 
+// maxPooledFrameSize bounds what a pooled buffer is allowed to keep: a buffer
+// that outgrew it once is dropped instead of pinned for the rest of the run.
+const maxPooledFrameSize = 1 << 20
+
 var (
 	anonymousEnvelope = []byte(`{"result":`)
 	responseTail      = []byte(`}`)

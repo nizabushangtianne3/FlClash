@@ -336,16 +336,20 @@ func TestMessageBatchMatchesReflection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reflection marshal: %v", err)
 	}
-	got := encodeMessageBatch(messages)
+	// The flush writes the body beside a fixed envelope, so the document a
+	// host reads is the three pieces joined back together.
+	got := append(append(append([]byte{}, messageBatchHead...), encodeBatchBody(nil, messages)...), messageBatchTail...)
 	if !bytes.Equal(got, want) {
 		t.Fatalf("direct batch diverges from the wire contract:\n got: %s\nwant: %s", got, want)
 	}
 
 	// The alloc bound covers the hand-encoded types; the reflection fallback
-	// for a payload the queues do not carry today stays out of it.
+	// for a payload the queues do not carry today stays out of it. The buffer
+	// is a pooled one already large enough, as the steady-state flush is.
 	direct := append(messages[:12:12], Message{})
+	body := make([]byte, 0, 4096)
 	allocations := testing.AllocsPerRun(20, func() {
-		if data := encodeMessageBatch(direct); len(data) == 0 {
+		if data := encodeBatchBody(body[:0], direct); len(data) == 0 {
 			t.Fatal("empty batch")
 		}
 	})

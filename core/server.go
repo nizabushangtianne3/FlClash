@@ -29,7 +29,6 @@ const (
 	maxIPCFrameSize = 64 * 1024 * 1024
 	ipcWriteTimeout = 10 * time.Second
 
-	maxPooledFrameSize = 1 << 20
 	// Below this a frame is cheaper to write as one pooled buffer than as
 	// three separate writes.
 	singleWriteFrameSize = 32 * 1024
@@ -47,8 +46,8 @@ func logDeliveryError(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "[ERROR] "+format+"\n", args...)
 }
 
-func deliverEvent(data []byte) {
-	send(frame{head: data})
+func deliverEvent(answer frame) {
+	send(answer)
 }
 
 // The desktop core exits with its host connection, so it is always heard.

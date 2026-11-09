@@ -47,9 +47,7 @@ func BenchmarkSendMessageBatch(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if data := encodeMessageBatch(messages); len(data) == 0 {
-					b.Fatal("empty batch")
-				}
+				sendMessageBatch(messages)
 			}
 		})
 	}

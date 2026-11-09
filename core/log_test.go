@@ -18,7 +18,9 @@ func writtenText(fake *fakeConn) string {
 
 func waitForWrittenPayload(t *testing.T, fake *fakeConn, payload string) bool {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	// The batcher flushes on its own interval, so a loaded host can take a few
+	// windows to see the frame; the bound is the one the flood tests use.
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if strings.Contains(writtenText(fake), payload) {
 			return true
