@@ -642,12 +642,29 @@
 `adapter/provider` 覆盖率 **67.1% → 71.8%**。
 
 **剩余未覆盖（本轮盘点，均已确认是「任何一侧测试都到不了」或上游自带机制）**：`healthcheck.go` 的 `process` 轮询循环（要真开 interval）、`subscription_info.go` 的 `NewSubscriptionInfo`（只在 HTTP 载体的 InRead 钩子里被调）、`override_expr.go` 里单个 `eval` 重载、`parser.go` 的 `ParseProxyProvider` 入口（由 wrapper 的配置测试在运行时覆盖，不计入本包画像）、`provider.go` 的 inline provider AppendJSON 与 `GetSubscriptionInfo`。`adapter/outboundgroup` 剩下的 0% 全是 `DialContext`/`ListenPacketContext`/`SupportUDP` 一类接口方法，属上游机制，由隧道侧测试间接覆盖。
+
+### 2026-11-09 子模块死代码清扫轮次（精简，非性能）
+
+用户要求里有一条「不写无效代码」。此前只对 wrapper 做过死代码扫描（清理过 `fallibleWithoutArguments`、`encodedBatchSize` 等），从没扫过子模块。本轮把两侧都扫了一遍：对每个未导出函数名，统计它在**全仓所有 .go 文件**（子模块 + wrapper，含测试）里的引用数，只留「仅剩定义处一次」的。
+
+| 范围 | 未导出函数总数 | 死代码 |
+|---|---|---|
+| wrapper（`core/`） | 360 | **0**（本会话已清干净） |
+| 子模块（104 包，1192 个 .go 文件） | — | 3 处 |
+
+| 删除 | core 提交 | 父仓库提交 | 依据 |
+|---|---|---|---|
+| `adapter/outboundgroup/groupbase.go` 的 `memberNames` | `411321146` | 本轮父仓库提交 | 全仓 0 引用；组视图编码早已改走 `writeGroupNames` |
+| `tunnel` 的整张监听器表：`runtimeSnapshot.listeners` + `tunnel.Listeners()` + `tunnel.UpdateListeners()`（一个读者一个写者，两者都无人调用） | `411321146` | 本轮父仓库提交 | 本 fork 的监听器补丁由宿主侧直接走 `listener` 包，快照那份副本从未被写，`Listeners()` 永远返回空表。同包的 `Rules()`/`NatTable()` 有真实调用方（`hub/route`），保留 |
+| `constant/metadata.go` 的 `appendSourceDetail` | `d6179b8ad` | 本轮父仓库提交 | 全仓 0 引用；`SourceDetail()` 用定长数组产出同一段文本 |
+
+**扫描口径备忘**：PowerShell 的 `-match` 默认忽略大小写，`[a-z]` 拦不住导出名，必须用 `-cmatch`；否则会把 81 个导出 API 和生成代码（`*.pb.go` 的 getter）当成死代码误报。导出但无调用方的函数（如 `common/atomic.NewUint32`、`component/updater.StopGeoUpdater`）属 fork 的对外 API 面，本轮不动，记账备查。
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
 
 `core/connection.go` 的 18 个函数现已 **100% 覆盖**（此前 `appendDocument` 68.8%、`documentSize` 71.4%、`rowAnswerSize` 81.8%、`handleResetNetwork` 0%）。补齐的四条都是仪表盘真实会走到的路径：带 GeoIP 的行（答案缓冲按 `rowAnswerSize` 预分配，两个字符串切片若不计入，每次 resync 都会扩容）、nil 行、一次轮询里离开多行的分隔符、按 id 关闭存活行。另外钉住一条不变量：`rowAnswerSize` 永不低于编码后长度（预分配就靠它）。父仓库 `b8bd4801`，包覆盖率 82.9% → 83.3%。
-### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `c20d3c398`）
+### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `d6179b8ad`）
 
 | 验证项 | 命令 | 结果 |
 |---|---|---|
