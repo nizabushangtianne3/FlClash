@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-10（本会话六项：资料页命中零分配 + 组刷新只走组行 + 组槽缓存行打包 + 组答案全局代号 + 表身份直读 + 答案结构随投影缓存 + ParseProxy 全覆盖）
-- FlClash main：`131ba6da`
+- FlClash main：`068dd308`
 - Clash.Meta main：`778e0fb67`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 124 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 125 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -787,7 +787,7 @@ CPU 剖析（`BenchmarkHandleGetProxies`）显示答案路径 58% 落在 `refres
 | 本轮 focused race | `go test -race . -run 'Proxy|Group|Proxies|Profile'`（CGO_ENABLED=1，mingw64 在 PATH） | 除既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿（2026-11-10，两项性能改动后） |
 | 全量 race | `go test . -race -count=1` | 仅 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 失败——**基线代码上同样复现**（已单独验证：stash 本轮改动后跑同一用例仍报同一 DATA RACE），属既有问题，见第 7 节 |
 | 资料页缓存 focused race | `go test -race . -run 'Profile\|Route\|Base\|Merge'` | 除同一既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿（2026-11-10，`profile_cache.go` 改动后） |
-| 2026-11-10 三轮性能 + 覆盖 | 见第 2 节各轮次小节 | wrapper 全量 ok；四平台 vet（windows/linux/darwin/amd64 + android/arm64）exit 0；focused race 仅既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 失败（基线对照确认）；子模块全量 104 包 ok + vet 0；`ParseProxy` 8.6%→75.9%、`adapter` 62.1%→85.2% |
+| 2026-11-10 当日七轮（收官） | 见第 2 节各轮次小节 | wrapper 全量 ok；四平台 vet exit 0；focused race 仅既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent`（基线对照复现）；**子模块全量 104 包 ok + vet 0**；`ParseProxy` 8.6%→75.9%、`adapter` 62.1%→85.2%、wrapper 93.7%；父仓库 `068dd308` / 子模块 `778e0fb67`，两端远程均已同步 |
 
 | 2026-11-10 组答案代号 | 见第 2 节该轮次 | steady answer geomean **-74.68%**（n=7，p=0.001 各）；miss 路径 +1.55%（p=0.310 噪声内）；分配全项不变；选中变更/provider 刷新两条不变量由既有测试钉住 |
 **噪声带实测依据**（本轮新增，后续 A/B 准绳）：同一编译产物交替自比 4 轮，benchstat geomean +0.71%，个别场景差异 ±2.5% 且 p 可低至 0.021（loadbalance +2.34%，p=0.021）。因此本机「无差异」判定阈值取 p>0.2 或落在 ±2.5% 内；「有差异」判定沿用仓库规矩（p≤0.02 且幅度 ≥ 仓库认可量级）。
