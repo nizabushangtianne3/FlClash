@@ -492,6 +492,23 @@
 
 ## 4. 当前验证矩阵
 
+### 2026-11-09 验证矩阵（当前状态，父仓库 main `41616bd9` / 子模块 `39ce557da`）
+
+| 验证项 | 命令 | 结果 |
+|---|---|---|
+| 子模块全量 | `go test ./... -count=1 -p=1`（Clash.Meta） | **104 包 ok，exit 0** |
+| 子模块 vet | `go vet ./...`（Clash.Meta） | 通过 |
+| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 82.8% of statements**（本轮起点 81.6%） |
+| wrapper vet | `go vet ./...` | 通过 |
+| wrapper 跨平台 vet | `GOOS=windows/linux/darwin/amd64` 与 `GOOS=android GOARCH=arm64` | 四个目标全部 exit 0 |
+| focused race | `go test -race . -run 'TestGroupDoc|TestProxies|TestProxy|TestFrame|TestSpill|TestDispatched|TestConnection|TestRefreshRouteVersions|TestRouteStamp'`（CGO_ENABLED=1，mingw64 在 PATH） | 通过 |
+| 全量 race | `go test . -race -count=1` | 仅 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 失败——**基线代码上同样复现**（已单独验证：stash 本轮改动后跑同一用例仍报同一 DATA RACE），属既有问题，见第 7 节 |
+
+**噪声带实测依据**（本轮新增，后续 A/B 准绳）：同一编译产物交替自比 4 轮，benchstat geomean +0.71%，个别场景差异 ±2.5% 且 p 可低至 0.021（loadbalance +2.34%，p=0.021）。因此本机「无差异」判定阈值取 p>0.2 或落在 ±2.5% 内；「有差异」判定沿用仓库规矩（p≤0.02 且幅度 ≥ 仓库认可量级）。
+
+**本轮基准注意**：`BenchmarkHandleGetProxies` / `BenchmarkHandleGetProxiesMiss` 的配置名单已改为生产形态（全部代理名，见「名单按身份做键轮次」），其绝对数值与 2026-11-09 之前的行不可比；跨轮比较只能在本轮同基准内做 A/B。
+
+
 2026-11-04 本轮性能工作收尾时以下验证全部通过：
 
 ```powershell
