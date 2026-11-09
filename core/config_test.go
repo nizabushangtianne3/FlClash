@@ -819,6 +819,25 @@ func TestHandleSetupConfigRefusesBeforeInit(t *testing.T) {
 	}
 }
 
+// Every node of a profile whose apply fell back to the default config fails its
+// delay test, and one report per second says so rather than one per node.
+func TestReportMissingDelayTestProxySaysItOncePerSecond(t *testing.T) {
+	previous := missingDelayTestProxyAt.Load()
+	t.Cleanup(func() { missingDelayTestProxyAt.Store(previous) })
+	missingDelayTestProxyAt.Store(0)
+
+	reportMissingDelayTestProxy("gone")
+	first := missingDelayTestProxyAt.Load()
+	if first == 0 {
+		t.Fatal("the first report left no stamp, so every later one would also pass")
+	}
+
+	reportMissingDelayTestProxy("gone")
+	if got := missingDelayTestProxyAt.Load(); got != first {
+		t.Error("a second report inside the second replaced the stamp instead of staying quiet")
+	}
+}
+
 func TestApplyConfigTellsARejectedProfileFromAFailedCall(t *testing.T) {
 	home := t.TempDir()
 	previous := constant.Path.HomeDir()

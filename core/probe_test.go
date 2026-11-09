@@ -412,3 +412,36 @@ func TestProbeConnectionsPoolStaysBounded(t *testing.T) {
 		t.Errorf("pool size = %d, want at most %d", size, probeConnsPoolSize)
 	}
 }
+
+// A connection that was never tracked has nothing to forget, and forgetting it
+// must not take a tracked one's place in the list with it.
+func TestForgetPendingProbeRouteLeavesTheTrackedOnes(t *testing.T) {
+	pendingProbeRoutesMu.Lock()
+	pendingProbeRoutes = nil
+	pendingProbeRoutesMu.Unlock()
+
+	tracked := &routedConn{address: "tracked.example:443"}
+	addPendingProbeRoute(tracked)
+	forgetPendingProbeRoute(&routedConn{address: "never-tracked.example:443"})
+
+	pendingProbeRoutesMu.Lock()
+	remaining := len(pendingProbeRoutes)
+	first := pendingProbeRoutes[0]
+	pendingProbeRoutesMu.Unlock()
+
+	if remaining != 1 {
+		t.Fatalf("pending routes = %d, want the tracked one left alone", remaining)
+	}
+	if first != tracked {
+		t.Error("forgetting an untracked connection dropped a tracked one")
+	}
+
+	forgetPendingProbeRoute(tracked)
+	pendingProbeRoutesMu.Lock()
+	remaining = len(pendingProbeRoutes)
+	pendingProbeRoutes = nil
+	pendingProbeRoutesMu.Unlock()
+	if remaining != 0 {
+		t.Errorf("pending routes = %d after forgetting the tracked one, want none", remaining)
+	}
+}

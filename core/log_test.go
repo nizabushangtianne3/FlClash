@@ -3,6 +3,8 @@
 package core
 
 import (
+	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -68,5 +70,33 @@ func TestLogPumpDropsWhatTheLevelNoLongerAllowsAndKeepsReading(t *testing.T) {
 	time.Sleep(4 * messageBatchInterval)
 	if strings.Contains(writtenText(fake), "event after the stop") {
 		t.Error("a stopped pump kept forwarding events")
+	}
+}
+
+// A developer-only switch keeps the core's own errors visible on stderr, which
+// is the only place a build without the host's console shows them.
+func TestLogErrorReachesStderrWhenDebugging(t *testing.T) {
+	previous := debugStderr
+	debugStderr = true
+	t.Cleanup(func() { debugStderr = previous })
+
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	previousStderr := os.Stderr
+	os.Stderr = write
+	logError("debug only %d", 7)
+	os.Stderr = previousStderr
+	if err := write.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	captured, err := io.ReadAll(read)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(captured), "debug only 7") {
+		t.Errorf("stderr = %q, want the debug copy of the error", captured)
 	}
 }
