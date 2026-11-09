@@ -247,38 +247,31 @@ var providerListGeneration = provider.ListGeneration
 // refreshGroupDoc rebuilds a slot's document when the values the live encode
 // would write have moved.
 //
-// A Selector is keyed on the group's own selection counter beside the provider
-// list generation, so its row is answered without resolving the selection --
-// which is the expensive half of answering the table, since every other kind's
-// document names the selection it currently holds. A group that publishes no
-// counter is answered live, exactly like a URLTest or Fallback with no pinned
-// reader.
+// Every value the document carries that can move is counted: the pinned
+// selection, the live pick the document names as now, and the provider lists
+// behind the members. Reading the counters is a handful of atomic loads, so a
+// steady-state answer resolves no selection at all -- the live pick of a
+// URLTest or Fallback is the expensive half, since resolving it walks the
+// group's fast node and its clock.
 func refreshGroupDoc(slot *groupDocSlot, generation uint64) {
-	if slot.typ == constant.Selector {
-		if slot.doc != nil && slot.selectedAt == slot.group.SelectionVersion() &&
-			slot.generation == generation {
-			return
-		}
-		// The selection counter is read before the encode: a selection that
-		// moves while the document is being written would stamp the newer
-		// counter on a document that does not carry it, and the staleness would
-		// never be seen again. The generation was read once for the whole
-		// answer, ahead of every document in it.
-		selectedAt := slot.group.SelectionVersion()
-		slot.doc = appendGroupDocument(nil, slot.proxy)
-		slot.selectedAt = selectedAt
-		slot.generation = generation
-		groupDocGeneration++
+	if slot.doc != nil &&
+		slot.selectedAt == slot.group.SelectionVersion() &&
+		slot.generation == generation &&
+		(slot.live == nil || slot.liveAt == slot.live.LiveSelectionVersion()) {
 		return
 	}
-
-	key := groupDocKeyOf(slot)
-	if slot.doc != nil && slot.key == key &&
-		slot.generation == generation {
-		return
+	// The counters are read before the encode: a selection or a pick that moves
+	// while the document is being written would stamp the newer counter on a
+	// document that does not carry it, and the staleness would never be seen
+	// again. The generation was read once for the whole answer, ahead of every
+	// document in it.
+	selectedAt := slot.group.SelectionVersion()
+	var liveAt uint64
+	if slot.live != nil {
+		liveAt = slot.live.LiveSelectionVersion()
 	}
 	slot.doc = appendGroupDocument(nil, slot.proxy)
-	slot.key, slot.generation = key, generation
+	slot.selectedAt, slot.liveAt, slot.generation = selectedAt, liveAt, generation
 	groupDocGeneration++
 }
 
@@ -374,12 +367,12 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 		sizeBase += len(nodeViews[i])
 	}
 	cache := &sortedProxyNameCache{
-		snapshot:  proxies,
-		names:     names,
-		keySpans:  keySpans,
-		nodeViews: nodeViews,
+		snapshot:   proxies,
+		names:      names,
+		keySpans:   keySpans,
+		nodeViews:  nodeViews,
 		groupSlots: groupSlots,
-		sizeBase:  sizeBase,
+		sizeBase:   sizeBase,
 	}
 	sortedProxyNames.Store(cache)
 	return cache
@@ -389,14 +382,6 @@ func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCa
 // member list. Selector exposes its selection as Now; URLTest and Fallback add
 // a pinned selection (their fixed field) that moves independently of their
 // live re-election, and a LoadBalance document has no selection field at all.
-// Every other field is fixed at construction, so keying the cache on exactly
-// those values keeps a re-selection, a re-election or a provider reload a
-// cache miss while the steady state copies bytes.
-type groupDocKey struct {
-	now   string
-	fixed string
-}
-
 // One lock per answer: the table is answered in a single pass, and the slots
 // it writes ride the snapshot, so a rebuilt table starts with empty slots.
 var groupDocsMu sync.Mutex
@@ -430,7 +415,7 @@ func (cache *proxiesFrameCache) matches(answer *proxiesAnswer) bool {
 // they were built for, so a rebuilt table starts with empty slots and an
 // answer needs no map lookup to reach the row it is writing.
 type groupDocSlot struct {
-	proxy    constant.Proxy
+	proxy constant.Proxy
 	// nil when the document cannot be keyed: the adapter is not a group, or
 	// a URLTest or Fallback exposes no pinned selection to key on.
 	group outboundgroup.ProxyGroup
@@ -439,13 +424,17 @@ type groupDocSlot struct {
 	// dispatching into the proxy for them on every group.
 	typ   constant.AdapterType
 	fixed interface{ SelectedName() string }
+	live  interface{ LiveSelectionVersion() uint64 }
 	// The selection count the stored document was encoded under. A Selector's
 	// document is keyed on the group's own counter beside the provider list
 	// generation, so answering it never resolves the selection.
 	selectedAt uint64
-	key      groupDocKey
+	// The live pick count the stored document was encoded under. A URLTest or a
+	// Fallback names its live pick, which moves on its own as members fail, so
+	// this is what lets the answer path skip resolving it.
+	liveAt     uint64
 	generation uint64
-	doc      []byte
+	doc        []byte
 }
 
 // newGroupDocSlot builds the cache row for one group: the caller has already
@@ -466,21 +455,14 @@ func newGroupDocSlot(proxy constant.Proxy) *groupDocSlot {
 			return slot
 		}
 		slot.fixed = fixed
+		live, ok := proxy.Adapter().(interface{ LiveSelectionVersion() uint64 })
+		if !ok {
+			return slot
+		}
+		slot.live = live
 	}
 	slot.group = group
 	return slot
-}
-
-// groupDocKeyOf reads the values the live encode would write.
-func groupDocKeyOf(slot *groupDocSlot) groupDocKey {
-	switch slot.typ {
-	case constant.LoadBalance:
-		return groupDocKey{}
-	}
-	// A slot carries a group only for the four cacheable kinds, so what is
-	// left is a URLTest or a Fallback, whose document also names its pinned
-	// selection.
-	return groupDocKey{now: slot.group.Now(), fixed: slot.fixed.SelectedName()}
 }
 
 // mihomo builds its own GLOBAL over the reserved provider, which no configured
