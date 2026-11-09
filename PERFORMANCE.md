@@ -595,18 +595,35 @@
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
 | `GroupBase.GetProxies` 把 `providerVersionsNow()` 挪到读列表之前，缓存盖的就是读列表前那一代；新增 `TestGetProxiesDoesNotCacheAListItsVersionOutran`，用「读取期间列表被换掉」的 provider 钉住不变量 | `7f653cb1b` | 本轮父仓库提交 | 先实证：不修复时该用例失败（`expected: second, actual: first`，陈旧列表被永久缓存），修复后通过。成本不变（同一次 `providerVersionsNow()`，只是提前），稳态命中路径完全不经过它。子模块 104 包全量 + vet（四目标）+ focused race 通过 |
+
+### 2026-11-09 组文档改由计数器作答轮次（性能，本会话最大单项）
+
+账本第 5 节长期挂着一条「URLTest/Fallback 的 `Now()` 解析无法用计数器替代，计数器会滞后一个 TTL」。本轮把剖析做到底后发现结论下错了：**.parse 本身不必要**——wrapper 只要知道「选中有没有变」，不需要知道变成了什么。
+
+**剖析证据（urltest 行，200 组，8.5µs/答案）**：`URLTest.Now()` cum **77.78%**，其中 `singledo.CachedValid` 48.43%（含每次调用的 `time.Since`）、`outbound.(*Base).Name` 13.11%。也就是说「为了确认没变而去解析当前选中」就是命中路径的主体。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 子模块新增「实时选中代号」：`announceLivePick` 记录组本次答应的 pick，pick 变化时用 CAS 推进计数器；代号与 pick 同指针发布，读者一次 load 拿到匹配的一对。`ProxyGroup` 接口新增 `LiveSelectionVersion()`（Selector=pin 计数，LoadBalance=0） | `66474a949` | `6bbe9689` | 子模块 104 包全量 + vet 四目标 + focused race 通过；现有两个「provider 交换后跟随」用例补上「未换 pick 不得推进、换了必须推进」断言 |
+| wrapper 组文档改由**三个计数器**判定：pin 选中、实时 pick、provider 列表；`groupDocKey`/`groupDocKeyOf` 随之删除（计数器覆盖了键覆盖的一切，读计数器是几次原子读，键是每组一次字符串读+接口分发） | -（仅 wrapper） | `6bbe9689` | 交替配对 A/B（n=5，`-benchtime 700ms`）：urltest 8.547µ → 1.367µ（**-84.01%**）、urltest+千节点 9.028µ → 1.624µ（**-82.01%**）、fallback 13.127µ → 1.383µ（**-89.46%**）、loadbalance 1407ns → 871.5ns（**-38.06%**）；Selector 两行无变化（p=0.738 / p=0.333），geomean **-64.86%**，allocs 不变 |
+
+**为什么不会滞后**：计数器只在「本次答应的 pick 与上次不同」时推进，而文档里的 `now` 正是答应的 pick 的名字；pick 没变 ⟺ 名字没变。同名换节点会多推进一次（无害，只是多重编码一次）。这不是第 5 节否定的「给自选中的组配一个计数器」——那个方案数的是写入口，本方案数的是**答案本身**。
+
+**读取顺序**：三个计数器都在编码前读（与 pick 代号、provider 代号同一规则）：编码期间发生的变化会在下一次答案被发现，而不是把新计数器盖在不含它的文档上。
+
+**本会话答案路径累计**：Selector 行从账本历史峰值 5.1µs → 1.02µs；urltest 12.15µs → 1.62µs；fallback 12.69µs → 1.38µs；loadbalance 2.97µs → 0.87µs。
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
 
 `core/connection.go` 的 18 个函数现已 **100% 覆盖**（此前 `appendDocument` 68.8%、`documentSize` 71.4%、`rowAnswerSize` 81.8%、`handleResetNetwork` 0%）。补齐的四条都是仪表盘真实会走到的路径：带 GeoIP 的行（答案缓冲按 `rowAnswerSize` 预分配，两个字符串切片若不计入，每次 resync 都会扩容）、nil 行、一次轮询里离开多行的分隔符、按 id 关闭存活行。另外钉住一条不变量：`rowAnswerSize` 永不低于编码后长度（预分配就靠它）。父仓库 `b8bd4801`，包覆盖率 82.9% → 83.3%。
-### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `7f653cb1b`）
+### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `66474a949`）
 
 | 验证项 | 命令 | 结果 |
 |---|---|---|
 | 子模块全量 | `go test ./... -count=1 -p=1`（Clash.Meta） | **104 包 ok，exit 0**（本轮子模块改动后重跑） |
 | 子模块 vet | `go vet ./...`（Clash.Meta） | 通过 |
-| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 93.9% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、log.go 5 个函数 100%、service_rules.go 14 个检查器全部有确定性用例、share_link.go 逐函数 100%、updateListeners 100%、事件批量每批 1 次分配（缓冲池化，-99.70%）、provider 列表代号使答案路径 geomean -35.21%、urltest 行再 -22.45%、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
+| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 93.9% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、log.go 5 个函数 100%、service_rules.go 14 个检查器全部有确定性用例、share_link.go 逐函数 100%、updateListeners 100%、事件批量每批 1 次分配（缓冲池化，-99.70%）、provider 列表代号使答案路径 geomean -35.21%、组文档改由计数器作答：urltest -84.01%、fallback -89.46%、loadbalance -38.06%、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
 | wrapper vet | `go vet ./...` | 通过 |
 | wrapper 跨平台 vet | `GOOS=windows/linux/darwin/amd64` 与 `GOOS=android GOARCH=arm64` | 四个目标全部 exit 0 |
 | focused race | `go test -race . -run 'TestGroupDoc|TestProxies|TestProxy|TestFrame|TestSpill|TestDispatched|TestConnection|TestRefreshRouteVersions|TestRouteStamp'`（CGO_ENABLED=1，mingw64 在 PATH） | 通过 |
