@@ -659,12 +659,31 @@
 | `constant/metadata.go` 的 `appendSourceDetail` | `d6179b8ad` | 本轮父仓库提交 | 全仓 0 引用；`SourceDetail()` 用定长数组产出同一段文本 |
 
 **扫描口径备忘**：PowerShell 的 `-match` 默认忽略大小写，`[a-z]` 拦不住导出名，必须用 `-cmatch`；否则会把 81 个导出 API 和生成代码（`*.pb.go` 的 getter）当成死代码误报。导出但无调用方的函数（如 `common/atomic.NewUint32`、`component/updater.StopGeoUpdater`）属 fork 的对外 API 面，本轮不动，记账备查。
+
+### 2026-11-09 inline provider 与订阅头覆盖轮次（测试，非性能）
+
+**用户要求里有一条「测试必须覆盖全部核心代码」。此前只量了 wrapper 自己的覆盖率（93.8%），从没量过**子模块**——而子模块才是真正的引擎。首量子模块覆盖：`adapter/outboundgroup` 72.7%、`adapter/provider` 76.8%、`adapter` 62.1%、`tunnel` 60.3%。
+
+本轮先补「本 fork 自己写、且两侧都没覆盖」的部分：
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `ListGeneration`（本轮新加的导出函数）在子模块自己的测试里 0%：真 provider + 改写文件，钉住「两次读之间不动、一次交换必动」 | `c20d3c398` | `141279bf` | `TestListGenerationHoldsStillAndMovesOnASwap` |
+| `baseProvider` 的对外方法（Version/Proxies/Count/Touch/HealthCheckURL/AppendJSON/MarshalJSON）在本包无调用方：一次跑通，并钉住「touch 只更新近况、不换内容」与「MarshalJSON 与 AppendJSON 同字节」 | `c20d3c398` | `141279bf` | `TestProxySetProviderReportsItsOwnState` |
+| `provider.ProxyMapping`（订阅节点的详情映射，fork 自己的 126 行）**两侧都 0%**：wrapper 只走到 nil 分支，子模块从不调用。补上「带 override/dialer-proxy 的命名映射 + 四种 filter/exclude 分支 + 非法 filter 报错 + payload 形态」 | `c20d3c398` | `141279bf` | `TestProxyMappingReturnsTheNamedProxyWithTheProviderApplied`、`TestProxyMappingHonoursTheProviderFilters`、`TestProxyMappingAnswersFromThePayload` |
+| 契约补齐：LoadBalance 的答案代号恒 0、从未作答的组报 0 而非 1 | `c20d3c398` | `141279bf` | `TestAnswerVersionReportsZeroWhereThereIsNothingToCount` |
+| `NewSubscriptionInfo`（解析 `subscription-userinfo` 头，宿主流量条读它）：全字段、空格/大小写/浮点/指数、坏字段只废自己 | `3d6e4cbe8` | 本轮父仓库提交 | `TestNewSubscriptionInfo*` 三个用例 |
+| inline provider 一族（`NewInlineProvider`/`AppendJSON`/`MarshalJSON`/`VehicleType`/`Update`/`Close`）+ 配置入口 `ParseProxyProvider`（此前 0%） | `3d6e4cbe8` | 本轮父仓库提交 | `TestInlineProviderReportsItsOwnState`，经 `ParseProxyProvider` 构造（`NewProxiesParser` 的 override 参数是包内类型，测试无法直接构造） |
+
+`adapter/provider` 覆盖率 **67.1% → 76.8%**（statements）。
+
+**剩余未覆盖（本轮盘点）**：`healthcheck.go` 的 `process` 轮询循环与 `RegisterHealthCheckTask`/`HealthCheck`（要真开 interval 与 HTTP 打点）、`provider.go` 的 compatible provider `Update`/`MarshalJSON`、`override_expr.go` 的 2 个 `eval` 重载（该文件 1683 语句已覆盖 77.8%）、`patch.go` 的 `GetSubscriptionInfo`（走 cachefile）。`adapter/outboundgroup` 剩下的 0% 全是 `DialContext`/`ListenPacketContext`/`SupportUDP` 一类接口方法，由 wrapper 与隧道侧测试在运行时覆盖。
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
 
 `core/connection.go` 的 18 个函数现已 **100% 覆盖**（此前 `appendDocument` 68.8%、`documentSize` 71.4%、`rowAnswerSize` 81.8%、`handleResetNetwork` 0%）。补齐的四条都是仪表盘真实会走到的路径：带 GeoIP 的行（答案缓冲按 `rowAnswerSize` 预分配，两个字符串切片若不计入，每次 resync 都会扩容）、nil 行、一次轮询里离开多行的分隔符、按 id 关闭存活行。另外钉住一条不变量：`rowAnswerSize` 永不低于编码后长度（预分配就靠它）。父仓库 `b8bd4801`，包覆盖率 82.9% → 83.3%。
-### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `d6179b8ad`）
+### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `3d6e4cbe8`）
 
 | 验证项 | 命令 | 结果 |
 |---|---|---|
