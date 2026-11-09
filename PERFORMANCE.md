@@ -612,18 +612,31 @@
 **读取顺序**：三个计数器都在编码前读（与 pick 代号、provider 代号同一规则）：编码期间发生的变化会在下一次答案被发现，而不是把新计数器盖在不含它的文档上。
 
 **本会话答案路径累计**：Selector 行从账本历史峰值 5.1µs → 1.02µs；urltest 12.15µs → 1.62µs；fallback 12.69µs → 1.38µs；loadbalance 2.97µs → 0.87µs。
+
+### 2026-11-09 组答案单代号轮次（性能 + 精简，接上一轮）
+
+上一轮把答案路径改成「三个计数器」后，剖析显示剩下的成本就是**每组 3 次计数器读取**（`refreshGroupDoc` flat 29.64%、`liveVersionOf` 11.86%、两个 version getter 合计 17.79%）。而其中 pin 与 pick 两个计数器，语义上本来就是同一件事的两次计数。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 子模块把 pin 与 pick 合并成**一个答案代号**：`setSelected`/`clearSelected` 推它，挑到与上次不同的 pick 时也推它；`ProxyGroup` 接口的 `SelectionVersion`/`LiveSelectionVersion`/`SelectedName` 三个方法收敛为 `AnswerVersion` 一个（Selector=pin 计数，LoadBalance=0）；`selectedVersion` 字段因只写不读被删 | `5104e8860` | `6cda8e36` | 子模块 104 包全量 + vet 四目标 + focused race 通过 |
+| wrapper 槽位只带一个 `answerAt` + provider 代号；`fixed` 字段与 `SelectedName` 断言随键一起消失 | -（仅 wrapper） | `6cda8e36` | 交替配对 A/B（n=5，`-benchtime 700ms`）：urltest 1.329µ → 1.057µ（**-20.47%**）、urltest+千节点 1.598µ → 1.307µ（**-18.21%**）、fallback 1.409µ → 1.130µ（**-19.80%**）、loadbalance 873.6ns → 830.6ns（**-4.92%**）；Selector 两行无变化（p=0.548 / p=1.000），geomean **-11.11%** |
+
+**本会话答案路径累计**（200 组场景，父仓库 main 起点 → 现在）：Selector 5.105µ → **0.996µ**；urltest 12.15µ → **1.06µ**；fallback 12.69µ → **1.13µ**；loadbalance 2.974µ → **0.831µ**。四类组现在同一量级，剩下的成本是帧装配本身（`appendGroupDocument`/`answerSize`/`writeFrame`），不再是选中解析。
+
+**精简账**：本轮净删代码——子模块 3 个导出方法、1 个只写字段、1 个测试夹具字段；wrapper 1 个结构体字段、1 个接口断言、`groupDocKey` 结构体与 `groupDocKeyOf` 函数（上一轮）。
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
 
 `core/connection.go` 的 18 个函数现已 **100% 覆盖**（此前 `appendDocument` 68.8%、`documentSize` 71.4%、`rowAnswerSize` 81.8%、`handleResetNetwork` 0%）。补齐的四条都是仪表盘真实会走到的路径：带 GeoIP 的行（答案缓冲按 `rowAnswerSize` 预分配，两个字符串切片若不计入，每次 resync 都会扩容）、nil 行、一次轮询里离开多行的分隔符、按 id 关闭存活行。另外钉住一条不变量：`rowAnswerSize` 永不低于编码后长度（预分配就靠它）。父仓库 `b8bd4801`，包覆盖率 82.9% → 83.3%。
-### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `66474a949`）
+### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `5104e8860`）
 
 | 验证项 | 命令 | 结果 |
 |---|---|---|
 | 子模块全量 | `go test ./... -count=1 -p=1`（Clash.Meta） | **104 包 ok，exit 0**（本轮子模块改动后重跑） |
 | 子模块 vet | `go vet ./...`（Clash.Meta） | 通过 |
-| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 93.9% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、log.go 5 个函数 100%、service_rules.go 14 个检查器全部有确定性用例、share_link.go 逐函数 100%、updateListeners 100%、事件批量每批 1 次分配（缓冲池化，-99.70%）、provider 列表代号使答案路径 geomean -35.21%、组文档改由计数器作答：urltest -84.01%、fallback -89.46%、loadbalance -38.06%、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
+| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 93.9% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、log.go 5 个函数 100%、service_rules.go 14 个检查器全部有确定性用例、share_link.go 逐函数 100%、updateListeners 100%、事件批量每批 1 次分配（缓冲池化，-99.70%）、provider 列表代号使答案路径 geomean -35.21%、组文档改由计数器作答：urltest -84.01%、fallback -89.46%、loadbalance -38.06%，再收单代号 -18~-20%、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
 | wrapper vet | `go vet ./...` | 通过 |
 | wrapper 跨平台 vet | `GOOS=windows/linux/darwin/amd64` 与 `GOOS=android GOARCH=arm64` | 四个目标全部 exit 0 |
 | focused race | `go test -race . -run 'TestGroupDoc|TestProxies|TestProxy|TestFrame|TestSpill|TestDispatched|TestConnection|TestRefreshRouteVersions|TestRouteStamp'`（CGO_ENABLED=1，mingw64 在 PATH） | 通过 |
