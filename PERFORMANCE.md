@@ -492,6 +492,19 @@
 
 
 
+
+### 2026-11-09 事件批量缓冲复用轮次（性能）
+
+生产环境频率最高的一条 wrapper 路径：事件每 48ms 一批（繁忙时每批 64 条），每批都把整份文档装进一个新缓冲、当成一个 piece 交给传输层，然后整块丢掉。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 信封固定化 + 正文进缓冲池 + 按 frame 三段投递：`encodeMessageBatch`（整份文档）拆成固定的 `messageBatchHead`/`messageBatchTail` 与 `encodeBatchBody(dst, …)`；`sendMessageBatch` 从池里取缓冲、编码正文、以 `frame{head, document, tail}` 投递后归还；正文超过帧池上限（`maxPooledFrameSize`，1MiB）时不归还，避免一次超大刷盘把缓冲钉住；`encodedBatchSize` 随之成为死代码被删 | -（仅 wrapper） | `947fc165` | 交替配对 A/B（n=6，`-benchtime 1s`，benchstat）：16 条一批 4096 → **24 B/op**（-99.41%，p=0.002），64 条一批 16384 → **25.5 B/op**（-99.84%，p=0.002），geomean **-99.70%**；allocs 仍为 1。时间：geomean -21.31% 但两个场景 p=0.394、方差 ±75~90%（本机在跑用户自己的 FlClash），按仓库噪声带判为「无显著差异」——**这项是按分配落地，不是按时间**。另新增 `TestSendMessageBatchWritesAnOversizedBatchInPieces`：超过单写阈值的批次第一次真正走三段写路径，钉住三段按序落地 |
+| `deliverEvent` 两个平台统一收 `frame`；Android 侧在自己的一参回调里 join（`answer.bytes()`）；`maxPooledFrameSize` 挪到 `frame` 类型旁边（method.go），桌面与 Android 共用 | -（仅 wrapper） | `947fc165` | 修掉只改 `server.go` 会让 `GOOS=android GOARCH=arm64` 编译失败的问题（vet 四个目标全过） |
+
+**本轮基准注意**：`BenchmarkSendMessageBatch` 改为测真实的 flush（`sendMessageBatch`）而非只测编码，因此它的绝对数值与 2026-11-09 之前不可比；跨轮比较只能在本轮同基准内做 A/B。
+
+**一次未能复现的全量失败（记录备查）**：覆盖率达到 91.2% 的那次 `-coverprofile` 全量跑里出现过一次 FAIL，之后 12 次全量（含 3 次带覆盖计数）全绿，未能再复现，也未抓到失败用例名。为降低时序敏感度，`log_test.go` 的 `waitForWrittenPayload` 上限从 2s 放宽到 5s（与仓库现有 flood 测试一致）。若之后再现，按当时日志定位。
 ### 2026-11-09 服务规则与日志泵覆盖轮次（覆盖，不是性能）
 
 上一轮把 method 表的 action handler 都跑通之后，剩下的 0% 集中在两类：**400 行没人跑过的 unlock 规则**（`service_rules.go` 14 个检查器，全靠 `handleServiceCheck` 的注入源覆盖其框架）和**日志泵的三条分支**（只有宿主真的开/关日志时才走到）。
@@ -512,13 +525,13 @@
 ### 连接答案路径覆盖收口（2026-11-09）
 
 `core/connection.go` 的 18 个函数现已 **100% 覆盖**（此前 `appendDocument` 68.8%、`documentSize` 71.4%、`rowAnswerSize` 81.8%、`handleResetNetwork` 0%）。补齐的四条都是仪表盘真实会走到的路径：带 GeoIP 的行（答案缓冲按 `rowAnswerSize` 预分配，两个字符串切片若不计入，每次 resync 都会扩容）、nil 行、一次轮询里离开多行的分隔符、按 id 关闭存活行。另外钉住一条不变量：`rowAnswerSize` 永不低于编码后长度（预分配就靠它）。父仓库 `b8bd4801`，包覆盖率 82.9% → 83.3%。
-### 2026-11-09 验证矩阵（当前状态，父仓库 main `0852f7ce` / 子模块 `39ce557da`）
+### 2026-11-09 验证矩阵（当前状态，父仓库 main `947fc165` / 子模块 `39ce557da`）
 
 | 验证项 | 命令 | 结果 |
 |---|---|---|
 | 子模块全量 | `go test ./... -count=1 -p=1`（Clash.Meta） | **104 包 ok，exit 0** |
 | 子模块 vet | `go vet ./...`（Clash.Meta） | 通过 |
-| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 91.3% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、log.go 5 个函数 100%、service_rules.go 14 个检查器全部有确定性用例、updateListeners 100%、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
+| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 91.8% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、log.go 5 个函数 100%、service_rules.go 14 个检查器全部有确定性用例、updateListeners 100%、事件批量每批 1 次分配（缓冲池化，-99.70%）、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
 | wrapper vet | `go vet ./...` | 通过 |
 | wrapper 跨平台 vet | `GOOS=windows/linux/darwin/amd64` 与 `GOOS=android GOARCH=arm64` | 四个目标全部 exit 0 |
 | focused race | `go test -race . -run 'TestGroupDoc|TestProxies|TestProxy|TestFrame|TestSpill|TestDispatched|TestConnection|TestRefreshRouteVersions|TestRouteStamp'`（CGO_ENABLED=1，mingw64 在 PATH） | 通过 |
