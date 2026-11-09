@@ -247,31 +247,27 @@ var providerListGeneration = provider.ListGeneration
 // refreshGroupDoc rebuilds a slot's document when the values the live encode
 // would write have moved.
 //
-// Every value the document carries that can move is counted: the pinned
-// selection, the live pick the document names as now, and the provider lists
-// behind the members. Reading the counters is a handful of atomic loads, so a
-// steady-state answer resolves no selection at all -- the live pick of a
-// URLTest or Fallback is the expensive half, since resolving it walks the
-// group's fast node and its clock.
+// Two counters carry every value the document can write that moves: the
+// group's answer version, which counts the pinned selection and the live pick
+// as one number, and the provider list generation behind the members. Reading
+// two counters is a handful of atomic loads, so a steady-state answer resolves
+// no selection at all -- resolving a URLTest's or Fallback's live pick walks
+// the group's fast node and its clock, and that used to be most of what
+// answering the table cost.
 func refreshGroupDoc(slot *groupDocSlot, generation uint64) {
 	if slot.doc != nil &&
-		slot.selectedAt == slot.group.SelectionVersion() &&
-		slot.generation == generation &&
-		(slot.live == nil || slot.liveAt == slot.live.LiveSelectionVersion()) {
+		slot.answerAt == slot.answer.AnswerVersion() &&
+		slot.generation == generation {
 		return
 	}
-	// The counters are read before the encode: a selection or a pick that moves
-	// while the document is being written would stamp the newer counter on a
-	// document that does not carry it, and the staleness would never be seen
-	// again. The generation was read once for the whole answer, ahead of every
-	// document in it.
-	selectedAt := slot.group.SelectionVersion()
-	var liveAt uint64
-	if slot.live != nil {
-		liveAt = slot.live.LiveSelectionVersion()
-	}
+	// The counter is read before the encode: an answer that moves while the
+	// document is being written would stamp the newer counter on a document
+	// that does not carry it, and the staleness would never be seen again. The
+	// generation was read once for the whole answer, ahead of every document
+	// in it.
+	answerAt := slot.answer.AnswerVersion()
 	slot.doc = appendGroupDocument(nil, slot.proxy)
-	slot.selectedAt, slot.liveAt, slot.generation = selectedAt, liveAt, generation
+	slot.answerAt, slot.generation = answerAt, generation
 	groupDocGeneration++
 }
 
@@ -425,14 +421,10 @@ type groupDocSlot struct {
 	typ   constant.AdapterType
 	fixed interface{ SelectedName() string }
 	live  interface{ LiveSelectionVersion() uint64 }
-	// The selection count the stored document was encoded under. A Selector's
-	// document is keyed on the group's own counter beside the provider list
-	// generation, so answering it never resolves the selection.
-	selectedAt uint64
-	// The live pick count the stored document was encoded under. A URLTest or a
-	// Fallback names its live pick, which moves on its own as members fail, so
-	// this is what lets the answer path skip resolving it.
-	liveAt     uint64
+	// The answer version the stored document was encoded under: the pinned
+	// selection and the live pick, counted as one number by the group.
+	answer     interface{ AnswerVersion() uint64 }
+	answerAt   uint64
 	generation uint64
 	doc        []byte
 }
@@ -447,20 +439,14 @@ func newGroupDocSlot(proxy constant.Proxy) *groupDocSlot {
 		return slot
 	}
 	// The key of a URLTest or Fallback also names its pinned selection, so a
-	// group whose adapter does not expose one stays on the live path instead
-	// of failing that read on every answer.
-	if adapterType == constant.URLTest || adapterType == constant.Fallback {
-		fixed, ok := proxy.Adapter().(interface{ SelectedName() string })
-		if !ok {
-			return slot
-		}
-		slot.fixed = fixed
-		live, ok := proxy.Adapter().(interface{ LiveSelectionVersion() uint64 })
-		if !ok {
-			return slot
-		}
-		slot.live = live
+	// group counts its own answer version, so a group whose adapter does not
+	// expose one stays on the live path instead of failing that read on every
+	// answer.
+	answer, ok := proxy.Adapter().(interface{ AnswerVersion() uint64 })
+	if !ok {
+		return slot
 	}
+	slot.answer = answer
 	slot.group = group
 	return slot
 }
