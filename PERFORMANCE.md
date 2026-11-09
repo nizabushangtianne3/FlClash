@@ -575,6 +575,23 @@ dart run tool/test.dart   # exit 0
 子模块提供**选中/成员变更的主动失效钩子**（provider 版本变化、组选中变化、fast-node 改选时通知 wrapper），把 wrapper 每答案的 provider 版本遍历（约占命中路径 14%）也消掉。这是架构级改动：要覆盖 `updateExternalProvider`（不重建代理表的那条路）、四个组类型的选中变更、以及 LoadBalance 的无选中语义，且任何漏通知都会让 UI 显示过期选中态。做之前必须先有一张「变更点 × 通知点」的覆盖矩阵和对应的并发测试。
 
 
+### 全代码复核覆盖面（2026-11-09，含平台层）
+
+目标第 1 条要求复核全量代码。除 Go 侧（wrapper + 子模块，见第 2/3/5 节）外，本轮把平台层也过了一遍，结论如下，避免后续重复劳动。
+
+| 范围 | 规模 | 复核结论 |
+|---|---|---|
+| `core/`（wrapper） | 60 文件 | 已逐文件过；热点路径全部实测并处置（见第 2、5 节）。反模式扫描：`regexp.MustCompile` 全在包级 var；`fmt.Sprintf` 全在冷路径；字符串 `+=` 仅 `share_link.go:157` 一处且在按需路径 |
+| `core/Clash.Meta`（子模块） | 104 包 | 往轮次已覆盖；本轮新增 `ProxyGroup.SelectionVersion`。反模式扫描：无函数内正则编译 |
+| `android/app` + `android/service` + `android/core` | Kotlin/Java 约 9K 行 | 无热点问题。`VpnService.resolvePackage` 按 uid 用 `ConcurrentHashMap` 缓存；`resolveUid` 直接委托系统；TUN fd `detachFd` 后交给 Go，Java 侧不在报文路径上。`NotificationModule` 2s 周期 + `distinctUntilChanged` + `collectLatest`，设计正确。`Traffic.getSpeedTrafficText` 用 Gson 反序列化一个小 payload，0.5Hz 量级，无需改 |
+| `windows/runner` | C++ 约 3.4K 行 | Flutter 标准样板（win32_window / flutter_window / main / utils），无业务逻辑，无可优化项 |
+| `linux/` + `macos/` | 约 3.1K 行 | 桌面壳层，同属样板量级，本轮未发现热点 |
+| `services/` + `plugins/` | 约 3000 文件 | 内 vendor 第三方代码（sing-box 等），按仓库规矩不动 |
+| Dart 接收路径（`lib/core/desktop/rpc_client.dart` 等） | - | 曾怀疑 `_handleFrame` 的 `Map<String, Object?>.from(decoded)` 每帧整表拷贝——**证伪**：它只拷顶层 2 个条目（id/result），庞大的 result 是引用传递。Dart 侧真正的大头是 `json` 解码本身（160KB 帧实测 874–1282µs），2026-11-05 已定案「融合进构建 isolate 最多省 ~0.5ms 却要改 RPC 契约」，维持不动 |
+
+**结论**：核心（Go 侧）的优化空间已按实测挖到饱和；平台层无独立热点；剩余唯一有实质收益的方向见第 5 节末「主动失效钩子」。
+
+
 ### P1：DNS UDP response parsing
 
 - 常见 A/AAAA 简单回复已走单 slab 快速解析，`BenchmarkClientExchangeUDP` 为 11 allocs / 739B（端到端，含 UDP I/O）。
