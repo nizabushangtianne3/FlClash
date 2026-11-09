@@ -356,6 +356,55 @@ func TestRouteVersionsScratchFollowsAGroupPick(t *testing.T) {
 	}
 }
 
+// queueRouteRefresh sets what the worker is asked to run, under the lock the
+// worker itself takes to read it.
+func queueRouteRefresh(reset bool) {
+	routeRefreshMu.Lock()
+	defer routeRefreshMu.Unlock()
+	routeRefreshQueued = true
+	routeRefreshQueuedReset = reset
+}
+
+func routeRefreshQueue() (queued, reset bool) {
+	routeRefreshMu.Lock()
+	defer routeRefreshMu.Unlock()
+	return routeRefreshQueued, routeRefreshQueuedReset
+}
+
+// A queued refresh and a queued reset are the two things the worker runs: the
+// refresh revalidates the picks and the provider versions and exits when
+// nothing is queued behind it, and the reset takes the debounced epoch bump.
+// Driving the worker directly keeps both branches off the poll's timing.
+func TestRouteRefreshWorkerRunsAQueuedRefreshAndAReset(t *testing.T) {
+	recordRoutes(t)
+	keepTunnel(t)
+	currentRoute.mu.Lock()
+	currentRoute.watched = true
+	currentRoute.mu.Unlock()
+	t.Cleanup(stopRouteWatch)
+
+	queueRouteRefresh(false)
+	routeRefreshWorker()
+
+	queued, reset := routeRefreshQueue()
+	if queued || reset {
+		t.Fatalf("queue = (%t, %t) after a refresh, want both cleared", queued, reset)
+	}
+
+	queueRouteRefresh(true)
+	before := routeState()
+	routeRefreshWorker()
+
+	queued, reset = routeRefreshQueue()
+	if queued || reset {
+		t.Fatalf("queue = (%t, %t) after a reset, want both cleared", queued, reset)
+	}
+	if after := routeState(); after.CoreEpoch <= before.CoreEpoch {
+		t.Fatalf("epoch = %d after the reset, want more than %d",
+			after.CoreEpoch, before.CoreEpoch)
+	}
+}
+
 func TestRouteVersionsPollLeavesRuleSetsToTheirEvent(t *testing.T) {
 	recordRoutes(t)
 	isRunning.Store(true)
