@@ -419,29 +419,24 @@ func (cache *proxiesFrameCache) matches(answer *proxiesAnswer) bool {
 // they were built for, so a rebuilt table starts with empty slots and an
 // answer needs no map lookup to reach the row it is writing.
 type groupDocSlot struct {
-	proxy constant.Proxy
-	// nil when the document cannot be keyed: the adapter is not a group, or
-	// a URLTest or Fallback exposes no pinned selection to key on.
-	group outboundgroup.ProxyGroup
-	// The adapter type and the pinned-selection reader are fixed for the
-	// proxy's life, so the answer path reads them from the slot instead of
-	// dispatching into the proxy for them on every group.
-	typ   constant.AdapterType
-	fixed interface{ SelectedName() string }
-	live  interface{ LiveSelectionVersion() uint64 }
+	// The read that revalidates a document touches only the fields below, so
+	// they share one cache line; the rebuild that follows is the cold path.
 	// The answer version the stored document was encoded under: the pinned
 	// selection and the live pick, counted as one number by the group.
 	answer     interface{ AnswerVersion() uint64 }
 	answerAt   uint64
 	generation uint64
 	doc        []byte
+	// nil when the document cannot be keyed: the adapter is not a group, or
+	// a URLTest or Fallback exposes no pinned selection to key on.
+	group outboundgroup.ProxyGroup
+	proxy constant.Proxy
 }
 
 // newGroupDocSlot builds the cache row for one group: the caller has already
 // decided the proxy is a group, and every kind that parses is cacheable.
 func newGroupDocSlot(proxy constant.Proxy) *groupDocSlot {
-	adapterType := proxy.Type()
-	slot := &groupDocSlot{proxy: proxy, typ: adapterType}
+	slot := &groupDocSlot{proxy: proxy}
 	group, ok := adapterAs[outboundgroup.ProxyGroup](proxy)
 	if !ok {
 		return slot
