@@ -418,6 +418,7 @@
 
 ## 3. 已拒绝或已撤销实验
 
+| 文档缓存改用路由版本（`routeStamp`）替代每组的 provider 版本遍历 | 否决。`updateExternalProvider` 里 `refreshRoute()` 确实是同步的，但 wrapper 自己的 `cachingProvider.setProxies` 只 bump 版本、不经过路由刷新（hub_test.go:896 注释即写明「版本是运行时 provider 更新留下的唯一信号」），所以该键会直接破坏 `TestGroupDocsAnswerWhatTheirGroupsChange`，也会漏掉所有不走 `refreshRoute` 的更新路径。provider 版本遍历是唯一稳健的探测器，保留 |
 | 实验 | 结论 |
 |---|---|
 | `common/net/deadline` 常驻 reader goroutine | 分配可降为 0，但读耗时约 794ns 增至 940ns，已撤销，不要保留。 |
