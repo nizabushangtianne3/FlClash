@@ -22,6 +22,7 @@ import (
 	"github.com/metacubex/mihomo/constant"
 	cp "github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/hub/route"
+	"github.com/metacubex/mihomo/listener"
 	authStore "github.com/metacubex/mihomo/listener/auth"
 	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel"
@@ -821,6 +822,41 @@ func TestApplyConfigTellsARejectedProfileFromAFailedCall(t *testing.T) {
 	}
 	if currentConfig == nil {
 		t.Error("the default config did not take the rejected one's place")
+	}
+}
+
+// The apply patches the listeners with the config that came out of it, which
+// is the only path that reaches listener.PatchInboundListeners and the
+// ReCreate family. The built-in default holds every port at zero, so the patch
+// binds nothing, which is what makes it safe to run outside a device.
+func TestApplyConfigPatchesTheListenersWithTheAppliedConfig(t *testing.T) {
+	home := t.TempDir()
+	previousHome := constant.Path.HomeDir()
+	constant.SetHomeDir(home)
+	t.Cleanup(func() {
+		_ = cachefile.Cache().Close()
+		constant.SetHomeDir(previousHome)
+	})
+	withCurrentConfig(t, nil)
+	keepTunnel(t)
+	if err := os.WriteFile(filepath.Join(home, "config.yaml"), []byte("proxies: [unterminated\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	isRunning.Store(true)
+	t.Cleanup(func() { isRunning.Store(false) })
+
+	err := applyConfig(&SetupParams{})
+
+	var methodErr *MethodError
+	if !errors.As(err, &methodErr) || methodErr.Code != "config_rejected" {
+		t.Fatalf("applyConfig = %v, want a config_rejected error", err)
+	}
+	// Nothing was bound, so nothing has to be unwound: the patcher closed what
+	// it found and created no socket.
+	ports := listener.GetPorts()
+	if ports.Port != 0 || ports.SocksPort != 0 || ports.RedirPort != 0 ||
+		ports.TProxyPort != 0 || ports.MixedPort != 0 {
+		t.Errorf("ports = %+v, want the default config to have bound nothing", ports)
 	}
 }
 
