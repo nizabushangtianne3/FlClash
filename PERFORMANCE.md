@@ -520,18 +520,32 @@
 覆盖率：wrapper `go test ./... -coverprofile` **85.2% → 91.3%**（statements）。剩余 0% 全部落在「单测里构造不出来」的三类：进程/信号入口（`main`、`StartServer`、`ExitOnTermination`、windows 的 `dial`）、`ownership_other.go` 的非 Windows 平台空实现、以及桌面端永远为真的 `hasEventListener` 使 `requestTrafficWatch.clear` 不可达（Android 侧才走得到）。另有一处既有台账更正：`MethodError.Error`/`handleCrash`/`handleInit`/`handleInitialized`/`handleStopListener` 仍未覆盖，列入后续，未在本轮做。
 
 **审计结论（记录备查，未改动）**：`netflixRegion` 读的是 `Location` 里第 4 段（`/jp-en/title/80018499` 这类绝对 URL 拆段后的 locale 段），本机无法连 netflix.com 取真实响应，行为按现值钉住；若将来拿到真实响应与此不符，那是行为修正而非测试失败。
+
+### 2026-11-09 分享链接与残余分支覆盖轮次（覆盖，不是性能）
+
+上一轮把 unlock 规则和日志泵收口后，剩下能覆盖的都是「只在特定字段/特定错误下才走」的分支，其中最大一块是 `share_link.go`：14 个编码器此前只被「生成后交由 convert 读回」的往返测试覆盖，那只证明**能往返的字段**没丢。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 每个编码器的每个可选字段各有一个用例：直接断言链接的 scheme/userinfo/host/query（含 hysteria2 的端口段这种 `url.Parse` 会拒绝、只能手拆的形状），以及 v2rayN JSON 形态的 base64 解包断言 | -（仅 wrapper） | `c3414ff5` | `share_link.go` **逐函数 100%**（此前 63.8%~94.4%）；`proxyFields` 的 str/flag/sub/list/first 五种入参形态全部钉住。顺带删掉 `encodeVmess` 里一段不可达分支（legacy 形态只在 alterId 既非空也非 "0" 时进入，`aid` 不可能是空串） |
+| 补 `handleSetupConfig` 未初始化即拒绝、`mappingValue` 的 merge key 查找（`<<: *anchor` 与 `<<: [*a, *b]`） | -（仅 wrapper） | `234aa525` | `handleSetupConfig` 66.7% → 100%，`mappingValue` 47.4% → 94.7% |
+| 补 `forgetPendingProbeRoute` 的「忘记未登记的连接」与「忘记已登记的连接」两半、`logError` 的 stderr 调试开关、`reportMissingDelayTestProxy` 的一秒静默 | -（仅 wrapper） | `a9b44e6d` | `forgetPendingProbeRoute` 50% → 100%、`logError` 66.7% → 100%、`reportMissingDelayTestProxy` 71.4% → 85.7%（剩 compare-and-swap 失败那一行，需要并发竞争才能确定性地走到） |
+
+包覆盖率：91.8% → **93.8%**（statements）。
+
+**剩余未覆盖（本轮盘点，均需在单测里「造不出来」或价值极低）**：`main`/`StartServer`/`ExitOnTermination`/`dial`（进程与信号入口）、`ownership_other.go` 三个非 Windows 平台空实现、`handleCrash`（开发者专用的主动崩溃路径）、`requestTrafficWatch.clear`（桌面端 `hasEventListener` 恒真，只有 Android 走得到），以及各处的「写文件/Chmod 失败」「compare-and-swap 失败」类防御分支（需注入文件系统错误或并发竞争）。
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
 
 `core/connection.go` 的 18 个函数现已 **100% 覆盖**（此前 `appendDocument` 68.8%、`documentSize` 71.4%、`rowAnswerSize` 81.8%、`handleResetNetwork` 0%）。补齐的四条都是仪表盘真实会走到的路径：带 GeoIP 的行（答案缓冲按 `rowAnswerSize` 预分配，两个字符串切片若不计入，每次 resync 都会扩容）、nil 行、一次轮询里离开多行的分隔符、按 id 关闭存活行。另外钉住一条不变量：`rowAnswerSize` 永不低于编码后长度（预分配就靠它）。父仓库 `b8bd4801`，包覆盖率 82.9% → 83.3%。
-### 2026-11-09 验证矩阵（当前状态，父仓库 main `947fc165` / 子模块 `39ce557da`）
+### 2026-11-09 验证矩阵（当前状态，父仓库 main `a9b44e6d` / 子模块 `39ce557da`）
 
 | 验证项 | 命令 | 结果 |
 |---|---|---|
 | 子模块全量 | `go test ./... -count=1 -p=1`（Clash.Meta） | **104 包 ok，exit 0** |
 | 子模块 vet | `go vet ./...`（Clash.Meta） | 通过 |
-| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 91.8% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、log.go 5 个函数 100%、service_rules.go 14 个检查器全部有确定性用例、updateListeners 100%、事件批量每批 1 次分配（缓冲池化，-99.70%）、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
+| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 93.8% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、log.go 5 个函数 100%、service_rules.go 14 个检查器全部有确定性用例、share_link.go 逐函数 100%、updateListeners 100%、事件批量每批 1 次分配（缓冲池化，-99.70%）、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
 | wrapper vet | `go vet ./...` | 通过 |
 | wrapper 跨平台 vet | `GOOS=windows/linux/darwin/amd64` 与 `GOOS=android GOARCH=arm64` | 四个目标全部 exit 0 |
 | focused race | `go test -race . -run 'TestGroupDoc|TestProxies|TestProxy|TestFrame|TestSpill|TestDispatched|TestConnection|TestRefreshRouteVersions|TestRouteStamp'`（CGO_ENABLED=1，mingw64 在 PATH） | 通过 |
