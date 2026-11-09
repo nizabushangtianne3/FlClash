@@ -587,12 +587,20 @@
 **审计结论（记录备查）**：`GroupBase.GetProxies` 重建成员列表后**先读版本再入缓存**，注释称「版本在列表之后读，交换发生在本次调用内时会把新版本盖在混合结果上」——这段推理与 `tunnel/patch.go` 的注释（「Version before proxies，另一种顺序会让缓存永不恢复」）互相矛盾，按后者才是对的。影响面极窄（只在 provider 恰好于列表读取期间交换时出现一次永久陈旧），本轮未改，留待单独一轮修。
 
 **新否决（勿重做）**：想在 wrapper 测试里用 `provider.NewProxiesParser` 造真实 provider——不行，它的 `override overrideSchema` 是未导出类型，wrapper 无法构造。可行做法是自己传一个 `resource.Parser[[]constant.Proxy]`（本轮回退方案即此）。
+
+### 2026-11-09 成员列表版本读取顺序修正（正确性）
+
+账本上一轮记下的「两条矛盾注释」有了结论并落地。`GroupBase.GetProxies` 在读完列表**之后**才读 provider 版本并入缓存，其注释称「交换发生在本次调用内时会把新版本盖在混合结果上，于是下次重建」——恰恰相反：新版本盖上去之后，下次比较「当前 == 已存」必然相等，那份**混合/陈旧列表会被永久 serving**。`tunnel/patch.go` 对同一个问题的注释（「Version before proxies，另一种顺序会让缓存永不恢复」）才是对的。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `GroupBase.GetProxies` 把 `providerVersionsNow()` 挪到读列表之前，缓存盖的就是读列表前那一代；新增 `TestGetProxiesDoesNotCacheAListItsVersionOutran`，用「读取期间列表被换掉」的 provider 钉住不变量 | `7f653cb1b` | 本轮父仓库提交 | 先实证：不修复时该用例失败（`expected: second, actual: first`，陈旧列表被永久缓存），修复后通过。成本不变（同一次 `providerVersionsNow()`，只是提前），稳态命中路径完全不经过它。子模块 104 包全量 + vet（四目标）+ focused race 通过 |
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
 
 `core/connection.go` 的 18 个函数现已 **100% 覆盖**（此前 `appendDocument` 68.8%、`documentSize` 71.4%、`rowAnswerSize` 81.8%、`handleResetNetwork` 0%）。补齐的四条都是仪表盘真实会走到的路径：带 GeoIP 的行（答案缓冲按 `rowAnswerSize` 预分配，两个字符串切片若不计入，每次 resync 都会扩容）、nil 行、一次轮询里离开多行的分隔符、按 id 关闭存活行。另外钉住一条不变量：`rowAnswerSize` 永不低于编码后长度（预分配就靠它）。父仓库 `b8bd4801`，包覆盖率 82.9% → 83.3%。
-### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `d2ba563e9`）
+### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `7f653cb1b`）
 
 | 验证项 | 命令 | 结果 |
 |---|---|---|
