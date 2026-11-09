@@ -93,6 +93,10 @@ type groupProjectionCache struct {
 	snapshot map[string]constant.Proxy
 	source   []string
 	names    []string
+	// The answer the projection stands for: its two fields are the values the
+	// cache already holds, so a steady table hands back the same struct it
+	// answered with instead of building one more per read.
+	answer *proxiesAnswer
 }
 
 var groupProjection atomic.Pointer[groupProjectionCache]
@@ -127,7 +131,7 @@ func handleGetProxies() *proxiesAnswer {
 
 	if cache := groupProjection.Load(); cache != nil &&
 		sameProxySnapshot(cache.snapshot, proxies) && sameProxyNameList(cache.source, source) {
-		return &proxiesAnswer{proxies: proxies, names: cache.names}
+		return cache.answer
 	}
 
 	names := proxyGroupNames(source, func(name string) (constant.AdapterType, bool) {
@@ -137,13 +141,15 @@ func handleGetProxies() *proxiesAnswer {
 		}
 		return p.Type(), true
 	})
+	answer := &proxiesAnswer{proxies: proxies, names: names}
 	groupProjection.Store(&groupProjectionCache{
 		snapshot: proxies,
 		source:   source,
 		names:    names,
+		answer:   answer,
 	})
 
-	return &proxiesAnswer{proxies: proxies, names: names}
+	return answer
 }
 
 // The host re-reads the whole proxy table whenever the proxies page opens or a
