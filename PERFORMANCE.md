@@ -573,18 +573,32 @@
 **测试怎么模拟 provider 换列表**：`providerListGeneration` 是包级函数变量（仓库既有的 `setupConfig`/`readMemoryStats`/`publishRoute` 同款模式），测试用一个可推座的 stamp 顶上；`cachingProvider.setProxies` 像 core 的 `setProxies` 一样把 stamp 推一下。这样「provider 重载后不得继续用缓存文档」的既有断言原样通过。
 
 **又一次既有 DATA RACE 复核（未修，属测试夹具）**：`TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 的 `-race` 失败——本次改动前后**同一竞态**：写入在 `route_test.go:63`（`recordRoutes` 的 cleanup 还原 `publishRoute`），读取在 `applyRouteSnapshot` 里的 `publishRoute(state)`（基线 `route.go:321`，本轮 `route.go:313`）。是 cleanup 没有先停掉后台 `routeRefreshWorker` 就还原钩子，与本次改动无关；要修应修夹具（先 `stopRouteWatch()` 再还原），留作后续。
+
+### 2026-11-09 组内缓存选中跟换代号轮次（性能，接上一轮）
+
+上一轮把 wrapper 的答案路径换到列表代号后，剖析显示 urltest 行的剩余成本仍在子模块里：`(*URLTest).fast` 的 cum 18.10%、`providerVersionsUnchanged`/`providerVersionsEqual` 合计约 8~15%。原因就是 `dropCacheForProviderSwap`——它每次挑路都在走一遍 group 自己的 provider 版本遍历，而这正是代号已经回答的问题。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `URLTest.dropCacheForProviderSwap` 改用列表代号：`knownVersions atomic.Pointer[[]uint32]` + `versionsMu` 换成 `knownGeneration atomic.Uint64`，`providerVersionsUnchanged` 删除；代号经包级变量 `listGeneration` 读（子模块自己的 failover 测试用 stamp 顶上，与 wrapper 同款模式） | `d2ba563e9` | `d43b5bea` | wrapper 答案路径配对 A/B（n=4，`-benchtime 1s`，benchstat）：urltest 10.192µ → 7.904µ（**-22.45%**，p=0.029）、urltest+千节点 10.937µ → 8.557µ（**-21.76%**）、其余场景全不变（fallback 在样本拉长后 p=0.200，回到噪声带内）；allocs/内存不变。子模块自己的挑路基准同向：cached 26.32ns → 23.72ns（**-9.88%**）、large group 125.4ns → 121.7ns（**-2.95%**） |
+
+**本轮一并发现的测试保真度缺口（已修）**：wrapper 的组文档测试原先用一个 wrapper 自建的 provider 换列表。那个 provider 推不到子模块的代号，于是「provider 重载后丢弃组内缓存选中」这条路径在 wrapper 测试里**恰好失效**——而断言写的是 `doc.Now == Now()`（同一份陈旧值自比对），所以一直绿。改为：两个会换列表的测试改用**真实的 core provider**（文件载体 + wrapper 自带 `resource.Parser`，换列表时改写文件并 `Update()`，真的推动代号），并把 `now` 钉成「不得再是被丢弃的那个成员」。wrapper 的 stamp 也跟着推一次，因为答案路径读的是它。
+
+**审计结论（记录备查）**：`GroupBase.GetProxies` 重建成员列表后**先读版本再入缓存**，注释称「版本在列表之后读，交换发生在本次调用内时会把新版本盖在混合结果上」——这段推理与 `tunnel/patch.go` 的注释（「Version before proxies，另一种顺序会让缓存永不恢复」）互相矛盾，按后者才是对的。影响面极窄（只在 provider 恰好于列表读取期间交换时出现一次永久陈旧），本轮未改，留待单独一轮修。
+
+**新否决（勿重做）**：想在 wrapper 测试里用 `provider.NewProxiesParser` 造真实 provider——不行，它的 `override overrideSchema` 是未导出类型，wrapper 无法构造。可行做法是自己传一个 `resource.Parser[[]constant.Proxy]`（本轮回退方案即此）。
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
 
 `core/connection.go` 的 18 个函数现已 **100% 覆盖**（此前 `appendDocument` 68.8%、`documentSize` 71.4%、`rowAnswerSize` 81.8%、`handleResetNetwork` 0%）。补齐的四条都是仪表盘真实会走到的路径：带 GeoIP 的行（答案缓冲按 `rowAnswerSize` 预分配，两个字符串切片若不计入，每次 resync 都会扩容）、nil 行、一次轮询里离开多行的分隔符、按 id 关闭存活行。另外钉住一条不变量：`rowAnswerSize` 永不低于编码后长度（预分配就靠它）。父仓库 `b8bd4801`，包覆盖率 82.9% → 83.3%。
-### 2026-11-09 验证矩阵（当前状态，父仓库 main `1a296a0b` / 子模块 `16f06520e`）
+### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `d2ba563e9`）
 
 | 验证项 | 命令 | 结果 |
 |---|---|---|
 | 子模块全量 | `go test ./... -count=1 -p=1`（Clash.Meta） | **104 包 ok，exit 0**（本轮子模块改动后重跑） |
 | 子模块 vet | `go vet ./...`（Clash.Meta） | 通过 |
-| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 93.8% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、log.go 5 个函数 100%、service_rules.go 14 个检查器全部有确定性用例、share_link.go 逐函数 100%、updateListeners 100%、事件批量每批 1 次分配（缓冲池化，-99.70%）、provider 列表代号使答案路径 geomean -35.21%、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
+| wrapper 全量 | `go test ./... -count=1`（父仓库 core/） | **ok，coverage 93.9% of statements**（2026-11-09 起点 81.6%；其中 connection.go 18 个函数 100%、log.go 5 个函数 100%、service_rules.go 14 个检查器全部有确定性用例、share_link.go 逐函数 100%、updateListeners 100%、事件批量每批 1 次分配（缓冲池化，-99.70%）、provider 列表代号使答案路径 geomean -35.21%、urltest 行再 -22.45%、routeRefreshWorker 84.6%、sideUpdateExternalProvider 66.7%） |
 | wrapper vet | `go vet ./...` | 通过 |
 | wrapper 跨平台 vet | `GOOS=windows/linux/darwin/amd64` 与 `GOOS=android GOARCH=arm64` | 四个目标全部 exit 0 |
 | focused race | `go test -race . -run 'TestGroupDoc|TestProxies|TestProxy|TestFrame|TestSpill|TestDispatched|TestConnection|TestRefreshRouteVersions|TestRouteStamp'`（CGO_ENABLED=1，mingw64 在 PATH） | 通过 |
