@@ -27,6 +27,7 @@ import (
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/age"
 	"github.com/metacubex/mihomo/component/resolver"
+	"github.com/metacubex/mihomo/component/resource"
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
 	cp "github.com/metacubex/mihomo/constant/provider"
@@ -870,6 +871,60 @@ var providerGenerationStamp atomic.Uint64
 
 func init() {
 	providerListGeneration = providerGenerationStamp.Load
+}
+
+// swappingProvider is a real core provider over a file the test rewrites, so
+// swapping its list moves the same list generation a subscription refresh
+// moves. A provider the wrapper's own tests build cannot: the counter lives in
+// the core, and a group's cached pick is dropped by exactly that signal.
+type swappingProvider struct {
+	*provider.ProxySetProvider
+	path string
+}
+
+func newSwappingProvider(t *testing.T, name string, members ...string) *swappingProvider {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name+".yaml")
+	writeProviderMembers(t, path, members)
+
+	hc := provider.NewHealthCheck(nil, "", 0, 0, false, nil)
+	pd, err := provider.NewProxySetProvider(name, 0, nil, memberListParser(), resource.NewFileVehicle(path), hc)
+	if err != nil {
+		t.Fatalf("NewProxySetProvider: %v", err)
+	}
+	if err := pd.Initial(); err != nil {
+		t.Fatalf("Initial: %v", err)
+	}
+	return &swappingProvider{ProxySetProvider: pd, path: path}
+}
+
+func (p *swappingProvider) swap(t *testing.T, members ...string) {
+	t.Helper()
+	writeProviderMembers(t, p.path, members)
+	if err := p.Update(); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	// The core's own generation moved with the list; the wrapper's tests read
+	// their stand-in for it, so the swap moves that too.
+	providerGenerationStamp.Add(1)
+}
+
+func writeProviderMembers(t *testing.T, path string, members []string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(strings.Join(members, "\n")), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+// memberListParser reads the member names a test wrote, one per line.
+func memberListParser() resource.Parser[[]constant.Proxy] {
+	return func(buf []byte) ([]constant.Proxy, error) {
+		var proxies []constant.Proxy
+		for _, name := range strings.Fields(string(buf)) {
+			proxies = append(proxies, namedProxy(name))
+		}
+		return proxies, nil
+	}
 }
 
 // cachingProvider counts how often the tunnel walked its proxy list, which is

@@ -68,7 +68,7 @@ func proxyViewOf(t *testing.T, frame []byte, name string) map[string]any {
 // unchanged one answers with the frame it answered last time instead of
 // reassembling it, and every mutation the answer carries rebuilds it.
 func TestProxiesFrameAnswersTheSameBytesUntilSomethingMoves(t *testing.T) {
-	provider := newCachingProvider("subscription", "member-a", "member-b")
+	provider := newSwappingProvider(t, "subscription", "member-a", "member-b")
 	group := proxyGroupOver(t, "group", "selector", []cp.ProxyProvider{provider})
 
 	tunnel.UpdateProxies(map[string]C.Proxy{"group": group}, nil)
@@ -112,10 +112,12 @@ func TestProxiesFrameAnswersTheSameBytesUntilSomethingMoves(t *testing.T) {
 	require.Contains(t, string(moved), `"now":"member-b"`,
 		"a moved selection has to reach the answer even though it changed no name list")
 
-	provider.setProxies("member-a", "member-c")
+	provider.swap(t, "member-a", "member-c")
 	reloaded := answerFrame(handleGetProxies(), "call")
 	require.Contains(t, string(reloaded), `"member-c"`,
 		"a provider reload rewrites the member list behind the same document")
+	require.NotContains(t, string(reloaded), `"member-b"`,
+		"a dropped member has to leave the answer, not ride the cached pick")
 
 	// A rebuilt table carries new rows, so the cached frame is not it.
 	node := namedProxy("member-a")

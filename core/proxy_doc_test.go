@@ -60,7 +60,7 @@ func decodeProxiesFrame(t *testing.T, frame []byte) proxiesFrame {
 func TestGroupDocsAnswerWhatTheirGroupsChange(t *testing.T) {
 	for _, kind := range []string{"selector", "urltest", "fallback", "loadbalance"} {
 		t.Run(kind, func(t *testing.T) {
-			provider := newCachingProvider("subscription", "member-a", "member-b")
+			provider := newSwappingProvider(t, "subscription", "member-a", "member-b")
 			group := proxyGroupOver(t, "group", kind, []cp.ProxyProvider{provider})
 
 			tunnel.UpdateProxies(map[string]C.Proxy{"group": group}, nil)
@@ -99,11 +99,13 @@ func TestGroupDocsAnswerWhatTheirGroupsChange(t *testing.T) {
 
 			// A subscription refresh rewrites the member list behind the same
 			// document, with the versions as the only signal it happened.
-			provider.setProxies("member-a", "member-c")
+			provider.swap(t, "member-a", "member-c")
 			refreshed := decodeGroupDoc(t, decodeProxiesFrame(t, answerFrame(handleGetProxies(), "call")), "group")
 			require.Equal(t, []string{"member-a", "member-c"}, refreshed.All,
 				"a provider reload must not be answered from the cached document")
 			if kind != "loadbalance" {
+				require.NotEqual(t, "member-b", refreshed.Now,
+					"a provider reload has to drop the group's cached pick, not answer a member the new list dropped")
 				require.Equal(t, groupNow(t, group), refreshed.Now)
 			}
 
