@@ -221,13 +221,27 @@ func (a *proxiesAnswer) appendProxyTable(buf []byte, snapshot *sortedProxyNameCa
 
 // refreshGroupDocs revalidates every group's document and reports whether the
 // table holds one that is encoded live, which no frame cache covers.
+//
+// A revalidation only has to run when something moved since the last one: a
+// provider's list, or any group's answer. Two counter reads stand for that, so
+// a steady-state answer resolves no selection at all. The stamp is read before
+// the pass, the way a slot's answer version is read before its encode: a group
+// that moves while the table is being validated leaves the counter ahead of
+// the stamp, and the next answer sees it.
 func refreshGroupDocs(snapshot *sortedProxyNameCache) bool {
-	// One read per answer: every group's membership is a function of the same
-	// provider lists, so one generation stands for all of them.
+	answers := outboundgroup.AnswerGeneration()
+	if snapshot.validated && snapshot.answersSeen == answers {
+		if providers := providerListGeneration(); snapshot.providersSeen == providers {
+			return snapshot.unkeyed > 0
+		}
+	}
+
 	generation := providerListGeneration()
 	for _, slot := range snapshot.groupRows {
 		refreshGroupDoc(slot, generation)
 	}
+	snapshot.validated = true
+	snapshot.answersSeen, snapshot.providersSeen = answers, generation
 	return snapshot.unkeyed > 0
 }
 
@@ -312,6 +326,12 @@ type sortedProxyNameCache struct {
 	// them; the escaped length comes from jsonutil.StringLen.
 	keySpans  [][]byte
 	nodeViews [][]byte
+	// The revalidation stamp: the two counter values the last full pass read
+	// before it ran. A newer one on either means some group's answer or some
+	// provider's list moved, and every document has to be revalidated again.
+	validated     bool
+	answersSeen   uint64
+	providersSeen uint64
 	// groupSlots aligns with names: a nil element marks a node row whose view
 	// is precomputed, and a non-nil one carries that group's document cache.
 	groupSlots []*groupDocSlot
