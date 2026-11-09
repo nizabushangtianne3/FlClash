@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"testing"
 
 	"github.com/metacubex/mihomo/adapter"
@@ -123,6 +124,110 @@ func TestConnectionDeltaAnswersWhatTheHostReads(t *testing.T) {
 	gone := handleGetConnections(ConnectionsQuery{})
 	require.Equal(t, []string{first.Info().UUID.String()}, gone.Removed)
 
+}
+
+// A row's answer is preallocated from rowAnswerSize, so the hint has to cover
+// every field the row encoder writes. GeoIP carries the most: a rule that
+// matched a GEOIP rule fills two string slices the estimate must count.
+func TestRowAnswerSizeCoversEveryFieldTheEncoderWrites(t *testing.T) {
+	tracker := newConnectionDeltaTracker(t, &C.Metadata{
+		NetWork:      C.TCP,
+		Type:         C.HTTP,
+		Host:         "sized.example.com",
+		SrcIP:        netip.MustParseAddr("203.0.113.7"),
+		DstIP:        netip.MustParseAddr("198.51.100.9"),
+		SrcPort:      41234,
+		DstPort:      443,
+		InIP:         netip.MustParseAddr("127.0.0.1"),
+		InPort:       1234,
+		InName:       "http",
+		InUser:       "user",
+		Process:      "curl",
+		ProcessPath:  "/usr/bin/curl",
+		Uid:          10234,
+		SpecialProxy: "GLOBAL",
+		SpecialRules: "GEOIP,CN",
+		RemoteDst:    "cn.example.net:443",
+		SniffHost:    "sniffed.example.com",
+		SrcGeoIP:     []string{"CN", "HK"},
+		DstGeoIP:     []string{"US"},
+		SrcIPASN:     "AS4134 Chinanet",
+		DstIPASN:     "AS15169 Google",
+		DNSMode:      C.DNSNormal,
+	})
+	defer func() { _ = tracker.Close() }()
+
+	info := tracker.Info()
+	info.Rule = "GEOIP"
+	info.RulePayload = "CN"
+	info.Chain = []string{"DIRECT", "GLOBAL"}
+	info.UploadTotal.Store(2048)
+	info.DownloadTotal.Store(4096)
+
+	encoded := info.AppendJSON(nil)
+	require.GreaterOrEqual(t, rowAnswerSize(info), len(encoded),
+		"an under-estimate grows the answer buffer on every resync")
+	require.Contains(t, string(encoded), `"sourceGeoIP":["CN","HK"]`)
+	require.Contains(t, string(encoded), `"destinationGeoIP":["US"]`)
+}
+
+// A row the manager could not describe is answered as null rather than
+// dropped, so the host keeps the row's place in the table.
+func TestConnectionDeltaAnswersANilRowAsNull(t *testing.T) {
+	delta := &ConnectionDelta{Added: []*statistic.TrackerInfo{nil}, Count: 1}
+
+	answer := answerFrame(delta, "call")
+	require.Contains(t, string(answer), `"added":[null]`)
+	require.Contains(t, string(answer), `"count":1`)
+}
+
+// The Android path joins the two resets into one call; the tunnel has to end
+// up with no rows and a cleared DNS cache.
+func TestHandleResetNetworkClosesTheRowsItAnswers(t *testing.T) {
+	tracker := newConnectionDeltaTracker(t, &C.Metadata{NetWork: C.TCP, Host: "reset.example.com"})
+	require.Equal(t, 1, statistic.DefaultManager.Size())
+	rowID := tracker.ID()
+
+	handleResetNetwork()
+
+	require.Zero(t, statistic.DefaultManager.Size(),
+		"a network change closes the connections that went out over the old one")
+	require.Nil(t, statistic.DefaultManager.Get(rowID),
+		"the closed row is gone from the manager, not just closed")
+}
+
+// Two rows leaving in one poll answer both ids, so the host clears both
+// without waiting for a second poll.
+func TestConnectionDeltaAnswersEveryRowThatLeft(t *testing.T) {
+	first := newConnectionDeltaTracker(t, &C.Metadata{NetWork: C.TCP, Host: "first.example.com"})
+	second := newConnectionDeltaTracker(t, &C.Metadata{NetWork: C.TCP, Host: "second.example.com"})
+
+	require.Len(t, handleGetConnections(ConnectionsQuery{Resync: true}).Added, 2)
+
+	_ = first.Close()
+	_ = second.Close()
+	delta := handleGetConnections(ConnectionsQuery{})
+	// The manager walks a map, so which id comes first is not deterministic.
+	require.ElementsMatch(t,
+		[]string{first.Info().UUID.String(), second.Info().UUID.String()},
+		delta.Removed, "both ids leave in the answer that follows")
+	require.Zero(t, delta.Count)
+
+	answer := answerFrame(delta, "call")
+	require.Contains(t, string(answer), `"removed":["`)
+	require.Contains(t, string(answer), `","`)
+}
+
+// Closing one row by id is the row the connection list's close button sends.
+func TestHandleCloseConnectionClosesTheNamedRow(t *testing.T) {
+	tracker := newConnectionDeltaTracker(t, &C.Metadata{NetWork: C.TCP, Host: "closable.example.com"})
+	id := tracker.Info().UUID.String()
+
+	require.NoError(t, handleCloseConnection(IDParams{ID: id}))
+
+	require.Nil(t, statistic.DefaultManager.Get(id), "the named row is closed")
+	// A second close of the same id is a no-op, not an error.
+	require.NoError(t, handleCloseConnection(IDParams{ID: id}))
 }
 
 func BenchmarkGetConnectionsDelta(b *testing.B) {
