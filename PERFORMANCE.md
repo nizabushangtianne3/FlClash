@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-10（资料页缓存命中零分配化 + 代理表组刷新只走组行 + 组槽按缓存行打包 + ParseProxy 全覆盖）
-- FlClash main：`bbee578c`
-- Clash.Meta main：`21a22f5f2`
+- 最近核对日期：2026-11-10（资料页缓存命中零分配化 + 代理表组刷新只走组行 + 组槽按缓存行打包 + 组答案全局代号 + ParseProxy 全覆盖）
+- FlClash main：`9b143f7c`
+- Clash.Meta main：`778e0fb67`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 121 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 122 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -718,6 +718,20 @@ CPU 剖析（`BenchmarkHandleGetProxies`）显示答案路径 58% 落在 `refres
 |---|---|---|---|
 | 表驱动用例逐个解析全部可达类型（含 fork 自有的 gost-relay/shadowquic/sudoku/masque/trusttunnel/rematch/easytier 与 openvpn/zerotier），外加 missing type、未知类型、解码失败三条错误分支与 options 传入（ProviderName 透传）路径 | `21a22f5f2` | `bbee578c` | `ParseProxy` **8.6% → 75.9%**；`adapter` 包 **62.1% → 85.2%**。密钥由测试现铸：wireguard 用随机 32 字节 base64，masque 现生成 P-256 密钥对（base64 DER/SPKI）。唯一未覆盖是 `tailscale`——默认构建用 build tag 关掉了它，分支存在但无法解析 |
 
+
+### 2026-11-10 稳定态答案两次读轮次（性能，本会话最大单项）
+
+剖析显示答案路径过半落在 `refreshGroupDoc`：稳定态下每个组都在做「读自己的答案代号 + 比较 + 早退」。既然要的只是「有没有动过」，就不该逐组问。子模块因此增加一个进程级代号：**任何组的答案移动都 +1**（pin 与自行改选两条写入口都写它），wrapper 在快照上记住「上一次全量校验前读到的代号」，稳定态答案只做两次原子读 + 一次 provider 代号码，然后直接复印缓存文档。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 子模块 `adapter/outboundgroup`：`announceAnswer`/`bumpAnswer`/`Selector.setSelected` 三处写完各 `answerGeneration.Add(1)`，导出 `AnswerGeneration()` | `778e0fb67` | - | 子模报测试 `TestAnswerGenerationMovesWhenAGroupsAnswerDoes` 钉住「pin 动、自行选动、别的不动」 |
+| wrapper `refreshGroupDocs` 快路径：`validated` + `answersSeen`/`providersSeen` 两个戳记，任一较新才走全量；戳记同样取「校验前读到的值」，与按槽 `answerAt` 的「编码前读」同款保守 | -（仅 wrapper） | `9b143f7c` | n=7 交替 A/B：`BenchmarkHandleGetProxies` sec/op 200 组/无节点 883.8n → **186.8n（-78.86%）**、200 组/1000 节点 864.7n → 183.0n（**-78.84%**）、urltest -79.60%/-79.80%、fallback -81.41%、loadbalance -74.63%、20 组 -23.20%，geomean **-74.68%**（各 p=0.001）；**分配不变（2–3 allocs/答案）** |
+
+**正确性**：选中变更与订阅刷新两条路径早已被 `TestGroupDocsAnswerWhatTheirGroupsChange` 钉住（`selectable.Set` 后下一答案必须反映 `now`/`fixed`，provider swap 后必须反映成员表），本轮全量通过。miss 路径（换表重建）无回退：+1.55%（p=0.310，噪声内），分配逐项一致。
+
+**为什么不更早做**：它要求子模块先提供"有没有动"的单一真相源。此前轮次只把 URLTest/Fallback 的 `Now()` 解析换成了代号（见 2026-11-09 各轮次），而"逐组问一遍"这件事本身，只有当 wrapper 侧拿着一个可比较的快照级戳记时才能省掉。
+
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
@@ -738,6 +752,7 @@ CPU 剖析（`BenchmarkHandleGetProxies`）显示答案路径 58% 落在 `refres
 | 资料页缓存 focused race | `go test -race . -run 'Profile\|Route\|Base\|Merge'` | 除同一既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿（2026-11-10，`profile_cache.go` 改动后） |
 | 2026-11-10 三轮性能 + 覆盖 | 见第 2 节各轮次小节 | wrapper 全量 ok；四平台 vet（windows/linux/darwin/amd64 + android/arm64）exit 0；focused race 仅既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 失败（基线对照确认）；子模块全量 104 包 ok + vet 0；`ParseProxy` 8.6%→75.9%、`adapter` 62.1%→85.2% |
 
+| 2026-11-10 组答案代号 | 见第 2 节该轮次 | steady answer geomean **-74.68%**（n=7，p=0.001 各）；miss 路径 +1.55%（p=0.310 噪声内）；分配全项不变；选中变更/provider 刷新两条不变量由既有测试钉住 |
 **噪声带实测依据**（本轮新增，后续 A/B 准绳）：同一编译产物交替自比 4 轮，benchstat geomean +0.71%，个别场景差异 ±2.5% 且 p 可低至 0.021（loadbalance +2.34%，p=0.021）。因此本机「无差异」判定阈值取 p>0.2 或落在 ±2.5% 内；「有差异」判定沿用仓库规矩（p≤0.02 且幅度 ≥ 仓库认可量级）。
 
 **本轮基准注意**：`BenchmarkHandleGetProxies` / `BenchmarkHandleGetProxiesMiss` 的配置名单已改为生产形态（全部代理名，见「名单按身份做键轮次」），其绝对数值与 2026-11-09 之前的行不可比；跨轮比较只能在本轮同基准内做 A/B。
