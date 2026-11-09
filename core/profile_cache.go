@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
+	"slices"
 	"sync"
 
 	"github.com/metacubex/mihomo/component/age"
@@ -33,6 +35,61 @@ var profileCache struct {
 	mu       sync.RWMutex
 	buf      []byte
 	snapshot *profileSnapshot
+}
+
+// A read that only compares against the cached bytes does not need to own
+// them, so it borrows a buffer from the pool: the host re-reads the base every
+// time it opens a section, and a fresh buffer each time is pure garbage.
+var profileCompareBuffers = sync.Pool{New: func() any {
+	buffer := make([]byte, 0, 64<<10)
+	return &buffer
+}}
+
+// profileBytes reads path into a borrowed buffer: it hands the bytes back when
+// they match the cached ones, and gives the caller ownership when they do not,
+// so a changed profile is parsed from the read instead of read again.
+func profileBytes(path string, cached []byte) ([]byte, bool, error) {
+	pooled := profileCompareBuffers.Get().(*[]byte)
+	read, err := readFileInto(*pooled, path)
+	*pooled = read
+	if err != nil {
+		profileCompareBuffers.Put(pooled)
+		return nil, false, err
+	}
+	if bytes.Equal(read, cached) {
+		profileCompareBuffers.Put(pooled)
+		return nil, true, nil
+	}
+	return read, false, nil
+}
+
+// readFileInto fills dst with the whole file, growing it only when the file
+// outgrows the capacity it brought.
+func readFileInto(dst []byte, path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return dst, err
+	}
+	defer file.Close()
+	if info, err := file.Stat(); err == nil {
+		if grow := info.Size() + 1 - int64(cap(dst)); grow > 0 {
+			dst = slices.Grow(dst[:0], int(grow))
+		}
+	}
+	dst = dst[:0]
+	for {
+		if len(dst) == cap(dst) {
+			dst = slices.Grow(dst, 1<<16)
+		}
+		read, err := file.Read(dst[len(dst):cap(dst)])
+		dst = dst[:len(dst)+read]
+		if err == io.EOF {
+			return dst, nil
+		}
+		if err != nil {
+			return dst, err
+		}
+	}
 }
 
 // parseProfileSnapshot decrypts wire bytes into the document and raw config
@@ -66,17 +123,25 @@ func parseProfileSnapshot(wire []byte) (*profileSnapshot, error) {
 // the file bytes are unchanged. Byte comparison avoids hashing every repeated
 // read and cannot answer an unchanged profile after a digest collision.
 func readProfile(path string) (*profileSnapshot, error) {
-	wire, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
 	profileCache.mu.RLock()
 	cachedBuf, cached := profileCache.buf, profileCache.snapshot
-	hit := cached != nil && bytes.Equal(wire, cachedBuf)
 	profileCache.mu.RUnlock()
-	if hit {
-		return cached, nil
+
+	var wire []byte
+	if cached == nil {
+		var err error
+		if wire, err = os.ReadFile(path); err != nil {
+			return nil, err
+		}
+	} else {
+		read, unchanged, err := profileBytes(path, cachedBuf)
+		if err != nil {
+			return nil, err
+		}
+		if unchanged {
+			return cached, nil
+		}
+		wire = read
 	}
 
 	snapshot, err := parseProfileSnapshot(wire)
@@ -88,7 +153,7 @@ func readProfile(path string) (*profileSnapshot, error) {
 	}
 
 	profileCache.mu.Lock()
-	// ReadFile hands back a buffer nobody else holds, and the parse keeps its
+	// The read hands back a buffer nobody else holds, and the parse keeps its
 	// own copies, so the wire bytes can be cached as they are.
 	profileCache.buf = wire
 	profileCache.snapshot = snapshot
