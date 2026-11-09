@@ -455,6 +455,7 @@
 | Selector 选中名缓存进 `selectorSelection`（稳态 `Now()` 少两次接口分发） | 3 轮交替配对 n=15（千节点 selector 场景）：75.90µ ±20% → 79.48µ ±23%（p=0.902，无显著差异）。itab 热时分发成本只有个位数 ns，与在子模块最基础的选择缓存里多加一个字段的风险不相称，撤销并记录 |
 | 代理解表组文档键改「组选中代数」 | 剖析确认 `groupDocKeyOf` 仍是答案路径最大单项（URLTest 场景约 25%），但把键换成子模块导出的选择代数量，任何漏记的变更点都会让 UI 显示过期选中态；需先枚举 URLTest/Fallback/LoadBalance 的全部选中变更点并逐点补计数，本轮未做，留在待优化项 |
 | `isJSONSafeASCII` 改 8 字节一组的字长扫描（高位/控制位/五个转义字节全用位运算） | paired n=7：`AppendStringSafeASCII32` 16.61n → 19.79n（**+19.15%**）、`SafeASCII256` +9.27%、`Escaped32` +2.94%，geomean +3.53%，**纯时间回退**。原因：128 字节的表常驻 L1，逐字节「一次比较 + 一次表查」本来就是缓存友好且可预测的形态；字长版要为五个转义字节各做一次 xor+haszero（带循环级依赖），短字符串上反而更贵。已撤销，勿重做 |
+| 信封契约改造：`frame` 改带 `id string`、`size()`/`bytes()`/`writeFrame`/`spill` 在现场物化信封（省每答案 1 次分配 + 1 次 copy） | paired n=7：小文档路径（<32KB）allocs 1→**0**、sec/op -1.74%；**大文档路径 +22.31%~+24.61%**（141n→175n），geomean +19.48%。剖析定位到 `writeFrame` 里 `answer.head = appendEnvelope(nil, id)` cum 1.70s/12.4s：`envelopeLen` 与 `appendEnvelope` 各扫一遍 id，加上 `size()` 被 spill/handleMethodCall/writeFrame 调三次又各扫一遍，而旧代码只在 `envelope()` 里扫一次；分配档也从 `len(id)+20` 的 32B 变 48B。结论：**净负，撤销**——省下的那次分配换不回大答案路径的 22%。这也给第 5 节挂了很久的"信封契约改造"结了案 |
 
 ### 2026-11-09 handler 分发测试轮次（覆盖，不是性能）
 
@@ -787,7 +788,7 @@ CPU 剖析（`BenchmarkHandleGetProxies`）显示答案路径 58% 落在 `refres
 | 本轮 focused race | `go test -race . -run 'Proxy|Group|Proxies|Profile'`（CGO_ENABLED=1，mingw64 在 PATH） | 除既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿（2026-11-10，两项性能改动后） |
 | 全量 race | `go test . -race -count=1` | 仅 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 失败——**基线代码上同样复现**（已单独验证：stash 本轮改动后跑同一用例仍报同一 DATA RACE），属既有问题，见第 7 节 |
 | 资料页缓存 focused race | `go test -race . -run 'Profile\|Route\|Base\|Merge'` | 除同一既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿（2026-11-10，`profile_cache.go` 改动后） |
-| 2026-11-10 当日七轮（收官） | 见第 2 节各轮次小节 | wrapper 全量 ok；四平台 vet exit 0；focused race 仅既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent`（基线对照复现）；**子模块全量 104 包 ok + vet 0**；`ParseProxy` 8.6%→75.9%、`adapter` 62.1%→85.2%、wrapper 93.7%；父仓库 `068dd308` / 子模块 `778e0fb67`，两端远程均已同步 |
+| 2026-11-10 当日七轮 \+ 信封证伪（收官） | 见第 2 节各轮次小节 | wrapper 全量 ok；四平台 vet exit 0；focused race 仅既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent`（基线对照复现）；**子模块全量 104 包 ok + vet 0**；`ParseProxy` 8.6%→75.9%、`adapter` 62.1%→85.2%、wrapper 93.7%；父仓库 `068dd308` / 子模块 `778e0fb67`，两端远程均已同步 |
 
 | 2026-11-10 组答案代号 | 见第 2 节该轮次 | steady answer geomean **-74.68%**（n=7，p=0.001 各）；miss 路径 +1.55%（p=0.310 噪声内）；分配全项不变；选中变更/provider 刷新两条不变量由既有测试钉住 |
 **噪声带实测依据**（本轮新增，后续 A/B 准绳）：同一编译产物交替自比 4 轮，benchstat geomean +0.71%，个别场景差异 ±2.5% 且 p 可低至 0.021（loadbalance +2.34%，p=0.021）。因此本机「无差异」判定阈值取 p>0.2 或落在 ±2.5% 内；「有差异」判定沿用仓库规矩（p≤0.02 且幅度 ≥ 仓库认可量级）。
@@ -860,7 +861,7 @@ dart run tool/test.dart   # exit 0
 
 **原方向「主动失效钩子」已于 2026-11-10 落地**：子模块 `adapter/outboundgroup.AnswerGeneration()` 在 pin 与自行改选两条写入口上递增，wrapper 快照记住「上一次全量校验前读到的代号」，稳定态答案只做两次原子读——wrapper 每答案的逐组 provider/选中遍历随之消掉，命中路径 geomean -74.68%（见第 2 节「稳定态答案两次读轮次」）。设计上要求的两件事都已具备：一张覆盖矩阵（写入点只有 `announceAnswer`/`bumpAnswer`/`Selector.setSelected` 三处，全部计入）与对应测试（子模块 `TestAnswerGenerationMovesWhenAGroupsAnswerDoes` + wrapper 既有 `TestGroupDocsAnswerWhatTheirGroupsChange` 钉住选中变更与订阅刷新两条路径）。
 
-**当前剩余方向（均已实测，按收益排序）**：① 信封契约改造：让 `frame` 携带 id 字符串、在 `writeFrame` 写入处才物化 `{"id":...,"result":`，可省掉每答案 1 次 32B 分配（答案路径约 12%），但要动 frame 契约 5 处 + spill + batch 三处消费点，2026-11-09 已否决过一次，2026-11-10 答案降到 145ns 后仍然维持否决——绝对量太小、契约风险太高；② `config.GetProxyNameList` 每答案一次 RWMutex 读锁（约 1.4%），要省得把子模块的名单表换成原子指针，收益不抵改动面；③ 连接轮询的 `connectionRows.rows[tracker]` 接口 map 查询（该基准约 8.5%），轮询周期 2s，绝对量 5µs；④ 子模块 `xsync.Map.Size()` 已是 O(bucket) 而非 O(entry)，`GetConnectionCount` 单次 6.6ns，无进一步空间。
+**当前剩余方向（均已实测，按收益排序）**：① 信封契约改造（**2026-11-10 已实测否决并撤销**）：把信封改成写入处物化，小文档路径 allocs 1→0 且时间 -1.74%，但大文档路径 +22%~+24.6%（id 被 `size()` 与 `appendEnvelope` 重复扫描、分配档 32B→48B），geomean +19.48%。结论见第 3 节该行，勿重做；② `config.GetProxyNameList` 每答案一次 RWMutex 读锁（约 1.4%），要省得把子模块的名单表换成原子指针，收益不抵改动面；③ 连接轮询的 `connectionRows.rows[tracker]` 接口 map 查询（该基准约 8.5%），轮询周期 2s，绝对量 5µs；④ 子模块 `xsync.Map.Size()` 已是 O(bucket) 而非 O(entry)，`GetConnectionCount` 单次 6.6ns，无进一步空间。
 
 
 ### 全代码复核覆盖面（2026-11-09，含平台层）
