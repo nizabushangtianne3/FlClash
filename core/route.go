@@ -33,19 +33,19 @@ const (
 )
 
 type routeTracker struct {
-	mu               sync.Mutex
-	epoch            uint64
-	version          uint64
-	picks            map[string]string
+	mu                 sync.Mutex
+	epoch              uint64
+	version            uint64
+	picks              map[string]string
 	providerGeneration uint64
-	ruleSets         map[string]any
-	watched          bool
-	watchSeq         uint64
-	stopPoll         context.CancelFunc
+	ruleSets           map[string]any
+	watched            bool
+	watchSeq           uint64
+	stopPoll           context.CancelFunc
 
-	picksScratch    map[string]string
+	picksScratch      map[string]string
 	generationScratch uint64
-	scratchMu       sync.Mutex
+	scratchMu         sync.Mutex
 }
 
 var (
@@ -150,7 +150,7 @@ type routeGroup struct {
 // name list. Cache the resolved pickable adapters so steady polls only query
 // live selections and provider versions.
 type routeGroupCache struct {
-	snapshot any
+	snapshot map[string]constant.Proxy
 	source   []string
 	groups   []routeGroup
 }

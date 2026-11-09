@@ -4,11 +4,11 @@ import (
 	"errors"
 	"maps"
 	"os"
-	"reflect"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
@@ -90,15 +90,26 @@ func proxyGroupNames(
 // configured name list. Cache that exact pair so a steady dashboard does not
 // rebuild and reallocate the all-list on every read.
 type groupProjectionCache struct {
-	snapshot any
+	snapshot map[string]constant.Proxy
 	source   []string
 	names    []string
 }
 
 var groupProjection atomic.Pointer[groupProjectionCache]
 
-func sameProxySnapshot(left, right any) bool {
-	return reflect.ValueOf(left).Pointer() == reflect.ValueOf(right).Pointer()
+// sameProxySnapshot reports whether two proxy tables are the same one. The
+// tunnel replaces the table instead of editing it, so a table's identity is
+// the address its variable holds, and a map is not comparable to say so.
+func sameProxySnapshot(left, right map[string]constant.Proxy) bool {
+	return snapshotIdentity(left) == snapshotIdentity(right)
+}
+
+// snapshotIdentity reads the address a map variable holds. The host reads a
+// proxy snapshot on every answer it gives, and reading the word directly is a
+// third of what reflect's type walk costs. The one-word representation is
+// pinned by a test against reflect's own answer for a map.
+func snapshotIdentity(table map[string]constant.Proxy) uintptr {
+	return *(*uintptr)(unsafe.Pointer(&table))
 }
 
 // sameProxyNameList reports whether two lists are the same one. The configured
@@ -319,7 +330,7 @@ func appendGlobalHidden(dst []byte) []byte {
 var sortedProxyNames atomic.Pointer[sortedProxyNameCache]
 
 type sortedProxyNameCache struct {
-	snapshot any
+	snapshot map[string]constant.Proxy
 	names    []string
 	// keySpans are the `"name":` members of the proxies object, separators
 	// included, precomputed once per snapshot so an answer only memcopies
@@ -348,7 +359,7 @@ type sortedProxyNameCache struct {
 
 func cachedProxiesSnapshot(proxies map[string]constant.Proxy) *sortedProxyNameCache {
 	if cache := sortedProxyNames.Load(); cache != nil &&
-		reflect.ValueOf(cache.snapshot).Pointer() == reflect.ValueOf(proxies).Pointer() {
+		snapshotIdentity(cache.snapshot) == snapshotIdentity(proxies) {
 		return cache
 	}
 	names := make([]string, 0, len(proxies))
@@ -422,7 +433,7 @@ var groupDocGeneration uint64
 var cachedProxiesFrame *proxiesFrameCache
 
 type proxiesFrameCache struct {
-	snapshot   any
+	snapshot   map[string]constant.Proxy
 	names      []string
 	document   []byte
 	generation uint64

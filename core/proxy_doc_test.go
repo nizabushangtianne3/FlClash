@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
@@ -51,6 +52,30 @@ func decodeProxiesFrame(t *testing.T, frame []byte) proxiesFrame {
 	var decoded proxiesFrame
 	require.NoError(t, json.Unmarshal(frame, &decoded))
 	return decoded
+}
+
+// The answer compares proxy tables by the address their map variables hold,
+// and a test has to pin that this is still the address reflect hands out: if a
+// future Go changes what a map variable holds, identity would answer "same"
+// for two tables, or "different" for one.
+func TestSnapshotIdentityIsTheTablesOwnAddress(t *testing.T) {
+	first := map[string]C.Proxy{}
+	second := map[string]C.Proxy{}
+
+	if !sameProxySnapshot(first, first) {
+		t.Error("one table is not the same as itself")
+	}
+	if sameProxySnapshot(first, second) {
+		t.Error("two different tables answered as the same one")
+	}
+	if got, want := snapshotIdentity(first), reflect.ValueOf(first).Pointer(); got != want {
+		t.Errorf("identity = %#x, want the address reflect reports %#x", got, want)
+	}
+	written := map[string]C.Proxy{}
+	written["node"] = namedProxy("node")
+	if got, want := snapshotIdentity(written), reflect.ValueOf(written).Pointer(); got != want {
+		t.Errorf("a written table identity = %#x, want %#x", got, want)
+	}
 }
 
 // Every cached kind must answer with the document its group would encode
