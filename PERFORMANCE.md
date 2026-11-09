@@ -625,12 +625,29 @@
 **本会话答案路径累计**（200 组场景，父仓库 main 起点 → 现在）：Selector 5.105µ → **0.996µ**；urltest 12.15µ → **1.06µ**；fallback 12.69µ → **1.13µ**；loadbalance 2.974µ → **0.831µ**。四类组现在同一量级，剩下的成本是帧装配本身（`appendGroupDocument`/`answerSize`/`writeFrame`），不再是选中解析。
 
 **精简账**：本轮净删代码——子模块 3 个导出方法、1 个只写字段、1 个测试夹具字段；wrapper 1 个结构体字段、1 个接口断言、`groupDocKey` 结构体与 `groupDocKeyOf` 函数（上一轮）。
+
+### 2026-11-09 子模块 provider 覆盖面补齐轮次（测试，非性能）
+
+目标第 2 条要求「测试必须覆盖全部核心代码」。此前只量了 wrapper 自己的覆盖率（93.8%），从没量过**子模块**——而子模块才是真正的引擎。首量子模块覆盖：`adapter/outboundgroup` 72.2%、`adapter/provider` 67.1%、`adapter` 62.1%、`tunnel` 60.3%。
+
+本轮先补「本 fork 自己写、且两侧都没覆盖」的部分：
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `ListGeneration`（本轮新加的导出函数）在子模块自己的测试里 0%：真 provider + 改写文件，钉住「两次读之间不动、一次交换必动」 | `c20d3c398` | 本轮父仓库提交 | `TestListGenerationHoldsStillAndMovesOnASwap` |
+| `baseProvider` 的对外方法（Version/Proxies/Count/Touch/HealthCheckURL/AppendJSON/MarshalJSON）在本包无调用方：一次跑通，并钉住「touch 只更新近况、不换内容」与「MarshalJSON 与 AppendJSON 同字节」 | `c20d3c398` | 本轮父仓库提交 | `TestProxySetProviderReportsItsOwnState` |
+| `provider.ProxyMapping`（订阅节点的详情映射，fork 自己的 126 行）**两侧都 0%**：wrapper 只走到 nil 分支，子模块从不调用。补上「带 override/dialer-proxy 的命名映射 + 四种 filter/exclude 分支 + 非法 filter 报错 + payload 形态」 | `c20d3c398` | 本轮父仓库提交 | `TestProxyMappingReturnsTheNamedProxyWithTheProviderApplied`、`TestProxyMappingHonoursTheProviderFilters`、`TestProxyMappingAnswersFromThePayload` |
+| 契约补齐：LoadBalance 的答案代号恒 0、从未作答的组报 0 而非 1 | `c20d3c398` | 本轮父仓库提交 | `TestAnswerVersionReportsZeroWhereThereIsNothingToCount` |
+
+`adapter/provider` 覆盖率 **67.1% → 71.8%**。
+
+**剩余未覆盖（本轮盘点，均已确认是「任何一侧测试都到不了」或上游自带机制）**：`healthcheck.go` 的 `process` 轮询循环（要真开 interval）、`subscription_info.go` 的 `NewSubscriptionInfo`（只在 HTTP 载体的 InRead 钩子里被调）、`override_expr.go` 里单个 `eval` 重载、`parser.go` 的 `ParseProxyProvider` 入口（由 wrapper 的配置测试在运行时覆盖，不计入本包画像）、`provider.go` 的 inline provider AppendJSON 与 `GetSubscriptionInfo`。`adapter/outboundgroup` 剩下的 0% 全是 `DialContext`/`ListenPacketContext`/`SupportUDP` 一类接口方法，属上游机制，由隧道侧测试间接覆盖。
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
 
 `core/connection.go` 的 18 个函数现已 **100% 覆盖**（此前 `appendDocument` 68.8%、`documentSize` 71.4%、`rowAnswerSize` 81.8%、`handleResetNetwork` 0%）。补齐的四条都是仪表盘真实会走到的路径：带 GeoIP 的行（答案缓冲按 `rowAnswerSize` 预分配，两个字符串切片若不计入，每次 resync 都会扩容）、nil 行、一次轮询里离开多行的分隔符、按 id 关闭存活行。另外钉住一条不变量：`rowAnswerSize` 永不低于编码后长度（预分配就靠它）。父仓库 `b8bd4801`，包覆盖率 82.9% → 83.3%。
-### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `5104e8860`）
+### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `c20d3c398`）
 
 | 验证项 | 命令 | 结果 |
 |---|---|---|
