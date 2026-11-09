@@ -218,12 +218,6 @@ func withoutArguments[R any](run func() R) methodHandler {
 	}
 }
 
-func fallibleWithoutArguments[R any](run func() (R, error)) methodHandler {
-	return func(*MethodCall) (any, error) {
-		return run()
-	}
-}
-
 // command answers null, or the error run returns.
 func command[P any](run func(P) error) methodHandler {
 	return func(call *MethodCall) (any, error) {
