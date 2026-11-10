@@ -2,8 +2,8 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约两次实测否决）
-- FlClash main：5d50ed19
+- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁 + 信封就地构建一轮（答案路径归零分配）：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约前两次写法否决、第三次（预留容量走算术）落地）
+- FlClash main：`a18f91a0`
 - Clash.Meta main：`697114569`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 134 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 135 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -852,6 +852,17 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 |---|---|---|---|
 | `proxyNameList`/`proxyNameListMu` 换成单个 `atomic.Pointer[[]string]`；读只做一次原子加载 | `697114569` | 本轮父仓库提交 | 微基准 **12.62n → 0.45n（-96%）**；端到端 n=7 交替 A/B：`BenchmarkHandleGetProxies` geomean **-5.69%**，各行 **-4.50% ~ -7.08%**（p≤0.038），**分配不变**。叠加 `AllProxies` 那轮的 -6.02%，两次免锁合计答案路径 geomean **约 -11.3%** |
 
+
+### 2026-11-11 信封就地构建轮次（性能，答案路径归零分配）
+
+此前账本按「每秒几十字节」判过信封不值得改，漏看了**单次成本**：`envelope("benchmark")` 微基准实测 **27.6ns / 32B / 1 alloc**，占答案路径约 24%。而它写出的字节随后就被 `writeFrame` 拷进池化缓冲——纯浪费。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `frame` 增加 `id` 字段：携带文档的答案改为"指名调用"而非"携带信封字节"；信封在**消费点就地构建**——小路径直接 append 进池化写缓冲、大路径进池化 header、整片调用方进自己的缓冲；`spillFrame` 落盘前才物化。信封预留容量按"全转义 id 的宽度"用算术算，不再为预留多扫一遍 id | `a18f91a0` | -（仅 wrapper） | n=7 交替 A/B：**每答案 1 alloc/32B → 0 alloc/0B（-100%）**；sec/op geomean **-2.92%**，小文档路径 **-6.10%**（p=0.001），大文档各行全部在噪声内无回退（p=0.209~0.929）。`frame_test.go` 的 `answerFrame` 同步改走 id 形态，其余测试原样通过 |
+
+**与 2026-11-09 否决的关系**：那次否掉的是"frame 携带 id 且 `size()`/`appendEnvelope` 各扫一遍 id"的写法（测出 +19%~+24%）。本次的差别是**预留容量走算术不扫描**，且小路径把信封直接写进已定大小的池缓冲（不多一次 StringLen）。同一思路、不同实现，结论相反。
+
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
@@ -992,7 +1003,7 @@ dart run tool/test.dart   # exit 0
 
 | 路径 | 现状 | 结论 |
 |---|---|---|
-| 代理表答案（最热 IPC） | 200 组 **138.9n / 1 alloc / 32 B**（本会话 5.105µ → 0.139µ，约 37 倍）；其中 `AllProxies` 9.4n 免锁、`GetProxyNameList` RLock 约 2% | 唯一剩的分配是信封；`config.GetProxyNameList` 每答案一次 RWMutex 读锁（子模块），要省得把名单表换成原子指针 |
+| 代理表答案（最热 IPC） | 200 组 **118-121ns / 0 alloc / 0 B**（本会话 5.105µ/12 allocs → 0.12µs/0 allocs，约 43 倍）；信封已改为消费点就地构建，`AllProxies` 免锁、`GetProxyNameList` 免锁 | 见「信封就地构建轮次」：唯一权衡是大文档路径多两次 id 扫描换取零分配，实测净胜 |
 | 连接轮询 | 500 连接 31.4µ：`xsync.Map.Range` 85% cum（回调占大头）、`stale` 20% flat、接口 map 查询 27% cum | `stale` 的十字段比较是"生产线永不触发"的防御，按 2026-11-09 定案不删；接口 map 的 equal 可省 6.8% 但要 unsafe 取指针，收益不抵 |
 | 连接 resync | 206µs / 698KB，GC 占 45% | 三个非缓存 `document()`（Traffic/Delta/ProviderList）可池化，但频率低、绝对量每秒几百字节；`proxiesAnswer` 的缓冲被帧缓存持有，不可池化 |
 | 路由刷新 | 13.8µs / 0 allocs：`providerVersionsEqual` 23%、`Selector.selectedProxy` 29% | 均为必要工作（provider 版本是外部推进的，读取不可省；选中缓存命中只需 3 次原子读） |
@@ -1003,7 +1014,7 @@ dart run tool/test.dart   # exit 0
 | 传输层每包路径 | `PacketConnWriteTo` 34.3ns、`ReadFrom` 32.8ns、`WaitReadFrom` 49.3ns、Relay 写 59.5ns、Quic 读 70.7ns、UoT 读 5.6µ | **全部 0 alloc**；已是每包地板 |
 | 规则匹配 | `DomainSuffixMatch` 3.7ns、`ClassicalIndexExactHit` 21.8ns、`SuffixHit` 69.2ns、`RuleWrapperHit` 9.1ns、150 条 classical 混合 1.65µ | **全部 0 alloc**；classical 的线性扫描是该规则类型的固有形态 |
 | 子模块 `xsync.Map` | Size O(bucket) 不 O(entry)，`GetConnectionCount` 6.6ns/次 | 无进一步空间 |
-| wrapper 自身 `groupDocsMu`（答案路径约 4.4%） | 缓存命中也要拿写锁，只为读 `cachedProxiesFrame`/`groupDocGeneration` | **本轮实测后维持不加锁**：`dispatchMethodCall` 走 `safeGo` 起 goroutine，`document()` 确实并发。免锁需把「帧指针 + 其 generation」与「快照上的 validated/answersSeen/providersSeen 戳」一起原子化，且会引入一个「答案在途时选中变更、该答案仍报旧选中」的陈旧窗口（现在持锁时窗口只有锁内几纳秒）。收益约 4.4%，不值得拿 staleness 窗口换；若将来要做，前置条件是先给这两个戳记设计原子打包并补并发测试 |
+| wrapper 自身 `groupDocsMu`（答案路径约 3%） | 缓存命中也要拿写锁，只为读 `cachedProxiesFrame`/`groupDocGeneration` | **维持不加锁（2026-11-11 复测）**：`dispatchMethodCall` 走 `safeGo` 起 goroutine，`document()` 确实并发。免锁需把「帧指针+generation」与「快照上的三个戳」一起原子化，且引入「答案在途时选中变更仍报旧选中」的陈旧窗口（现在持锁仅锁内几纳秒）。收益已从 4.4% 降到约 3%，更不值得 |
 
 **覆盖侧剩余缺口（全部结构性，不为凑数写测试）**：
 
