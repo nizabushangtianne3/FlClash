@@ -2,7 +2,7 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁 + 信封就地构建一轮（答案路径归零分配）：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约前两次写法否决、第三次（预留容量走算术）落地）；覆盖再加一轮：`adapter/outboundgroup` 的 `GetProxies` 53.5% → 95.8%（包 72.7% → 76.1%）；数据平面每连接缓冲复用一轮（答案路径之外的真实负载面：harness 100 并发 13.1 万→20.3 万 req/s、relay 分配 -94.81%）；每连接建立路径与启动文档解析两轮审计记账（产品侧均无可拿的净收益，各有一条实验撤销），再加 UDP 数据报全链一轮（同样地板）
+- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁 + 信封就地构建一轮（答案路径归零分配）：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约前两次写法否决、第三次（预留容量走算术）落地）；覆盖再加一轮：`adapter/outboundgroup` 的 `GetProxies` 53.5% → 95.8%（包 72.7% → 76.1%）；数据平面每连接缓冲复用一轮（答案路径之外的真实负载面：harness 100 并发 13.1 万→20.3 万 req/s、relay 分配 -94.81%）；每连接建立路径与启动文档解析两轮审计记账（产品侧均无可拿的净收益，各有一条实验撤销），再加 UDP 数据报全链一轮（同样地板），千人并发竞争面一轮（同样地板），代理链路两跳一轮（同样地板）
 - FlClash main：`93d6a6e8`
 - Clash.Meta main：`1c78f33f6`
 - 基准主机：Intel Core i9-9900，Windows/amd64
@@ -1049,6 +1049,8 @@ dart run tool/test.dart   # exit 0
 | 数据平面中继拷贝（每条 TCP 连接两个方向） | 稳态 **0 alloc/块**，`BenchmarkRelayStream` 13.1GiB/s（夹具带宽附近）；harness 100 并发 SOCKS5 20.3 万 req/s | 每连接两个 32KB 缓冲，随连接生命周期持有；已见底 |
 | 每连接建立路径（新连接，非稳态） | 7.9k 连接样本：113 allocs/连接，其中产品侧约 20（`NewConn` 分层包装 5、dial context 链约 8、relayReader 2、tracker/metadata 其余）；CPU 57% 在 cgocall（connect/accept/握手），产品代码不进 top；goroutine 跑完后剩 6 个（无泄漏） | 系统调用主导，产品分配是每层一个包装/上下文的固有成本；单项去除都要吞并上游逻辑或改语义，无净收益可拿 |
 | UDP 数据报路径（SOCKS5 UDP ASSOCIATE 全链） | harness 10 并发 × 10 秒：**79.3 万个数据报往返**（约 8 万/秒，含 nattable、worker 队列、DIRECT 出站、写回）；CPU 55% cgocall（recvfrom/sendto）、产品代码不进 top；分配侧产品侧仅 `newSocksPacket` 每报一次（~106B，37% 的总分配里其余 50% 是回显服务器自身的 stdlib 读） | 每报一个 packet 结构体是 PacketAdapter 契约的固有形态（sender 留最近一个包做写回，池化会让下一个数据报抢走它），`inner`/`tunnel` 各监听器一致；其余环节全池化 |
+| 千人并发长连接（1000 连接 × 20s） | 73.9 万请求、36.9k req/s；mutex 竞争总计 5.73s/20s（产品侧占 0.9%，其余是 runtime 内部锁）；block 仅统计管理器 1s ticker 与收尾 Close 0.24s；CPU 35% cgocall + 25% 调度器（2000+ goroutine 的固有成本），产品代码不进 top；稳态分配每请求约 0（其余全部是建连一次性成本） | 每连接 goroutine 模型的固有形态；锁竞争与产品 CPU 均无可动之处 |
+| 代理链路两跳（mixed → SOCKS5 上游 → 目标） | harness 100 并发 × 20s：35 万请求、17.4k req/s、0 失败（DIRECT 单跳 20.3 万，多一跳回环符合预期）；CPU 46% cgocall，产品侧 flat CPU 合计约 1%（tcpTracker/relayReader/BufferedConn 的 cum 全是委派 I/O 等待）；稳态分配产品侧 0（其余全是建连一次性成本，含上游握手） | 缓冲复用对代理链同样成立（两跳都走 `net.Relay`）；链上多出的组选择与上游封装都是每连接一次，不在每请求路径 |
 | 启动文档解析（800 节点 + 200 组 + 200 规则） | `BenchmarkParseRawConfigBig` **13.59ms / 6.209MB / 104,385 allocs**：YAML 反序列化约 9.3ms（上游 `go.yaml.in/yaml/v3`，占 70%），`ParseRawConfig` 约 4.2ms（YAML 解析 ~30%、`structure.getFold` ~28%、GC ~15%）；`ApplyConfig` 仅 0.25-0.55ms | 反序列化是大头且在库内；`getFold` 折叠缓存实验已测得净负并撤销（见第 3 节）；解析内各点此前多轮已挖 |
 | 规则匹配 | `DomainSuffixMatch` 3.7ns、`ClassicalIndexExactHit` 21.8ns、`SuffixHit` 69.2ns、`RuleWrapperHit` 9.1ns、150 条 classical 混合 1.65µ | **全部 0 alloc**；classical 的线性扫描是该规则类型的固有形态 |
 | 子模块 `xsync.Map` | Size O(bucket) 不 O(entry)，`GetConnectionCount` 6.6ns/次 | 无进一步空间 |
