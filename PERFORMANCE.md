@@ -1003,6 +1003,7 @@ dart run tool/test.dart   # exit 0
 | 传输层每包路径 | `PacketConnWriteTo` 34.3ns、`ReadFrom` 32.8ns、`WaitReadFrom` 49.3ns、Relay 写 59.5ns、Quic 读 70.7ns、UoT 读 5.6µ | **全部 0 alloc**；已是每包地板 |
 | 规则匹配 | `DomainSuffixMatch` 3.7ns、`ClassicalIndexExactHit` 21.8ns、`SuffixHit` 69.2ns、`RuleWrapperHit` 9.1ns、150 条 classical 混合 1.65µ | **全部 0 alloc**；classical 的线性扫描是该规则类型的固有形态 |
 | 子模块 `xsync.Map` | Size O(bucket) 不 O(entry)，`GetConnectionCount` 6.6ns/次 | 无进一步空间 |
+| wrapper 自身 `groupDocsMu`（答案路径约 4.4%） | 缓存命中也要拿写锁，只为读 `cachedProxiesFrame`/`groupDocGeneration` | **本轮实测后维持不加锁**：`dispatchMethodCall` 走 `safeGo` 起 goroutine，`document()` 确实并发。免锁需把「帧指针 + 其 generation」与「快照上的 validated/answersSeen/providersSeen 戳」一起原子化，且会引入一个「答案在途时选中变更、该答案仍报旧选中」的陈旧窗口（现在持锁时窗口只有锁内几纳秒）。收益约 4.4%，不值得拿 staleness 窗口换；若将来要做，前置条件是先给这两个戳记设计原子打包并补并发测试 |
 
 **覆盖侧剩余缺口（全部结构性，不为凑数写测试）**：
 
