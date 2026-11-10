@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies` 免锁一轮：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约两次实测否决）
-- FlClash main：`443b9842`
-- Clash.Meta main：`c4a135561`
+- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约两次实测否决）
+- FlClash main：5d50ed19
+- Clash.Meta main：`697114569`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 133 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 134 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -842,6 +842,15 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
 | `allProxies`/`allProxiesVersions` 两个全局合并为单个 `atomic.Pointer[allProxiesTable]`（表 + 构建时的 provider 版本同指针发布，读者见两者或都不见）；`AllProxies` 读路径免锁，只有重建加锁，且锁内先重查缓存避免重复重建装两张表 | `c4a135561` | `443b9842` | 微基准 `AllProxies` 17.73n → **9.4n（-47%）**；端到端 n=7 交替 A/B：`BenchmarkHandleGetProxies` geomean **-6.02%**，200 组各行 **-4.97% ~ -7.73%**（p≤0.026），**分配不变**。`TestAllProxiesCacheAndInvalidation` 继续钉住缓存存活、版本保持、四种失效与显式丢弃 |
+
+
+### 2026-11-11 `GetProxyNameList` 免读锁轮次（性能，子模块，接上一轮）
+
+上一轮拆掉 `AllProxies` 的锁后，剖析里剩下最后一个每答案锁：`config.GetProxyNameList()` 单独测 **12.62ns / 0 alloc**，几乎全是 RWMutex 读锁成本，占答案路径约 6%。而名单是**整体替换**（`SetProxyNameList` 每次配置解析调用一次，包装的就是解析建的那片），从未原地改。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `proxyNameList`/`proxyNameListMu` 换成单个 `atomic.Pointer[[]string]`；读只做一次原子加载 | `697114569` | 本轮父仓库提交 | 微基准 **12.62n → 0.45n（-96%）**；端到端 n=7 交替 A/B：`BenchmarkHandleGetProxies` geomean **-5.69%**，各行 **-4.50% ~ -7.08%**（p≤0.038），**分配不变**。叠加 `AllProxies` 那轮的 -6.02%，两次免锁合计答案路径 geomean **约 -11.3%** |
 
 ## 4. 当前验证矩阵
 
