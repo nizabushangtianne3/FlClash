@@ -727,7 +727,7 @@ CPU 剖析（`BenchmarkHandleGetProxies`）显示答案路径 58% 落在 `refres
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
-| 子模块 `adapter/outboundgroup`：`announceAnswer`/`bumpAnswer`/`Selector.setSelected` 三处写完各 `answerGeneration.Add(1)`，导出 `AnswerGeneration()` | `778e0fb67` | - | 子模报测试 `TestAnswerGenerationMovesWhenAGroupsAnswerDoes` 钉住「pin 动、自行选动、别的不动」 |
+| 子模块 `adapter/outboundgroup` | 72.7% | 0% 全是 `DialContext`/`ListenPacketContext`/`SupportUDP` 一类接口方法，由 wrapper 与隧道测试在运行时覆盖 |
 | wrapper `refreshGroupDocs` 快路径：`validated` + `answersSeen`/`providersSeen` 两个戳记，任一较新才走全量；戳记同样取「校验前读到的值」，与按槽 `answerAt` 的「编码前读」同款保守 | -（仅 wrapper） | `9b143f7c` | n=7 交替 A/B：`BenchmarkHandleGetProxies` sec/op 200 组/无节点 883.8n → **186.8n（-78.86%）**、200 组/1000 节点 864.7n → 183.0n（**-78.84%**）、urltest -79.60%/-79.80%、fallback -81.41%、loadbalance -74.63%、20 组 -23.20%，geomean **-74.68%**（各 p=0.001）；**分配不变（2–3 allocs/答案）** |
 
 **正确性**：选中变更与订阅刷新两条路径早已被 `TestGroupDocsAnswerWhatTheirGroupsChange` 钉住（`selectable.Set` 后下一答案必须反映 `now`/`fixed`，provider swap 后必须反映成员表），本轮全量通过。miss 路径（换表重建）无回退：+1.55%（p=0.310，噪声内），分配逐项一致。
@@ -970,6 +970,11 @@ dart run tool/test.dart   # exit 0
 | 路由刷新 | 13.8µs / 0 allocs：`providerVersionsEqual` 23%、`Selector.selectedProxy` 29% | 均为必要工作（provider 版本是外部推进的，读取不可省；选中缓存命中只需 3 次原子读） |
 | 统计计数器 push | striped **2.315ns / 0 allocs**，shared 56.5ns（竞争） | 已到底（每次 2–4 个原子 add） |
 | provider 列表答案 | 58µs：`AppendString(view.Path)` 占 68%（一半字节是路径） | 与答案体积成正比，无额外可省 |
+| DNS 缓存命中（每查询） | `ExchangeContextCacheHit` **203.9ns / 1 alloc**；`ServeMsgCacheHitWithPack` 1601ns/15 allocs 的分配大头是基准自身的 unpack/pack（生产由监听器与传输层分别做） | `copyCachedMsg` 已有 slab 分配器（`cachedOneASlab`/`cachedASlab`/…），一次分配装下整条记录；真缓存路径已到底 |
+| 代理选中 | Selector 大组 **1.468ns / 0 alloc**（并行）、URLTest 大组 131.8ns / 0 alloc、Fallback 大组 124ns / 1 alloc（store 新选择） | 分配只发生在"重选并存新值"，命中路径已由 `TestFallbackCachedSelectionStaysAllocationFree`/`TestURLTestFastCacheHitStaysAllocationFree` 钉住 0 alloc；与 Selector 同一设计 |
+| 传输层每包路径 | `PacketConnWriteTo` 34.3ns、`ReadFrom` 32.8ns、`WaitReadFrom` 49.3ns、Relay 写 59.5ns、Quic 读 70.7ns、UoT 读 5.6µ | **全部 0 alloc**；已是每包地板 |
+| 规则匹配 | `DomainSuffixMatch` 3.7ns、`ClassicalIndexExactHit` 21.8ns、`SuffixHit` 69.2ns、`RuleWrapperHit` 9.1ns、150 条 classical 混合 1.65µ | **全部 0 alloc**；classical 的线性扫描是该规则类型的固有形态 |
+| 子模块 `xsync.Map` | Size O(bucket) 不 O(entry)，`GetConnectionCount` 6.6ns/次 | 无进一步空间 |
 
 **覆盖侧剩余缺口（全部结构性，不为凑数写测试）**：
 
@@ -978,7 +983,7 @@ dart run tool/test.dart   # exit 0
 | wrapper | 93.7% | 剩 6 个：`StartServer`（IPC 入口，测试走 `dispatchMethodCall`）、`handleCrash`（`core.crash` 就是让进程崩的 dev 旋钮，`TestEveryCoreMethodConstantIsDispatchable` 已单独记账）、`requestTrafficWatch.clear`（桌面构建 `hasEventListener()` 恒 true，该分支 Android 可达）、`dial_pipe.dial`、`ExitOnTermination`、`ownership_other` 三个 |
 | 子模块 `adapter` | 86.7% | 剩 `adapter.go` 的 `ListenPacketContext` 转发与 `testState` 部分分支；前者由隧道测试在运行时覆盖 |
 | 子模块 `adapter/outboundgroup` | 72.7% | 0% 全是 `DialContext`/`ListenPacketContext`/`SupportUDP` 一类接口方法，由 wrapper 与隧道测试在运行时覆盖 |
-| 子模块 `tunnel` | 70.0% | 剩 `Connection` 接口转发行与 `initUDP`（需真网卡/TUN 的入口） |
+| 子模块 `tunnel` | **76.5%**（本会话 60.5% 推上来） | 剩 `processUDP`/`startUDPSender`/`dialUDPSender`（真 UDP 往返 + 代理拨号）与两个 error 分支（`handleUDPToRemote` 写失败、`ResolveRoute` 的 `preHandleMetadata` 失败） |
 | 子模块 `tunnel/statistic` | 94.4% | 剩 `handle()` 的 1s ticker 循环（50%）与 tracker 对裸 conn 的读写（现有方向测试经真 pipe 已驱动） |
 
 ## 6. 后续会话推荐流程
