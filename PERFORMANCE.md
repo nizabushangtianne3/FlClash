@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-11 深夜（晚间接续会话，全部本机实测）：连接轮询稳态免扫描一轮（500 连接 32.78µs -> 371ns，-98.87%；stale 十字段与十个镜像字段整段删除）；Dart 侧连接排序一轮（1 万行每快照 10.4ms -> ~4.19ms，-60.7%，三张 per-poll 字符串 map 合并为一张状态表）；UDP 数据报主路径覆盖一轮（tunnel 76.5% -> 82.7%，processUDP/startUDPSender/dialUDPSender 从 0/0/50% 到 100/100/89.6%）；wrapper IPC 入口覆盖一轮（StartServer 走真实命名管道，93.7% -> 93.9%）；死代码清扫一轮（staticcheck 名下未用测试 helper 与两处死赋值）；另有三项实测否决记账（feed flush 归属拆解、GOGC 策略、连接 churn 增量日志）
-- FlClash main：`3d90f8f8`
+- FlClash main：`76c95b55`
 - Clash.Meta main：`0bf394920`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -948,6 +948,16 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 | `ipc_pipe_test.go`（仅 windows 构建）用 go-winio 自开一条随机名管道，交给 `StartServer` 拨号，写一个真实 `connection.count` 调用帧并读回答，宿主断开后 `serve` 返回且全局 conn 归零；测试自存自恢复全局 `conn`，只在本次把 `isInit` 置 false，避免动既有测试的关闭链 | -（仅 wrapper） | `d690a294` | wrapper 覆盖 **93.7% -> 93.9%**：`dial` 0 -> 100%、`readFrame` -> 100%、`serve` 58.1% -> 89.3%、`send` -> 97.1%。全量 `go test . -count=1` 通过 |
 
 **为什么不再往前推**：`ExitOnTermination`（信号驱动、调用 `os.Exit`）、`handleCrash`（就是让进程崩的开发者旋钮）、`initOwnership`（非桌面平台的归属重置）、`encodeResponse` 的 `json.Marshal` 失败分支——都要「让进程死 / 让上游库失败」，按账本「不为凑数写测试」的纪律维持现状。
+### 2026-11-11 组的 UDP 数据报路径覆盖轮次（测试）
+
+账本记着子模块 adapter/outboundgroup 的 0%「由 wrapper 与隧道测试在运行时覆盖」——那只是「运行时会走到」，并没有任何测试驱动它。本轮把它变成真事：wrapper 里用现成的 selectorGroup（真 Selector + 兼容 provider + 真实 DIRECT 成员）直接调用组的 ListenPacketContext，与本地 echo 服务器完成一次 UDP 往返。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| udp_group_test.go：规则选组 -> 组选成员 -> 成员承载数据报，真实 Selector 走组自己的 packet 路径 | -（仅 wrapper） | 76c95b55 | 新增 1 例 focused 一次通过；wrapper 全量 go test . -count=1 ok + go vet 零告警。注：组包的覆盖率数字不变（该测试跑在 wrapper，不在 outboundgroup 包内）——把该 0% 从「运行时顺带」变成「有测试驱动」 |
+
+**为什么不在子模块包里测**：adapter/outboundgroup 依赖 adapter -> adapter/outbound -> dns -> tunnel，从 tunnel 包的测试反向 import 会成环；外部测试包（outboundgroup_test）同样成环。可放之处只有 wrapper，那里这些依赖本就齐全（hub_test.go 的组脚手架即出自此处）。
+
 ### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `3d6e4cbe8`）
 
 | 验证项 | 命令 | 结果 |
