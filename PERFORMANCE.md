@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-11 深夜（晚间接续会话，全部本机实测）：连接轮询稳态免扫描一轮（500 连接 32.78µs -> 371ns，-98.87%；stale 十字段与十个镜像字段整段删除）；Dart 侧连接排序一轮（1 万行每快照 10.4ms -> ~4.19ms，-60.7%，三张 per-poll 字符串 map 合并为一张状态表）；UDP 数据报主路径覆盖一轮（tunnel 76.5% -> 82.7%，processUDP/startUDPSender/dialUDPSender 从 0/0/50% 到 100/100/89.6%）；wrapper IPC 入口覆盖一轮（StartServer 走真实命名管道，93.7% -> 93.9%）；死代码清扫一轮（staticcheck 名下未用测试 helper 与两处死赋值）；另有三项实测否决记账（feed flush 归属拆解、GOGC 策略、连接 churn 增量日志）
-- FlClash main：`1dd3f040`
-- Clash.Meta main：`f964973dd`
+- FlClash main：`2514892b`
+- Clash.Meta main：`c7e42d821`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -1015,6 +1015,17 @@ dart run tool/test.dart   # exit 0
 **踩过的坑（写进测试注释，后续复用）**：① ClientHello 必须包在 TLS record 头（`0x16 0x03 0x01 len`）里，裸 handshake 嗅探器读不出；② 嗅探要拿到 IP 目的地的接管权，`Config` 必须 `ParsePureIp: true`，要让域名真的替换目的地还要 `Sniffers[TLS].OverrideDest: true`；③ `net.Pipe` 是同步管道，回显可能和 ClientHello 的回显合并成一次读，断言要用「包含标记」而非整串相等；④ 域名经 hosts 映射后 `Pure()` 会清掉 `Host`，嗅探证据留在 `metadata.SniffHost`；⑤ 从 tunnel 包测试不能 import `adapter/outbound`（经 dns 反向成环），成员桩自己实现 `ListenPacketContext`/`DialContext` 即可。
 
 **仍缺的三处**：`NeedHandshake` 预热写路径（要一个需要握手的远端连接，peek_test 里有现成形状）、`fixMetadata` 71.4%（入口参数组合）、`logMetadata` 45.5%（其余 switch 分支，需 Info 级别日志 + SpecialProxy/Group 模式组合）。
+### 2026-11-11 TCP 路径覆盖收口轮次（测试，接上一轮）
+
+上一轮留了三个块：入站连接本就是 BufferedConn、SpecialProxy 指向表里没有的代理、以及拨号成功后**预热写失败**的清理路径（后者只在 NeedHandshake 的连接上出现——真实代理如 hysteria2/tuic 都要先写一笔才服务）。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 补三例：已缓冲入站连接的复用分支（给它打开嗅逛才会调用 `bufferedConn()`，否则闭包根本不执行）、代理缺失连接的丢弃、预热写失败的两条清理分支（链上是 REJECT 时静默结束、否则作为失败上报并停止重试） | `c7e42d821` | 本轮父仓库提交 | `handleTCPConn` **89.1% -> 100%**，`tunnel` 包 84.9% -> **85.9%**。`go test ./tunnel/` 连续多遍通过，子模块全量 104 包 ok + `go vet ./...` 通过 |
+
+**踩过的坑（写进测试注释）**：① `bufferedConn()` 闭包只在嗅探块和 NeedHandshake 块里被调用——想让「已是 BufferedConn」分支执行，必须打开嗅探或让远端连接需要握手，光传一个缓冲连接不够；② 「预热写失败」要让**拨号成功、写失败**，所以 dial 要指向真实监听器，错误用一个被拒的 TCP 拨号错误（重试循环据此判为终态，一次尝试即结束）；③ 嗅探用例改用**预置缓冲**的连接（`Read` 先吐出自带字节再委托管道），彻底摆脱嗅探 1 秒预读窗口与测试写字节之间的时序耦合——此前 7 次全包里偶发 1 次 5 秒超时，根因就是那个耦合；④ patch 的锚文本在两个用例里相同时会落到第一个，两个用例用了同一段 `UpdateProxies/SetMode`，差点把嗅探配置加错测试。
+
+**至此 tunnel 包的主数据路径全部有测试驱动**：`HandleTCPConn`/`processUDP`/`startUDPSender` 100%，`dialUDPSender` 91.7%、`handleUDPConn` 80.6%、`match` 59.6%、`logMetadata` 45.5%（其余是日志分支与进程查找，属平台/日志级组合）。
 ## 5. 后续优化切入点
 
 ### 待优化项清单（2026-11-07 全量复核，均在本机实测过基线）
