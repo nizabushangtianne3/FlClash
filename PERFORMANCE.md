@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁 + 信封就地构建一轮（答案路径归零分配）：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约前两次写法否决、第三次（预留容量走算术）落地）；覆盖再加一轮：`adapter/outboundgroup` 的 `GetProxies` 53.5% → 95.8%（包 72.7% → 76.1%）；数据平面每连接缓冲复用一轮（答案路径之外的真实负载面：harness 100 并发 13.1 万→20.3 万 req/s、relay 分配 -94.81%）
-- FlClash main：`6fed0070`
-- Clash.Meta main：`7a07468f2`
+- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁 + 信封就地构建一轮（答案路径归零分配）：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约前两次写法否决、第三次（预留容量走算术）落地）；覆盖再加一轮：`adapter/outboundgroup` 的 `GetProxies` 53.5% → 95.8%（包 72.7% → 76.1%）；数据平面每连接缓冲复用一轮（答案路径之外的真实负载面：harness 100 并发 13.1 万→20.3 万 req/s、relay 分配 -94.81%）；每连接建立路径与启动文档解析两轮审计记账（产品侧均无可拿的净收益，各有一条实验撤销）
+- FlClash main：`93d6a6e8`
+- Clash.Meta main：`1c78f33f6`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 137 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 138 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -415,6 +415,30 @@
 | Windows process probe FFI symbol/library 缓存 | `lib/core/desktop/process_probe.dart` | `1db374ff` | 避免每次探测重新打开 DLL 和查找 4 个符号 |
 | URLTest 已有状态复用 | `core/Clash.Meta/adapter/adapter.go` | `dcdbe4d1` | 精准基准 146ns / 400B / 3 allocs → 16.5ns / 0B / 0 allocs |
 | 清理不可达的事件流开关（`refactor(core)`，`054a893c`） | -（仅 wrapper） | `054a893c` | 协议里没有启停 request/dns 事件流的方法，`handleStartRequestMessages`/`handleStopRequestMessages`/`handleStartDnsMessages`/`handleStopDnsMessages` 四个处理器连同两个标志位永远为 true，`sendMessage` 每个事件要为常量付一次 switch；删除该机制与只测它的用例，`routeState`（只被测试调用）移入测试文件。行为不变（标志位恒定 true），wrapper 全量 + vet 通过 |
+
+### 2026-11-11 outboundgroup `GetProxies` 覆盖轮次（测试，非性能）
+
+`GetProxies` 是 `adapter/outboundgroup` 内最大的未覆盖块（53.5%），而它每条未覆盖分支都直接改变宿主读到的成员名单：谁能活过滤、按什么顺序排、exclude 丢谁、空组拿谁顶。本轮只补测试，生产代码一行未动。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `GetProxies` 五条行为钉住：touch 契约（没要 touch 的读不碰 provider）、compatible provider 不过 filter、多 filter 跨 provider 按 filter 顺序重排、exclude-filter 与 exclude-type 两类剔除、空组回退 `EmptyFallback` | `fcaf694ac` | `78b830de` | `GetProxies` **53.5% → 95.8%**，包 **72.7% → 76.1%**；新增 5 例 focused 全过（连既有共 7 例）、focused race 通过、原生 `go vet ./...` 与 darwin/arm64、linux/arm64、android/arm64 三平台包级 vet 全部 exit 0、子模块全量 **104 包 ok** |
+
+两条易错点各钉一处：compatible provider 的成员是别处已经过滤过的，再过一次 filter 会把合格成员误杀；`len(providers) > 1 && len(filterRegs) > 1` 时必须按 filter 顺序整体重排（不是按 provider 顺序），否则成员名单顺序会随 provider 声明顺序漂移。
+
+### 2026-11-11 数据平面每连接缓冲复用轮次（性能，本会话最大单项）
+
+先说这个项目是怎么被找到的：此前所有基准测的都是「答案路径」（宿主 IPC）与「每包传输原语」，**真实负载下产品自己怎么跑从没被测过**。本轮在子模块内起了完整应用（`UnmarshalRawConfig` + `ParseRawConfig` + `ApplyConfig`：mixed 监听、嗅探开启、DIRECT 规则）加一个回显服务器，用 100 并发 SOCKS5 连接打 20 秒，从进程内抓 CPU/分配 profile——之前全是单 goroutine 微基准，稳态分配与锁竞争从没露过面。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `common/net.Relay` 每个方向每连接持有一个 32KB 缓冲复用，不再每数据块新建（sing 的 `CopyExtendedWithPool` 每块调 `ReadWaitOptions.NewBuffer()` = 结构体堆分配 + 池取出，且几乎不回池）；缓冲每读前 reset 并按目的地 headroom 重新 `Resize/Reserve`（链路里的读实现全是追加式，不 reset 会叠块）；`CachedConn` 的记录前缀（回退路径录下的握手航段）进循环前先写对端——它的 `ReadBuffer` 不吃前缀，旧路径靠 `bufio.Copy` 的 `ReadCached` 分支 | `1c78f33f6` | `93d6a6e8` | `BenchmarkRelayStream` paired n=7：**sec/op -73.65%**（1127.9µ → 297.2µ，p=0.001）、**B/s +279.50%**（3.46 → 13.14 GiB/s）、**B/op -99.97%**（4132.8KiB → 1.375KiB）、**allocs 270 → 14**（p=0.001）；端到端 harness（100 并发 SOCKS5 + mixed 监听 + 嗅探 + DIRECT，20 秒）：**130,993 → 203,454 req/s（+55%）**，分配 profile 里产品侧稳态分配归零。旧路径中转 4MB 要分配 4MB：从池里取的 32KB 数组几乎从不回池（负载 profile 实取 2.72M 次 vs 回池 0.17M 次） |
+
+**两个必须一起改的点**：缓冲复用要求每读前 reset + 按 `CalculateFrontHeadroom`/`CalculateRearHeadroom` 重新 `Resize`/`Reserve`——链路下的读实现（`ExtendedReaderWrapper`、mihomo 的 deadline reader、`BufferedConn`）都是往缓冲里**追加**，旧路径每块换新缓冲正好掩盖了「没人 reset」这件事；`CachedConn.ReadBuffer` 不吃 `data` 前缀，所以进循环前必须 `ReadCached()` 先写走。
+
+**中途被测试抓到的写法**（记下来，别重犯）：第一版只改缓冲复用，`transport/jls`（HelloRetryRequest 回退）、`transport/mekya`、`transport/shadowtls` 三个包全挂——回退路径把录好的 ClientHello 交给 `NewCachedConn`，没有前缀先写，回退服务器永远等不到 ClientHello（jls 直接 3 分钟超时堆栈）。修法就是上表第三栏那句。另外第一版还把基准的等待对象写错（数据从左流向右），busy-wait 永不退出。
+
+**覆盖**：`common/net/sing_test.go` 三条——`TestRelayStreamsEveryChunkBothWays`（双向各 240KB、字节级一致、双端关闭）、`TestRelaySteadyStateCostsNothingPerChunk`（稳态每块 `AllocsPerRun == 0`）、`TestRelayWritesTheCachedPrefixFirst`（记录前缀必须先于线路数据到达对端）。focused race、原生 `go vet ./...`、三平台包级 vet、子模块全量 **104 包 ok** 通过。
 
 ## 3. 已拒绝或已撤销实验
 
@@ -865,29 +889,11 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 
 **覆盖**：新代码 `size`/`bytes`/`envelopeLen`/`appendEnvelope` 均 100%。等价不变量由既有测试显式钉住——`connection_test.go:96/99/316/319` 把 id 形态与匿名形态的信封字节分别对拍 `json.Marshal(MethodResponse{...})` 的输出（四条全过，`frame_test.go` 的 `answerFrame` 已改走 id 形态）。spill 路径的 head 物化由 `TestHandleMethodCallSpillsAFrameWriterDocument` 覆盖。
 
-### 2026-11-11 outboundgroup `GetProxies` 覆盖轮次（测试，非性能）
+### 2026-11-11 structure `getFold` 折叠缓存轮次（性能，撤销）
 
-`GetProxies` 是 `adapter/outboundgroup` 内最大的未覆盖块（53.5%），而它每条未覆盖分支都直接改变宿主读到的成员名单：谁能活过滤、按什么顺序排、exclude 丢谁、空组拿谁顶。本轮只补测试，生产代码一行未动。
+`getFold` 每个字段查找都对 map 的每个 key 跑一遍 `KeyReplacer.Replace`；把折叠结果按 replacer 缓存（`foldList`，每张 map 一个 slice）后，harness 汇总看着像 -4.6%。配对基准给出相反判决：`BenchmarkParseRawConfigBig`（800 节点 + 200 组 + 200 规则的文档，unmarshal + parse）n=7 交替：**sec/op 13.46ms → 13.68ms（+1.6%）**、**B/op 6.209MB → 6.314MB（+1.7%）**、**allocs 104,468 → 105,881（+1.4%）**——每张 map 多出的 fold slice 比省下的 Replace 扫描更贵。已撤销。
 
-| 优化 | core 提交 | 父仓库提交 | 结果 |
-|---|---|---|---|
-| `GetProxies` 五条行为钉住：touch 契约（没要 touch 的读不碰 provider）、compatible provider 不过 filter、多 filter 跨 provider 按 filter 顺序重排、exclude-filter 与 exclude-type 两类剔除、空组回退 `EmptyFallback` | `fcaf694ac` | `78b830de` | `GetProxies` **53.5% → 95.8%**，包 **72.7% → 76.1%**；新增 5 例 focused 全过（连既有共 7 例）、focused race 通过、原生 `go vet ./...` 与 darwin/arm64、linux/arm64、android/arm64 三平台包级 vet 全部 exit 0、子模块全量 **104 包 ok** |
-
-两条易错点各钉一处：compatible provider 的成员是别处已经过滤过的，再过一次 filter 会把合格成员误杀；`len(providers) > 1 && len(filterRegs) > 1` 时必须按 filter 顺序整体重排（不是按 provider 顺序），否则成员名单顺序会随 provider 声明顺序漂移。
-
-### 2026-11-11 数据平面每连接缓冲复用轮次（性能，本会话最大单项）
-
-先说这个项目是怎么被找到的：此前所有基准测的都是「答案路径」（宿主 IPC）与「每包传输原语」，**真实负载下产品自己怎么跑从没被测过**。本轮在子模块内起了完整应用（`UnmarshalRawConfig` + `ParseRawConfig` + `ApplyConfig`：mixed 监听、嗅探开启、DIRECT 规则）加一个回显服务器，用 100 并发 SOCKS5 连接打 20 秒，从进程内抓 CPU/分配 profile——之前全是单 goroutine 微基准，稳态分配与锁竞争从没露过面。
-
-| 优化 | core 提交 | 父仓库提交 | 结果 |
-|---|---|---|---|
-| `common/net.Relay` 每个方向每连接持有一个 32KB 缓冲复用，不再每数据块新建（sing 的 `CopyExtendedWithPool` 每块调 `ReadWaitOptions.NewBuffer()` = 结构体堆分配 + 池取出，且几乎不回池）；缓冲每读前 reset 并按目的地 headroom 重新 `Resize/Reserve`（链路里的读实现全是追加式，不 reset 会叠块）；`CachedConn` 的记录前缀（回退路径录下的握手航段）进循环前先写对端——它的 `ReadBuffer` 不吃前缀，旧路径靠 `bufio.Copy` 的 `ReadCached` 分支 | `7a07468f2` | `6fed0070` | `BenchmarkRelayStream` paired n=7：**sec/op -73.65%**（1127.9µ → 297.2µ，p=0.001）、**B/s +279.50%**（3.46 → 13.14 GiB/s）、**B/op -99.97%**（4132.8KiB → 1.375KiB）、**allocs 270 → 14**（p=0.001）；端到端 harness（100 并发 SOCKS5 + mixed 监听 + 嗅探 + DIRECT，20 秒）：**130,993 → 203,454 req/s（+55%）**，分配 profile 里产品侧稳态分配归零。旧路径中转 4MB 要分配 4MB：从池里取的 32KB 数组几乎从不回池（负载 profile 实取 2.72M 次 vs 回池 0.17M 次） |
-
-**两个必须一起改的点**：缓冲复用要求每读前 reset + 按 `CalculateFrontHeadroom`/`CalculateRearHeadroom` 重新 `Resize`/`Reserve`——链路下的读实现（`ExtendedReaderWrapper`、mihomo 的 deadline reader、`BufferedConn`）都是往缓冲里**追加**，旧路径每块换新缓冲正好掩盖了「没人 reset」这件事；`CachedConn.ReadBuffer` 不吃 `data` 前缀，所以进循环前必须 `ReadCached()` 先写走。
-
-**中途被测试抓到的写法**（记下来，别重犯）：第一版只改缓冲复用，`transport/jls`（HelloRetryRequest 回退）、`transport/mekya`、`transport/shadowtls` 三个包全挂——回退路径把录好的 ClientHello 交给 `NewCachedConn`，没有前缀先写，回退服务器永远等不到 ClientHello（jls 直接 3 分钟超时堆栈）。修法就是上表第三栏那句。另外第一版还把基准的等待对象写错（数据从左流向右），busy-wait 永不退出。
-
-**覆盖**：`common/net/sing_test.go` 三条——`TestRelayStreamsEveryChunkBothWays`（双向各 240KB、字节级一致、双端关闭）、`TestRelaySteadyStateCostsNothingPerChunk`（稳态每块 `AllocsPerRun == 0`）、`TestRelayWritesTheCachedPrefixFirst`（记录前缀必须先于线路数据到达对端）。focused race、原生 `go vet ./...`、三平台包级 vet、子模块全量 **104 包 ok** 通过。
+副产品（保留）：`BenchmarkParseRawConfigBig` 基线 = **13.59ms / 6.209MB / 104,385 allocs**，其中 YAML 反序列化约 9.3ms（`go.yaml.in/yaml/v3` 词法/解析，上游库，占 70%），`ParseRawConfig` 约 4.2ms（剖析：YAML 解析 ~30%、`structure.getFold` ~28%、GC ~15%）。启动文档成本的大头在反序列化，产品侧无可动之处；`ParseRawConfig` 内部此前多轮已挖过（延迟历史、options 指针、UUID 内联）。
 
 ## 4. 当前验证矩阵
 
@@ -909,7 +915,7 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 | 资料页缓存 focused race | `go test -race . -run 'Profile\|Route\|Base\|Merge'` | 除同一既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿（2026-11-10，`profile_cache.go` 改动后） |
 | 2026-11-10 当日七轮 \+ 信封证伪（收官） | 见第 2 节各轮次小节 | wrapper 全量 ok；四平台 vet exit 0；focused race 仅既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent`（基线对照复现）；**子模块全量 104 包 ok + vet 0**；`ParseProxy` 8.6%→75.9%、`adapter` 62.1%→85.2%、wrapper 93.7%；父仓库 `068dd308` / 子模块 `778e0fb67`，两端远程均已同步 |
 | 2026-11-11 outboundgroup `GetProxies` 覆盖（测试轮） | 见第 2 节该轮次 | 新增 5 例 focused 全过（连既有共 7 例）、focused race 通过、原生 `go vet ./...` 与三平台包级 vet exit 0、子模块全量 **104 包 ok**；`GetProxies` 53.5% → 95.8%、包 72.7% → 76.1%；父仓库 `78b830de` / 子模块 `fcaf694ac`，两端远程均已同步 |
-| 2026-11-11 数据平面每连接缓冲复用（本会话最大单项） | 见第 2 节该轮次 | `BenchmarkRelayStream` n=7 交替：sec/op **-73.65%**、B/s **+279.50%**、B/op **-99.97%**、allocs **270 → 14**（各 p=0.001）；harness 端到端 13.1 万 → 20.3 万 req/s（+55%）、稳态产品分配归零；focused race、原生与三平台 vet、子模块全量 104 包 ok；新增 3 条 relay 测试（跨流字节一致/每块零分配/缓存前缀先行）；父仓库 `6fed0070` / 子模块 `7a07468f2`，两端远程均已同步 |
+| 2026-11-11 数据平面每连接缓冲复用（本会话最大单项） | 见第 2 节该轮次 | `BenchmarkRelayStream` n=7 交替：sec/op **-73.65%**、B/s **+279.50%**、B/op **-99.97%**、allocs **270 → 14**（各 p=0.001）；harness 端到端 13.1 万 → 20.3 万 req/s（+55%）、稳态产品分配归零；focused race、原生与三平台 vet、子模块全量 104 包 ok；新增 3 条 relay 测试（跨流字节一致/每块零分配/缓存前缀先行）；父仓库 `93d6a6e8` / 子模块 `1c78f33f6`，两端远程均已同步 |
 
 | 2026-11-10 组答案代号 | 见第 2 节该轮次 | steady answer geomean **-74.68%**（n=7，p=0.001 各）；miss 路径 +1.55%（p=0.310 噪声内）；分配全项不变；选中变更/provider 刷新两条不变量由既有测试钉住 |
 **噪声带实测依据**（本轮新增，后续 A/B 准绳）：同一编译产物交替自比 4 轮，benchstat geomean +0.71%，个别场景差异 ±2.5% 且 p 可低至 0.021（loadbalance +2.34%，p=0.021）。因此本机「无差异」判定阈值取 p>0.2 或落在 ±2.5% 内；「有差异」判定沿用仓库规矩（p≤0.02 且幅度 ≥ 仓库认可量级）。
@@ -1041,6 +1047,8 @@ dart run tool/test.dart   # exit 0
 | 代理选中 | Selector 大组 **1.468ns / 0 alloc**（并行）、URLTest 大组 131.8ns / 0 alloc、Fallback 大组 124ns / 1 alloc（store 新选择） | 分配只发生在"重选并存新值"，命中路径已由 `TestFallbackCachedSelectionStaysAllocationFree`/`TestURLTestFastCacheHitStaysAllocationFree` 钉住 0 alloc；与 Selector 同一设计 |
 | 传输层每包路径 | `PacketConnWriteTo` 34.3ns、`ReadFrom` 32.8ns、`WaitReadFrom` 49.3ns、Relay 写 59.5ns、Quic 读 70.7ns、UoT 读 5.6µ | **全部 0 alloc**；已是每包地板 |
 | 数据平面中继拷贝（每条 TCP 连接两个方向） | 稳态 **0 alloc/块**，`BenchmarkRelayStream` 13.1GiB/s（夹具带宽附近）；harness 100 并发 SOCKS5 20.3 万 req/s | 每连接两个 32KB 缓冲，随连接生命周期持有；已见底 |
+| 每连接建立路径（新连接，非稳态） | 7.9k 连接样本：113 allocs/连接，其中产品侧约 20（`NewConn` 分层包装 5、dial context 链约 8、relayReader 2、tracker/metadata 其余）；CPU 57% 在 cgocall（connect/accept/握手），产品代码不进 top；goroutine 跑完后剩 6 个（无泄漏） | 系统调用主导，产品分配是每层一个包装/上下文的固有成本；单项去除都要吞并上游逻辑或改语义，无净收益可拿 |
+| 启动文档解析（800 节点 + 200 组 + 200 规则） | `BenchmarkParseRawConfigBig` **13.59ms / 6.209MB / 104,385 allocs**：YAML 反序列化约 9.3ms（上游 `go.yaml.in/yaml/v3`，占 70%），`ParseRawConfig` 约 4.2ms（YAML 解析 ~30%、`structure.getFold` ~28%、GC ~15%）；`ApplyConfig` 仅 0.25-0.55ms | 反序列化是大头且在库内；`getFold` 折叠缓存实验已测得净负并撤销（见第 3 节）；解析内各点此前多轮已挖 |
 | 规则匹配 | `DomainSuffixMatch` 3.7ns、`ClassicalIndexExactHit` 21.8ns、`SuffixHit` 69.2ns、`RuleWrapperHit` 9.1ns、150 条 classical 混合 1.65µ | **全部 0 alloc**；classical 的线性扫描是该规则类型的固有形态 |
 | 子模块 `xsync.Map` | Size O(bucket) 不 O(entry)，`GetConnectionCount` 6.6ns/次 | 无进一步空间 |
 | wrapper 自身 `groupDocsMu`（答案路径约 3%） | 缓存命中也要拿写锁，只为读 `cachedProxiesFrame`/`groupDocGeneration` | **维持不加锁（2026-11-11 复测）**：`dispatchMethodCall` 走 `safeGo` 起 goroutine，`document()` 确实并发。免锁需把「帧指针+generation」与「快照上的三个戳」一起原子化，且引入「答案在途时选中变更仍报旧选中」的陈旧窗口（现在持锁仅锁内几纳秒）。收益已从 4.4% 降到约 3%，更不值得 |
