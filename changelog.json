@@ -2,6 +2,144 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "1.0.4",
+      "tag": "v1.0.4",
+      "date": "2026-11-10",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "ec5b76d",
+              "scope": "core",
+              "text": "Rank connections from one state table instead of three maps"
+            },
+            {
+              "id": "9e4bbd6",
+              "scope": "core",
+              "text": "Answer a steady connection poll from the last walk"
+            },
+            {
+              "id": "6fed007",
+              "scope": "core",
+              "text": "Point the submodule at the relay buffer round"
+            },
+            {
+              "id": "a18f91a",
+              "scope": "core",
+              "text": "Build the envelope where the answer is consumed"
+            },
+            {
+              "id": "0285829",
+              "scope": "core",
+              "text": "Pool the header a large answer writes beside its document"
+            },
+            {
+              "id": "131ba6d",
+              "scope": "core",
+              "text": "Hand back the answer a proxy projection already stands for"
+            },
+            {
+              "id": "0730546",
+              "scope": "core",
+              "text": "Read a proxy table\\'s identity instead of type-walking it"
+            },
+            {
+              "id": "9b143f7",
+              "scope": "core",
+              "text": "Answer a steady proxy table from two counter reads"
+            },
+            {
+              "id": "40496d0",
+              "scope": "core",
+              "text": "Pack a group slot for the read that revalidates it"
+            },
+            {
+              "id": "d138775",
+              "scope": "core",
+              "text": "Refresh a proxy table's groups without walking its rows"
+            },
+            {
+              "id": "0d66c43",
+              "scope": "core",
+              "text": "Answer a cached profile without allocating the bytes"
+            },
+            {
+              "id": "6bbe968",
+              "scope": "core",
+              "text": "Answer a group row from its counters alone"
+            },
+            {
+              "id": "1a296a0",
+              "scope": "core",
+              "text": "Key the group documents on the provider list generation"
+            },
+            {
+              "id": "947fc16",
+              "scope": "core",
+              "text": "Reuse one buffer per event batch"
+            },
+            {
+              "id": "7a92f96",
+              "scope": "core",
+              "text": "Key a Selector's document on its selection counter"
+            },
+            {
+              "id": "64a7af3",
+              "scope": "core",
+              "text": "Key the proxy name lists on identity rather than content"
+            },
+            {
+              "id": "b1869f2",
+              "scope": "core",
+              "text": "Answer the proxy table from its document and write frames in pieces"
+            },
+            {
+              "id": "7b79aa0",
+              "scope": "compute",
+              "text": "Hoist the fallback list out of the member loops"
+            },
+            {
+              "id": "3c3ae43",
+              "scope": "core",
+              "text": "Read a group's key inputs from its slot instead of the proxy"
+            },
+            {
+              "id": "d302ed1",
+              "scope": "compute",
+              "text": "Resolve a nested group with one state copy"
+            },
+            {
+              "id": "30851bf",
+              "scope": "compute",
+              "text": "Read a proxy's type off the proxy instead of a name-keyed map"
+            },
+            {
+              "id": "881b74b",
+              "scope": "core",
+              "text": "Cache the profile wire bytes without copying them"
+            },
+            {
+              "id": "d98bb4c",
+              "scope": "core",
+              "text": "Carry the group document cache in the snapshot slots"
+            },
+            {
+              "id": "52bbafb",
+              "scope": "core",
+              "text": "Refresh the cached IPv6 support answer on a network change"
+            },
+            {
+              "id": "18bc5d1",
+              "scope": "core",
+              "text": "Answer the proxy table and sweep the connection rows in place"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.3",
       "tag": "v1.0.3",
       "date": "2026-11-08",

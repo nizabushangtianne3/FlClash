@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.0.4 (2026-11-10)
+
+**Performance**
+
+- **core** Rank connections from one state table instead of three maps (ec5b76d)
+- **core** Answer a steady connection poll from the last walk (9e4bbd6)
+- **core** Point the submodule at the relay buffer round (6fed007)
+- **core** Build the envelope where the answer is consumed (a18f91a)
+- **core** Pool the header a large answer writes beside its document (0285829)
+- **core** Hand back the answer a proxy projection already stands for (131ba6d)
+- **core** Read a proxy table\'s identity instead of type-walking it (0730546)
+- **core** Answer a steady proxy table from two counter reads (9b143f7)
+- **core** Pack a group slot for the read that revalidates it (40496d0)
+- **core** Refresh a proxy table's groups without walking its rows (d138775)
+- **core** Answer a cached profile without allocating the bytes (0d66c43)
+- **core** Answer a group row from its counters alone (6bbe968)
+- **core** Key the group documents on the provider list generation (1a296a0)
+- **core** Reuse one buffer per event batch (947fc16)
+- **core** Key a Selector's document on its selection counter (7a92f96)
+- **core** Key the proxy name lists on identity rather than content (64a7af3)
+- **core** Answer the proxy table from its document and write frames in pieces (b1869f2)
+- **compute** Hoist the fallback list out of the member loops (7b79aa0)
+- **core** Read a group's key inputs from its slot instead of the proxy (3c3ae43)
+- **compute** Resolve a nested group with one state copy (d302ed1)
+- **compute** Read a proxy's type off the proxy instead of a name-keyed map (30851bf)
+- **core** Cache the profile wire bytes without copying them (881b74b)
+- **core** Carry the group document cache in the snapshot slots (d98bb4c)
+- **core** Refresh the cached IPv6 support answer on a network change (52bbafb)
+- **core** Answer the proxy table and sweep the connection rows in place (18bc5d1)
+
 ## v1.0.3 (2026-11-08)
 
 **Features**
