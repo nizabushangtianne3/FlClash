@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-10（当日八轮：资料页命中零分配 + 组刷新只走组行 + 组槽缓存行打包 + 组答案全局代号 + 表身份直读 + 答案结构随投影缓存 + 大答案 header 池化 + statistic 覆盖补全；信封契约两次实测否决）
-- FlClash main：`c4492a89`
-- Clash.Meta main：`3cce3749f`
+- 最近核对日期：2026-11-10（当日九轮：资料页命中零分配 + 组刷新只走组行 + 组槽缓存行打包 + 组答案全局代号 + 表身份直读 + 答案结构随投影缓存 + 大答案 header 池化 + statistic 覆盖补全 + DNS 拨号器覆盖；信封契约两次实测否决）
+- FlClash main：`2e63a485`
+- Clash.Meta main：`f6e0a19ca`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 127 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 128 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -789,6 +789,15 @@ CPU 剖析（`BenchmarkHandleGetProxies`）显示答案路径 58% 落在 `refres
 | `tcpCounterConn` 的 `Read`/`Write`/`ReadBuffer`/`WriteBuffer`（转发后计数仍落 tracker）与 `ReaderReplaceable`/`WriterReplaceable`（不可替换）；`udpTracker` 的 `ID`/`Upstream`/`WaitReadFrom` | `3cce3749f` | `c4492a89` | `TestTCPTrackerCounterKeepsAccountingAndRefusesReplacement`、`TestUDPTrackerAnswersItsIdItsConnAndAWait`。`tunnel/statistic` **83.8% → 94.4%** |
 
 remaining uncovered there is the 1s ticker loop in `handle` and tracker-level read/write of the raw conn, which the existing direction tests already drive through a real pipe.
+
+
+### 2026-11-10 DNS 拨号器覆盖轮次（测试）
+
+「测试必须覆盖全部核心代码」的下一站：`tunnel/dns_dialer.go`（fork 自己写的 DNS 专用拨号器，189 行）此前 **0% 覆盖**——DNS 模块把每个查询交给它，而它一天都没被测试走过。
+
+| 覆盖 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `DNSDialer.DialContext`/`ListenPacket`/`NewDNSDialer`：无法解析的地址、主机解析失败、代理不支持 UDP、代理自身拨号/监听失败、两种传输经适配器成功返回、按隧道持有的名字选中代理（`SpecialProxy` 置位）、未知名字交回平台接口 | `f6e0a19ca` | `2e63a485` | 7 个用例全过，`NewDNSDialer` 100%、`DialContext` 62.5%、`ListenPacket` 77.1%；**tunnel 包 60.5% → 69.2%**。测试自持 resolver 与 adapter（`dnsTestResolver`/`dnsTestAdapter`），查询不出进程；平台拨号路径只断言"平台自己回答了，而不是某个 proxy"，不锁平台措辞 |
 
 ## 4. 当前验证矩阵
 
