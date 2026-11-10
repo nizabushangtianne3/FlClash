@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-11 深夜（晚间接续会话，全部本机实测）：连接轮询稳态免扫描一轮（500 连接 32.78µs -> 371ns，-98.87%；stale 十字段与十个镜像字段整段删除）；Dart 侧连接排序一轮（1 万行每快照 10.4ms -> ~4.19ms，-60.7%，三张 per-poll 字符串 map 合并为一张状态表）；UDP 数据报主路径覆盖一轮（tunnel 76.5% -> 82.7%，processUDP/startUDPSender/dialUDPSender 从 0/0/50% 到 100/100/89.6%）；wrapper IPC 入口覆盖一轮（StartServer 走真实命名管道，93.7% -> 93.9%）；死代码清扫一轮（staticcheck 名下未用测试 helper 与两处死赋值）；另有三项实测否决记账（feed flush 归属拆解、GOGC 策略、连接 churn 增量日志）
-- FlClash main：`76c95b55`
-- Clash.Meta main：`0bf394920`
+- FlClash main：`1dd3f040`
+- Clash.Meta main：`f964973dd`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -1004,6 +1004,17 @@ dart run tool/test.dart   # exit 0
 
 外部 V2Ray 互操作支持 `MIHOMO_V2RAY_INTEROP_BIN` 复用已构建的版本化二进制；本机使用 `D:\Codex\tools\v2ray-5.51.2\bin\v2ray.exe`。`TestInboundVMess_MKCP_V2RayInterop` 现覆盖默认、seed 和全部 5 种 header，双向共 14 个子用例；普通与 `-race` 全绿。未知 header 现在启动/拨号即报错，不再静默回退 none。
 
+### 2026-11-11 深夜 TCP 主路径覆盖轮次（测试）
+
+`handleTCPConn` 此前 70.7%：没有任何测试让一个字节真的穿过它，`resolveMetadata`/`fixMetadata`/`preHandleMetadata` 及其后的 hosts 映射全靠间接。用 coverprofile 逐块定位后补了五个从真实入口驱动的用例。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `tcp_round_test.go` + `tcp_sniff_round_test.go`：真监听 echo 服务器 + Direct 模式，覆盖①中继往返 ②fake-ip 记录缺失时由嗅探读出域名并携带拨号（日志可见 `[TCP] mihomo --> sniffed.example.com:443 using DIRECT`）③无人能命名时放弃并不拨号 ④无目的地连接直接关闭 ⑤代理拒绝拨号即结束 | `f964973dd` | 本轮父仓库提交 | `tunnel` 包 **83.1% -> 84.9%**，`handleTCPConn` **70.7% -> 89.1%**、`resolveMetadata` 66.7% -> 75.0%。`go test ./tunnel/ -run TestHandleTCPConn -count=3` 连续三遍通过；子模块全量 104 包 ok + `go vet ./...` 通过 |
+
+**踩过的坑（写进测试注释，后续复用）**：① ClientHello 必须包在 TLS record 头（`0x16 0x03 0x01 len`）里，裸 handshake 嗅探器读不出；② 嗅探要拿到 IP 目的地的接管权，`Config` 必须 `ParsePureIp: true`，要让域名真的替换目的地还要 `Sniffers[TLS].OverrideDest: true`；③ `net.Pipe` 是同步管道，回显可能和 ClientHello 的回显合并成一次读，断言要用「包含标记」而非整串相等；④ 域名经 hosts 映射后 `Pure()` 会清掉 `Host`，嗅探证据留在 `metadata.SniffHost`；⑤ 从 tunnel 包测试不能 import `adapter/outbound`（经 dns 反向成环），成员桩自己实现 `ListenPacketContext`/`DialContext` 即可。
+
+**仍缺的三处**：`NeedHandshake` 预热写路径（要一个需要握手的远端连接，peek_test 里有现成形状）、`fixMetadata` 71.4%（入口参数组合）、`logMetadata` 45.5%（其余 switch 分支，需 Info 级别日志 + SpecialProxy/Group 模式组合）。
 ## 5. 后续优化切入点
 
 ### 待优化项清单（2026-11-07 全量复核，均在本机实测过基线）
