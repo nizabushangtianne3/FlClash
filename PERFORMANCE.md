@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁 + 信封就地构建一轮（答案路径归零分配）：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约前两次写法否决、第三次（预留容量走算术）落地）；覆盖再加一轮：`adapter/outboundgroup` 的 `GetProxies` 53.5% → 95.8%（包 72.7% → 76.1%）；数据平面每连接缓冲复用一轮（答案路径之外的真实负载面：harness 100 并发 13.1 万→20.3 万 req/s、relay 分配 -94.81%）；每连接建立路径与启动文档解析两轮审计记账（产品侧均无可拿的净收益，各有一条实验撤销），再加 UDP 数据报全链一轮（同样地板），千人并发竞争面一轮（同样地板），代理链路两跳一轮（同样地板）
-- FlClash main：`93d6a6e8`
-- Clash.Meta main：`1c78f33f6`
+- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁 + 信封就地构建一轮（答案路径归零分配）：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约前两次写法否决、第三次（预留容量走算术）落地）；覆盖再加一轮：`adapter/outboundgroup` 的 `GetProxies` 53.5% → 95.8%（包 72.7% → 76.1%）；数据平面每连接缓冲复用一轮（答案路径之外的真实负载面：harness 100 并发 13.1 万→20.3 万 req/s、relay 分配 -94.81%）；每连接建立路径与启动文档解析两轮审计记账（产品侧均无可拿的净收益，各有一条实验撤销），再加 UDP 数据报全链一轮（同样地板），千人并发竞争面一轮（同样地板），代理链路两跳一轮（同样地板）；晚间会话新增连接轮询稳态免扫描一轮：500 连接 32.78µs → 371ns（-98.87%），stale 十字段与十个镜像字段整段删除）
+- FlClash main：`9e4bbd64`
+- Clash.Meta main：`5018ea4c4`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -895,6 +895,23 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 
 副产品（保留）：`BenchmarkParseRawConfigBig` 基线 = **13.59ms / 6.209MB / 104,385 allocs**，其中 YAML 反序列化约 9.3ms（`go.yaml.in/yaml/v3` 词法/解析，上游库，占 70%），`ParseRawConfig` 约 4.2ms（剖析：YAML 解析 ~30%、`structure.getFold` ~28%、GC ~15%）。启动文档成本的大头在反序列化，产品侧无可动之处；`ParseRawConfig` 内部此前多轮已挖过（延迟历史、options 指针、UUID 内联）。
 
+### 2026-11-11 连接轮询稳态免扫描轮次（性能，wrapper + 子模块）
+
+账本此前两轮都判过「连接轮询维持不做」：`row.stale(info)` 被当成生产永不触发的防御（2026-11-09），`Manager.Range` 占 delta 基准 80% cum 被当成「接口 map 查询 + 回调」的固有成本（2026-11-08）。本轮重新剖析换了个问法：**稳态轮询为什么还要走一遍全表？**
+
+剖析（`BenchmarkGetConnectionsDelta/connections=500` cpuprofile）：`handleGetConnections` cum 82.9%，其中 `xsync.Map.Range` 79.6% cum、`connectionRow.stale` **23.7% flat（单点最大）**、`tcpTracker.Info` 9.2%、`mapaccess2` 22.4% cum（`connectionRows.rows[tracker]` 接口 map 查询）。也就是说：一次「什么也没发生」的轮询，CPU 全花在证明「什么也没发生」上。
+
+两个可动点依次落地：
+
+1. **`stale` 整段删除**：逐字段全子模块 grep（排除测试）证实 tracker 的 metadata 只有构造期写入（`NewTCPTracker`/`NewUDPTracker` 的值拷贝 + 构造期 `RemoteDst`），没有任何生产路径原地改 `Info().Metadata` 的字段；`connectionRow` 的十个镜像字段与每次新建行的两个 `slices.Clone` 随之删除，行只留 `tracker/id/generation`。子模块测试 `TestTrackerClonesMetadataIntoCreationSnapshot` 增加「流量穿过 live tracker 之后快照字段不变、指针不变」的断言，把这条不变量钉在测试里而不是只靠 grep。
+2. **稳态免扫描**：子模块 `Manager` 增 `members` 计数器，`Join`/`Leave` 在 map 操作**之后**各 +1（保证读到新值时背后的变更已可见），并暴露 `Generation()`；wrapper 记「上一次全表走到的 generation」，非 resync 轮询在「generation 未动 且 表层数与本地 `order` 等长」时直接返回上一次已证明的空 delta。两个条件都用上是因为计数 bump 尾随 map 操作：只有 generation 相等可能漏掉「已 Store、未 bump」，只有 Size 相等可能漏掉「bump 先于 Size 可见」，取交集才无遗漏。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 连接轮询稳态免扫描（`Manager.Generation()` + wrapper 快路径 + 删 stale 镜像字段） | `5018ea4c4` | `9e4bbd64` | `BenchmarkGetConnectionsDelta` paired n=5：100 连接 5.133µs → 422.4ns（**-91.77%**，p=0.008）、500 连接 32.78µs → 371.4ns（**-98.87%**，p=0.008），geomean **-96.95%**；**分配 6、内存 308B 全部不变**。新增 `BenchmarkGetConnectionsDeltaWalk`（每轮 leave+join 两个预建 tracker）钉住表变动路径：100 连接 2.39µs/2.44KB/13 allocs、500 连接 2.15µs/2.31KB/13 allocs。验证：子模块 104 包全量 + `go vet ./...` 通过、statistic 四平台 vet（windows/linux/darwin/android arm64）exit 0、wrapper 全量测试 + vet 通过、四平台 vet exit 0、connection focused race（mingw64 gcc）通过 |
+
+**与 2026-11-09 否决的关系**：那次否掉的是「删 stale 不改轮询」（那时没有 generation，删了字段比较省不下 Range 的 80%）；本轮把 Range 本身在稳态短路掉，字段比较随之失去存在理由。测试里「原地改 `Metadata.Process` 驱动 stale」的场景改写为「快照只在读取时被看到」，并新增断言：改字段后的稳态轮询仍答空、resync 携带读取时值。
+
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
@@ -918,6 +935,7 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 | 2026-11-11 数据平面每连接缓冲复用（本会话最大单项） | 见第 2 节该轮次 | `BenchmarkRelayStream` n=7 交替：sec/op **-73.65%**、B/s **+279.50%**、B/op **-99.97%**、allocs **270 → 14**（各 p=0.001）；harness 端到端 13.1 万 → 20.3 万 req/s（+55%）、稳态产品分配归零；focused race、原生与三平台 vet、子模块全量 104 包 ok；新增 3 条 relay 测试（跨流字节一致/每块零分配/缓存前缀先行）；父仓库 `93d6a6e8` / 子模块 `1c78f33f6`，两端远程均已同步 |
 
 | 2026-11-10 组答案代号 | 见第 2 节该轮次 | steady answer geomean **-74.68%**（n=7，p=0.001 各）；miss 路径 +1.55%（p=0.310 噪声内）；分配全项不变；选中变更/provider 刷新两条不变量由既有测试钉住 |
+| 2026-11-11 晚间连接轮询稳态免扫描 | 见第 2 节该轮次 | `BenchmarkGetConnectionsDelta` paired n=5：100 连接 **-91.77%**、500 连接 **-98.87%**（p=0.008），geomean **-96.95%**，分配 6 / 内存 308B 不变；`BenchmarkGetConnectionsDeltaWalk` 新增钉住表变动路径；子模块 104 包全量 ok + vet 0 + statistic 四平台 vet exit 0；wrapper 全量 ok + vet 0 + 四平台 vet exit 0 + connection focused race 通过；父仓库 `9e4bbd64` / 子模块 `5018ea4c4` |
 **噪声带实测依据**（本轮新增，后续 A/B 准绳）：同一编译产物交替自比 4 轮，benchstat geomean +0.71%，个别场景差异 ±2.5% 且 p 可低至 0.021（loadbalance +2.34%，p=0.021）。因此本机「无差异」判定阈值取 p>0.2 或落在 ±2.5% 内；「有差异」判定沿用仓库规矩（p≤0.02 且幅度 ≥ 仓库认可量级）。
 
 **本轮基准注意**：`BenchmarkHandleGetProxies` / `BenchmarkHandleGetProxiesMiss` 的配置名单已改为生产形态（全部代理名，见「名单按身份做键轮次」），其绝对数值与 2026-11-09 之前的行不可比；跨轮比较只能在本轮同基准内做 A/B。
@@ -968,7 +986,7 @@ dart run tool/test.dart   # exit 0
 | `getProxies` 答案的 `groupDocKeyOf` → `Now()` | 剖析：URLTest 场景答案路径 CPU 的约 25%（200 组 × ~90ns/答案） | **2026-11-09 已完结：Selector 场景 -42% ~ -66%，geomean -31.37%**（见「选中代数做键轮次」）。全场景剖析显示 `groupDocKeyOf` 从 69.5% 降到 56.7%；剩余两部分都判定为「必须做」：wrapper 自己的 provider 版本遍历（约 14%）是唯一能抓到「订阅刷新不重建代理表」的读取点，删不得；URLTest/Fallback 的 `Now()` 解析无法用计数器替代——它们的选中会随 fastSingle TTL 到期自行改选，计数器会滞后一个 TTL，UI 会显示过期选中态（这正是本轮只做 Selector 的原因：`setSelected` 是 Selector 选中的唯一写入口，计数完整；URLTest/Fallback 没有这个性质）。若将来要做，唯一正路是子模块提供「选中变更即通知」的主动失效钩子，而不是计数器 |
 | `configuredTestTimeout`（`core/delay.go`） | 每次 delay 测试遍历全部 provider，并对每个返回 timeout 的 provider 线性扫成员（`slices.ContainsFunc(pd.Proxies(), …)`）；1000 节点 × N provider 时每次调用 O(providers × members) | 单次成本远小于 URLTest 网络往返，暂不动；若要改，按 `proxy.ProxyInfo().ProviderName` 直接定位 provider（语义差异：同名节点跨 provider 时只认隧道表里那一个，需先确认可接受） |
 | `adapter.Proxy` 的 `extra` xsync.Map 读路径初始化 | `BenchmarkHandleGetProxies` 内存剖析：活对象的 30% 来自 `xsync.newMapTable[string,*internalProxyState]`，且**纯读取**（`AliveForTestUrl`/`LastDelayForTestUrl`）就会触发惰性建表 | **2026-11-09 已落地并验证有效**：`hasExtra` 标志由写入路径（`testState`，全部写入收敛于此）在触表前发布，纯读路径先看标志。`BenchmarkHandleGetProxies/groups=200/members=20/nodes=1000/urltest` 的 inuse_space 剖析里 `xsync.newMapTable` 已从存活对象中完全消失（修复前占活对象约 30%）；`BenchmarkWriteFrameLargeDocumentOnAPipe` 之外另测分配 223.5B → 103.0B/答案（-53.91%），基准全过程分配 78.3MiB → 40.8MiB。见「只读代理不再建表轮次」 |
-| 连接轮询的 `row.stale(info)` 与 `Manager.Range` | 剖析：stale ~25ns/行；Range 桶遍历约占该基准采样的 10% | 要再降需要 `TrackerInfo` 侧提供元数据版本号（改动面覆盖全部元数据写入点），维持不做 |
+| 连接轮询的 `row.stale(info)` 与 `Manager.Range` | 剖析：stale ~25ns/行；Range 桶遍历约占该基准采样的 10% | **2026-11-11 晚间会话已完结**：`Manager.Generation()` 之外不再需要元数据版本号——stale 整段删除（全子模块 grep 证实 metadata 只有构造期写入，测试已钉住），稳态轮询连 Range 一起短路，500 连接 32.78µs → 371ns（-98.87%）。见第 2 节「连接轮询稳态免扫描轮次」 |
 | 连接 resync 答案的行级链路 | 剖析（500 行）：`TrackerInfo.AppendJSON` 约 74ns/行、行管理（Info/查表/stale）约 8ns/行、`rowAnswerSize` 仅占 2.5%，GC 占 45%（378KB/答案）；答案缓冲池化只在 spill 路径安全，而 resync 只发生在页面打开与漂移重同步，真实收益有限 | `rowAnswerSize` 不值得缓存；`stale` 与 `Manager.Range` 的再削减需要 `TrackerInfo` 元数据版本号或 xsync  relaxed 遍历（后者改变子模块共享语义），维持不做 |
 | `handleGetExternalProviders` 答案 | 43.6µs/答案：逐条 `AppendString` 占 26%、每次答案全量排序占 19%； Dart 侧只在 provider 更新后 `syncProviders()` 调用 | 文档缓存要把 version/count/updateAt/subscription-info 五个易变值都纳入键（其中 subscription-info 是指向可变结构的指针），而该路径只在订阅刷新后跑一次，风险收益不相称，维持不做 |
 
@@ -1038,7 +1056,8 @@ dart run tool/test.dart   # exit 0
 | 路径 | 现状 | 结论 |
 |---|---|---|
 | 代理表答案（最热 IPC） | 200 组 **118-121ns / 0 alloc / 0 B**（本会话 5.105µ/12 allocs → 0.12µs/0 allocs，约 43 倍）；信封已改为消费点就地构建，`AllProxies` 免锁、`GetProxyNameList` 免锁 | 见「信封就地构建轮次」：唯一权衡是大文档路径多两次 id 扫描换取零分配，实测净胜 |
-| 连接轮询 | 500 连接 31.4µ：`xsync.Map.Range` 85% cum（回调占大头）、`stale` 20% flat、接口 map 查询 27% cum | `stale` 的十字段比较是"生产线永不触发"的防御，按 2026-11-09 定案不删；接口 map 的 equal 可省 6.8% 但要 unsafe 取指针，收益不抵 |
+| 连接轮询（稳态） | 500 连接 **371ns / 308B / 6 allocs**：不扫描。generation 未动且表层数与本地 rows 等长时，直接返回上一次全表已证明的空 delta；`Manager.Generation()` 一次原子读 + `Size()` 一次 O(bucket) 读 | 已见底。`BenchmarkGetConnectionsDeltaWalk`（leave+join 每轮）钉住表变动路径 2.15µs/13 allocs，那里才付 Range 与行编码 |
+| 连接轮询（表变动） | 500 连接 2.15µs / 2.31KB / 13 allocs：`xsync.Map.Range` 85% cum（回调占大头）、接口 map 查询 27% cum | metadata 快照自构造后不变（子模块测试钉住），行不再镜像字段；接口 map 的 equal 可省 6.8% 但要 unsafe 取指针，收益不抵 |
 | 连接 resync | 206µs / 698KB，GC 占 45% | 三个非缓存 `document()`（Traffic/Delta/ProviderList）可池化，但频率低、绝对量每秒几百字节；`proxiesAnswer` 的缓冲被帧缓存持有，不可池化 |
 | 路由刷新 | 13.8µs / 0 allocs：`providerVersionsEqual` 23%、`Selector.selectedProxy` 29% | 均为必要工作（provider 版本是外部推进的，读取不可省；选中缓存命中只需 3 次原子读） |
 | 统计计数器 push | striped **2.315ns / 0 allocs**，shared 56.5ns（竞争） | 已到底（每次 2–4 个原子 add） |
