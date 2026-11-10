@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约两次实测否决）
-- FlClash main：`8aa1b918`
-- Clash.Meta main：`d59a5a3e7`
+- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约两次实测否决）
+- FlClash main：`d6b013eb`
+- Clash.Meta main：`bb07d551d`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 131 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 132 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -823,6 +823,16 @@ remaining uncovered there is the 1s ticker loop in `handle` and tracker-level re
 | `ResolveRoute`（不拨号就问路由，宿主给连接命名用的）：match 表选中代理、空表返回 (nil, nil) 而不报错 | `e4891c7d3` | 本轮父仓库提交 | 0% → 80%（剩 `preHandleMetadata` 失败分支，构造代价不值） |
 | `tunnel.go` 存取器面：`Proxies/Providers/RuleProviders/Rules`（包级与接口版同一张表）、`Mode/SetMode`、`FindProcessMode/SetFindProcessMode`、`Status/OnSuspend/OnInnerLoading/OnRunning`、`IsSniffing/SetSniffing`（无 sniffer 时不动、装了 enabled sniffer 后开、可关）、`NatTable`（两个）、`RuleUpdateCallback`；`HandleUDPPacket` 丢弃无 flow key 的包 | `d59a5a3e7` | 本轮父仓库提交 | tunnel 74.6% → **76.5%** |
 | `packetSender.Process`（UDP worker 的主循环）：交给它的包被处理、`Close()` 后循环退出；`idlePacketConn.Upstream()` | `d59a5a3e7` | 本轮父仓库提交 | 0% → 覆盖。剩余 0% 只有 `processUDP`/`startUDPSender`/`dialUDPSender`（真 UDP 往返 + 代理拨号）与两个 error 分支 |
+
+
+### 2026-11-11 wrapper 残余路径覆盖两轮（测试）
+
+wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
+
+| 覆盖 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `writeRuleSetFile`（temp 文件 + rename 的原子写）：替换已存在的集、temp 不残留；父路径是文件 → MkdirAll 报错；目标是目录 → rename 失败并带走 temp | -（仅 wrapper） | `d6b013eb` | 3 个用例。`writeRuleSetFile` 64.7% → **82.4%** |
+| `pollRoute`：上下文已取消即退出（不等下一个 tick）；活着时跨过一个 tick 仍在轮询；再取消才退 | -（仅 wrapper） | `d6b013eb` | 2 个用例（第二个跨 5s tick，耗时 5.35s）。`pollRoute` 71.4% → **100%** |
 
 ## 4. 当前验证矩阵
 
