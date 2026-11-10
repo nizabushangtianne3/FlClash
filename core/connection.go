@@ -1,8 +1,6 @@
 package core
 
 import (
-	"net/netip"
-	"slices"
 	"strconv"
 	"sync"
 
@@ -108,16 +106,6 @@ func rowAnswerSize(info *statistic.TrackerInfo) int {
 type connectionRow struct {
 	tracker     statistic.Tracker
 	id          string
-	host        string
-	sniffHost   string
-	dstIP       netip.Addr
-	process     string
-	processPath string
-	uid         uint32
-	inName      string
-	inUser      string
-	srcGeoIP    []string
-	dstGeoIP    []string
 	generation  uint64
 }
 
@@ -126,43 +114,32 @@ var connectionRows = struct {
 	rows       map[statistic.Tracker]*connectionRow
 	order      []*connectionRow
 	generation uint64
+	// members is the table generation the last walk saw. A poll whose table
+	// has neither gained nor lost a member answers what that walk already
+	// proved instead of walking the table again.
+	members    uint64
 }{rows: map[statistic.Tracker]*connectionRow{}}
 
-func (row *connectionRow) stale(info *statistic.TrackerInfo) bool {
-	metadata := info.Metadata
-	return metadata.Host != row.host ||
-		metadata.SniffHost != row.sniffHost ||
-		metadata.DstIP != row.dstIP ||
-		metadata.Process != row.process ||
-		metadata.ProcessPath != row.processPath ||
-		metadata.Uid != row.uid ||
-		metadata.InName != row.inName ||
-		metadata.InUser != row.inUser ||
-		!slices.Equal(metadata.SrcGeoIP, row.srcGeoIP) ||
-		!slices.Equal(metadata.DstGeoIP, row.dstGeoIP)
-}
-
 func newConnectionRow(tracker statistic.Tracker, info *statistic.TrackerInfo) *connectionRow {
-	metadata := info.Metadata
 	return &connectionRow{
-		tracker:     tracker,
-		id:          info.UUID.String(),
-		host:        metadata.Host,
-		sniffHost:   metadata.SniffHost,
-		dstIP:       metadata.DstIP,
-		process:     metadata.Process,
-		processPath: metadata.ProcessPath,
-		uid:         metadata.Uid,
-		inName:      metadata.InName,
-		inUser:      metadata.InUser,
-		srcGeoIP:    slices.Clone(metadata.SrcGeoIP),
-		dstGeoIP:    slices.Clone(metadata.DstGeoIP),
+		tracker:    tracker,
+		id:         info.UUID.String(),
 	}
 }
 
 func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 	connectionRows.mu.Lock()
 	defer connectionRows.mu.Unlock()
+
+	manager := statistic.DefaultManager
+	members := manager.Generation()
+	// Steady state: nothing joined or left since the last walk, so the answer
+	// is the one that walk already proved. A resync answers the whole table on
+	// purpose, and the table size is checked alongside the generation because
+	// the bump follows the map operation it reports.
+	if !query.Resync && members == connectionRows.members && manager.Size() == len(connectionRows.order) {
+		return &ConnectionDelta{Count: len(connectionRows.order)}
+	}
 
 	connectionRows.generation++
 
@@ -174,9 +151,6 @@ func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 			row = newConnectionRow(tracker, info)
 			connectionRows.rows[tracker] = row
 			connectionRows.order = append(connectionRows.order, row)
-			delta.Added = append(delta.Added, info)
-		} else if row.stale(info) {
-			*row = *newConnectionRow(tracker, info)
 			delta.Added = append(delta.Added, info)
 		} else if query.Resync {
 			delta.Added = append(delta.Added, info)
@@ -199,6 +173,7 @@ func handleGetConnections(query ConnectionsQuery) *ConnectionDelta {
 		live = append(live, row)
 	}
 	connectionRows.order = live
+	connectionRows.members = members
 	return delta
 }
 

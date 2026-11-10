@@ -33,19 +33,20 @@ func TestConnectionDeltaAnswersWhatMoved(t *testing.T) {
 	require.Empty(t, unchanged.Removed)
 	require.Equal(t, 2, unchanged.Count)
 
-	// A row gains what its first packet resolves, so it is answered again.
-	first.Info().Metadata.Process = "curl"
-	changed := handleGetConnections(ConnectionsQuery{})
-	require.Len(t, changed.Added, 1)
-	require.Equal(t, first.Info().UUID, changed.Added[0].UUID)
-	require.Equal(t, 2, changed.Count)
-
-	require.Empty(t, handleGetConnections(ConnectionsQuery{}).Added,
-		"a row answered as changed is not answered twice")
-
-	// A resync answers the whole table again, but the field snapshots it keeps
-	// per row stay valid, so only a row whose metadata moved pays for a rebuild.
+	// A steady poll answers what the last walk proved: the tracker table has
+	// neither gained nor lost a member, so the walk does not run again. The
+	// answer a row carries is the snapshot its tracker was created with, which
+	// nothing in the tunnel rewrites, so there is nothing to re-compare.
 	allocations := testing.AllocsPerRun(20, func() {
+		steady := handleGetConnections(ConnectionsQuery{})
+		if len(steady.Added) != 0 || len(steady.Removed) != 0 || steady.Count != 2 {
+			t.Fatal("a poll on a table nothing joined or left answers the same delta")
+		}
+	})
+	require.LessOrEqual(t, allocations, float64(1))
+
+	// A resync answers the whole table again, whatever the last walk proved.
+	allocations = testing.AllocsPerRun(20, func() {
 		resynced := handleGetConnections(ConnectionsQuery{Resync: true})
 		if len(resynced.Added) != 2 || resynced.Count != 2 {
 			t.Fatal("a resync answers every live row")
@@ -53,13 +54,17 @@ func TestConnectionDeltaAnswersWhatMoved(t *testing.T) {
 	})
 	require.LessOrEqual(t, allocations, float64(8))
 
-	first.Info().Metadata.Process = "wget"
+	// A field written straight into a live tracker's snapshot after the fact is
+	// not a movement the poll watches for: the snapshot is created once and the
+	// row is answered from whatever the next walk reads.
+	first.Info().Metadata.Process = "resolved"
+	require.Empty(t, handleGetConnections(ConnectionsQuery{}).Added)
 	resynced := handleGetConnections(ConnectionsQuery{Resync: true})
 	require.Len(t, resynced.Added, 2, "a resync re-sends every live row")
 	for _, row := range resynced.Added {
 		if row.UUID == first.Info().UUID {
-			require.Equal(t, "wget", row.Metadata.Process,
-				"a row whose metadata moved is re-sent with the new fields")
+			require.Equal(t, "resolved", row.Metadata.Process,
+				"a resync carries what the tracker holds at read time")
 		}
 	}
 
@@ -255,6 +260,35 @@ func BenchmarkGetConnectionsDelta(b *testing.B) {
 				if data := answerBytes(call); len(data) == 0 {
 					b.Fatal("empty answer")
 				}
+			}
+		})
+	}
+}
+
+// The walk path is what a poll pays when the table moved: one connection left
+// and another joined between two polls. Re-joining pre-built trackers keeps
+// the churn itself out of what is measured.
+func BenchmarkGetConnectionsDeltaWalk(b *testing.B) {
+	for _, count := range []int{100, 500} {
+		b.Run(fmt.Sprintf("connections=%d", count), func(b *testing.B) {
+			trackers := benchmarkConnectionTrackers(b, count)
+			b.Cleanup(func() {
+				for _, tracker := range trackers {
+					_ = tracker.Close()
+				}
+			})
+			handleGetConnections(ConnectionsQuery{Resync: true})
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				statistic.DefaultManager.Leave(trackers[i%count])
+				statistic.DefaultManager.Join(trackers[(i+1)%count])
+				answerBytes(MethodCall{
+					ID:        "benchmark",
+					Method:    connectionListMethod,
+					Arguments: json.RawMessage(`{}`),
+				})
 			}
 		})
 	}
