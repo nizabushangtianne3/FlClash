@@ -863,6 +863,8 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 
 **与 2026-11-09 否决的关系**：那次否掉的是"frame 携带 id 且 `size()`/`appendEnvelope` 各扫一遍 id"的写法（测出 +19%~+24%）。本次的差别是**预留容量走算术不扫描**，且小路径把信封直接写进已定大小的池缓冲（不多一次 StringLen）。同一思路、不同实现，结论相反。
 
+**覆盖**：新代码 `size`/`bytes`/`envelopeLen`/`appendEnvelope` 均 100%。等价不变量由既有测试显式钉住——`connection_test.go:96/99/316/319` 把 id 形态与匿名形态的信封字节分别对拍 `json.Marshal(MethodResponse{...})` 的输出（四条全过，`frame_test.go` 的 `answerFrame` 已改走 id 形态）。spill 路径的 head 物化由 `TestHandleMethodCallSpillsAFrameWriterDocument` 覆盖。
+
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
