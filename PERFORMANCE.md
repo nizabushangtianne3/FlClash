@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁 + 信封就地构建一轮（答案路径归零分配）：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约前两次写法否决、第三次（预留容量走算术）落地）；覆盖再加一轮：`adapter/outboundgroup` 的 `GetProxies` 53.5% → 95.8%（包 72.7% → 76.1%）；数据平面每连接缓冲复用一轮（答案路径之外的真实负载面：harness 100 并发 13.1 万→20.3 万 req/s、relay 分配 -94.81%）；每连接建立路径与启动文档解析两轮审计记账（产品侧均无可拿的净收益，各有一条实验撤销），再加 UDP 数据报全链一轮（同样地板），千人并发竞争面一轮（同样地板），代理链路两跳一轮（同样地板）；晚间会话新增连接轮询稳态免扫描一轮：500 连接 32.78µs → 371ns（-98.87%），stale 十字段与十个镜像字段整段删除）
-- FlClash main：`9e4bbd64`
+- FlClash main：`ec5b76d4`
 - Clash.Meta main：`5018ea4c4`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
@@ -911,6 +911,18 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 | 连接轮询稳态免扫描（`Manager.Generation()` + wrapper 快路径 + 删 stale 镜像字段） | `5018ea4c4` | `9e4bbd64` | `BenchmarkGetConnectionsDelta` paired n=5：100 连接 5.133µs → 422.4ns（**-91.77%**，p=0.008）、500 连接 32.78µs → 371.4ns（**-98.87%**，p=0.008），geomean **-96.95%**；**分配 6、内存 308B 全部不变**。新增 `BenchmarkGetConnectionsDeltaWalk`（每轮 leave+join 两个预建 tracker）钉住表变动路径：100 连接 2.39µs/2.44KB/13 allocs、500 连接 2.15µs/2.31KB/13 allocs。验证：子模块 104 包全量 + `go vet ./...` 通过、statistic 四平台 vet（windows/linux/darwin/android arm64）exit 0、wrapper 全量测试 + vet 通过、四平台 vet exit 0、connection focused race（mingw64 gcc）通过 |
 
 **与 2026-11-09 否决的关系**：那次否掉的是「删 stale 不改轮询」（那时没有 generation，删了字段比较省不下 Range 的 80%）；本轮把 Range 本身在稳态短路掉，字段比较随之失去存在理由。测试里「原地改 `Metadata.Process` 驱动 stale」的场景改写为「快照只在读取时被看到」，并新增断言：改字段后的稳态轮询仍答空、resync 携带读取时值。
+
+### 2026-11-11 晚间 Dart 侧连接排序轮次（性能，UI isolate）
+
+账本此前两度把 `TrackerSpeedRanker` 记为「-10% 后维持」，测量口径是 10k ×20 快照总量。本轮换口径（每次 `rank` 的墙钟）重跑，发现 10k 连接每个快照要 **10.4ms**——按规则「120Hz 下每帧 ≤8ms UI 工作」单独就超预算，是连接页在万级连接下掉帧的原因。剖析拆开：每次 `rank` 要把 1 万个连接 id 做三张 map 的清空+重填（`_samples`、`_outputs`、`_positions`），另加 1 万次查找；10k 行的 `copyWith` 实测 102ns/行（1.02ms/快照），字符串 map 查找 62ns/次（0.62ms/快照）。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `rank` 的 per-poll 三张 map 合并为一张按 id 的状态表（样本+已发布行+槽位），用 poll stamp 恢复「缺席一轮就重新开始」的旧语义；顺带删掉两处可证明死工作的 `-1` 填充（计数排序保证每个槽位必被写一次） | -（仅 Dart） | `ec5b76d4` | `tracker_speed_ranker_benchmark_test.dart` JIT（`@Skip` 临时摘除、跑完还原）：10k 连接 ×20 快照 **10402µs → 4087µs/快照（-60.7%）**，同批 "unchanged rows" 453µs → 262µs/次（-42%）；三遍复测 4135/4222/4211µs，判定取 ~4.19ms。探针实测：`copyWith` 102ns/行、map 查找 62ns/次、桶位数学 15ns/行、四个 typed 数组分配 51.9µs/次——余量主要在 `copyWith` 与十余遍 1 万次 typed 遍历，均属该形状的固有成本（再降要改模型的公开契约），记账不动 |
+
+**语义等价论证**：`_outputs` 连「未复制的输入实例」也存（第二次同速调用因此返回同一实例），状态表照搬（未变行也写 `row.output`）；`_sample` 的 500ms 间隔分支返回的是上一份样本本身，状态表现在只改 stamp 不改字段，等价；缺席一轮的行 stamp 不匹配 → 新建，等价于旧实现的整表清空；清理阈值 `_purgeSlack=1024` 只在「过期行数超过 1024」时触发一次无哈希遍历，摊到每次 join 约 10 次迭代。新增两条测试：离开又回来的连接从头开始（不把跨间隔的增量当成尖峰）、过期行数超过阈值后存活行的顺序与速度不变（churn 下清理不被察觉）。
+
+**验证**：`flutter test test/features/tracker_speed_ranker_test.dart`、`test/widgets/connections_view_test.dart`、`test/views/dashboard/connections_table_test.dart` 全绿；`dart analyze --fatal-infos` 两文件零告警；Dart 全量 `dart run tool/test.dart` 5179 个用例，失败集与账本第 7 节记录的 5 个既有失败完全一致（4 个 `Linux ...` mitm + 1 个 Windows 窗口探针计数），无新增。
 
 ## 4. 当前验证矩阵
 
