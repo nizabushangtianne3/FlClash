@@ -947,6 +947,29 @@ dart run tool/test.dart   # exit 0
 - 已解决：`BenchmarkProxyURLTestHTTP` 改为进程内 pipe HTTP server，避开 Windows 临时端口分配冲突。
 - 旧实现 count=10 内复现多次 `connectex: Only one usage...`；pipe 版 count=20 全绿。
 
+### 剩余项现状地图（2026-11-10 收口，全部本机实测过）
+
+**性能侧已挖到地板**：
+
+| 路径 | 现状 | 结论 |
+|---|---|---|
+| 代理表答案（最热 IPC） | 200 组 **137.9ns / 1 alloc / 32 B**；本会话 5.105µ → 0.138µ（约 37 倍） | 唯一剩的分配是信封，契约改造两次实测否决（见第 3 节两行） |
+| 连接轮询 | 500 连接 31.4µ：`xsync.Map.Range` 85% cum（回调占大头）、`stale` 20% flat、接口 map 查询 27% cum | `stale` 的十字段比较是"生产线永不触发"的防御，按 2026-11-09 定案不删；接口 map 的 equal 可省 6.8% 但要 unsafe 取指针，收益不抵 |
+| 连接 resync | 206µs / 698KB，GC 占 45% | 三个非缓存 `document()`（Traffic/Delta/ProviderList）可池化，但频率低、绝对量每秒几百字节；`proxiesAnswer` 的缓冲被帧缓存持有，不可池化 |
+| 路由刷新 | 13.8µs / 0 allocs：`providerVersionsEqual` 23%、`Selector.selectedProxy` 29% | 均为必要工作（provider 版本是外部推进的，读取不可省；选中缓存命中只需 3 次原子读） |
+| 统计计数器 push | striped **2.315ns / 0 allocs**，shared 56.5ns（竞争） | 已到底（每次 2–4 个原子 add） |
+| provider 列表答案 | 58µs：`AppendString(view.Path)` 占 68%（一半字节是路径） | 与答案体积成正比，无额外可省 |
+
+**覆盖侧剩余缺口（全部结构性，不为凑数写测试）**：
+
+| 范围 | 现状 | 为什么剩下 |
+|---|---|---|
+| wrapper | 93.7% | 剩 6 个：`StartServer`（IPC 入口，测试走 `dispatchMethodCall`）、`handleCrash`（`core.crash` 就是让进程崩的 dev 旋钮，`TestEveryCoreMethodConstantIsDispatchable` 已单独记账）、`requestTrafficWatch.clear`（桌面构建 `hasEventListener()` 恒 true，该分支 Android 可达）、`dial_pipe.dial`、`ExitOnTermination`、`ownership_other` 三个 |
+| 子模块 `adapter` | 86.7% | 剩 `adapter.go` 的 `ListenPacketContext` 转发与 `testState` 部分分支；前者由隧道测试在运行时覆盖 |
+| 子模块 `adapter/outboundgroup` | 72.7% | 0% 全是 `DialContext`/`ListenPacketContext`/`SupportUDP` 一类接口方法，由 wrapper 与隧道测试在运行时覆盖 |
+| 子模块 `tunnel` | 70.0% | 剩 `Connection` 接口转发行与 `initUDP`（需真网卡/TUN 的入口） |
+| 子模块 `tunnel/statistic` | 94.4% | 剩 `handle()` 的 1s ticker 循环（50%）与 tracker 对裸 conn 的读写（现有方向测试经真 pipe 已驱动） |
+
 ## 6. 后续会话推荐流程
 
 ```powershell
