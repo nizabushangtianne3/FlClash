@@ -1136,6 +1136,7 @@ dart run tool/test.dart   # exit 0
 | proxies 答案帧的 Dart 侧解码迁 isolate（`Isolate.exit` 零拷回报文） | 账本 2026-11-05 实测 132KB 帧 JIT 解码 874-1282us；AOT 估 ~400us；每次 answers（点选/刷新/测速完成），非每帧 | **不做**：AOT 下 UI 线程成本 ~0.4ms（8ms 预算的 5%），迁 isolate 只省消息开销之后的一小部分，还要改 RPC 消费契约；等 profile build 实测 AOT 数字再议 |
 ## 6. 后续会话推荐流程
 
+| Dart 侧大表键入搜索的增量收窄（缓存上一次关键词与命中集，新关键词若是旧词的延伸就只过滤命中集） | 1 万行键入实测基数：DNS 查询页（Expando 缓存后）约 1.46ms/键击（JIT），连接/代理页同形状；方案只在底层列表**同一实例**期间有效，而轮询每 2s 就换一次列表、输入法每分钟数次按键，命中窗口小 | **不做**：命中窗口窄 + 需要 (列表身份, 词序, 命中集) 三元缓存与严格的作废语义，复杂度高于 1ms 级收益；现状「词法缓存 + terms.every(contains)」已在账本 2026-11-09 定为最小形状 |
 ``powershell
 git pull --ff-only
 git -C core/Clash.Meta switch main
