@@ -7,10 +7,10 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/config"
-	"github.com/stretchr/testify/require"
+	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/tunnel"
+	"github.com/stretchr/testify/require"
 )
 
 func withSpillHome(t *testing.T, threshold int) string {
@@ -128,6 +128,7 @@ func TestHandleMethodCallSpillsAFrameWriterDocument(t *testing.T) {
 			len(written), len(inline))
 	}
 }
+
 // A spill that cannot be written must not lose the answer: the host reads it
 // inline, over the frame limit, rather than getting a file that is not there.
 func TestSpillFailureAnswersInline(t *testing.T) {

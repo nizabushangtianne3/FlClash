@@ -104,9 +104,9 @@ func rowAnswerSize(info *statistic.TrackerInfo) int {
 }
 
 type connectionRow struct {
-	tracker     statistic.Tracker
-	id          string
-	generation  uint64
+	tracker    statistic.Tracker
+	id         string
+	generation uint64
 }
 
 var connectionRows = struct {
@@ -117,13 +117,13 @@ var connectionRows = struct {
 	// members is the table generation the last walk saw. A poll whose table
 	// has neither gained nor lost a member answers what that walk already
 	// proved instead of walking the table again.
-	members    uint64
+	members uint64
 }{rows: map[statistic.Tracker]*connectionRow{}}
 
 func newConnectionRow(tracker statistic.Tracker, info *statistic.TrackerInfo) *connectionRow {
 	return &connectionRow{
-		tracker:    tracker,
-		id:         info.UUID.String(),
+		tracker: tracker,
+		id:      info.UUID.String(),
 	}
 }
 
