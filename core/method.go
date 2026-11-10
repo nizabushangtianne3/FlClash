@@ -56,20 +56,34 @@ func dispatchMethodCall(call *MethodCall, reply func(answer frame)) {
 // document the result already encoded riding as its own piece. Keeping the
 // envelope apart lets a large document reach the host beside it instead of
 // being copied into it.
+//
+// A document-carrying answer names the call in id rather than carrying the
+// envelope as bytes: that shape is the one the answer path hands back over
+// and over, and an envelope built once per answer is one allocation plus one
+// copy the transport immediately repeats. It is built where the answer is
+// consumed, into a buffer already sized for it.
 type frame struct {
 	head     []byte
 	document []byte
 	tail     []byte
+	id       string
 }
 
 func (answer frame) size() int {
+	if len(answer.head) == 0 {
+		return envelopeLen(answer.id) + len(answer.document) + len(answer.tail)
+	}
 	return len(answer.head) + len(answer.document) + len(answer.tail)
 }
 
 // bytes is the answer as one slice, for the callers that need it whole.
 func (answer frame) bytes() []byte {
 	buf := make([]byte, 0, answer.size())
-	buf = append(buf, answer.head...)
+	if len(answer.head) == 0 {
+		buf = appendEnvelope(buf, answer.id)
+	} else {
+		buf = append(buf, answer.head...)
+	}
 	buf = append(buf, answer.document...)
 	return append(buf, answer.tail...)
 }
@@ -83,15 +97,30 @@ var (
 	responseTail      = []byte(`}`)
 )
 
-// envelope opens the response a frame document is wrapped in.
-func envelope(id string) []byte {
+// envelopeLen reports the bytes the envelope for id takes, for a buffer sized
+// to the envelope itself rather than to the room it may take.
+func envelopeLen(id string) int {
 	if id == "" {
-		return anonymousEnvelope
+		return len(anonymousEnvelope)
 	}
-	buf := make([]byte, 0, len(id)+20)
-	buf = append(buf, `{"id":`...)
-	buf = jsonutil.AppendString(buf, id)
-	return append(buf, `,"result":`...)
+	return len(`{"id":`) + jsonutil.StringLen(id) + len(`,"result":`)
+}
+
+// appendEnvelope writes the envelope for id into dst, which the caller has
+// already sized.
+func appendEnvelope(dst []byte, id string) []byte {
+	if id == "" {
+		return append(dst, anonymousEnvelope...)
+	}
+	dst = append(dst, `{"id":`...)
+	dst = jsonutil.AppendString(dst, id)
+	return append(dst, `,"result":`...)
+}
+
+// envelope opens the response a frame document is wrapped in, as bytes a
+// caller keeps.
+func envelope(id string) []byte {
+	return appendEnvelope(make([]byte, 0, envelopeLen(id)), id)
 }
 
 // frameWriter is a result that carries its document already encoded, so an
@@ -131,9 +160,9 @@ func handleMethodCall(call *MethodCall) (answer frame) {
 	}
 	if writer, ok := result.(frameWriter); ok {
 		answer = frame{
-			head:     envelope(call.ID),
 			document: writer.document(),
 			tail:     responseTail,
+			id:       call.ID,
 		}
 	} else {
 		answer = frame{head: encodeResponse(MethodResponse{ID: call.ID, Result: result})}

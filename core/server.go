@@ -83,7 +83,12 @@ func writeFrame(w io.Writer, answer frame) (int, error) {
 		}
 		buffer = buffer[:4+total]
 		binary.LittleEndian.PutUint32(buffer, uint32(total))
-		head := copy(buffer[4:], answer.head)
+		head := 0
+		if len(answer.head) == 0 {
+			head = len(appendEnvelope(buffer[:4], answer.id)) - 4
+		} else {
+			head = copy(buffer[4:], answer.head)
+		}
 		head += copy(buffer[4+head:], answer.document)
 		copy(buffer[4+head:], answer.tail)
 		written, err := writeAll(w, buffer)
@@ -98,12 +103,22 @@ func writeFrame(w io.Writer, answer frame) (int, error) {
 	// of the whole table.
 	pooled, _ := frameHeaderBuffers.Get().(*[]byte)
 	header := (*pooled)[:0]
-	if cap(header) < 4+len(answer.head) {
-		header = make([]byte, 0, 4+len(answer.head))
+	// Room for the envelope by the width a fully escaped id would need, so
+	// reserving it costs arithmetic rather than a scan of the id.
+	room := 4 + len(answer.head)
+	if len(answer.head) == 0 {
+		room = 4 + len(`{"id":`) + 6*len(answer.id) + len(`,"result":`)
+	}
+	if cap(header) < room {
+		header = make([]byte, 0, room)
 	}
 	header = append(header, 0, 0, 0, 0)
 	binary.LittleEndian.PutUint32(header, uint32(total))
-	header = append(header, answer.head...)
+	if len(answer.head) == 0 {
+		header = appendEnvelope(header, answer.id)
+	} else {
+		header = append(header, answer.head...)
+	}
 	written := 0
 	for _, piece := range [][]byte{header, answer.document, answer.tail} {
 		count, err := writeAll(w, piece)

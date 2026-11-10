@@ -44,6 +44,9 @@ func spillFrame(id string, answer frame) frame {
 }
 
 func writeSpilledFrame(answer frame) (path string, err error) {
+	if len(answer.head) == 0 {
+		answer.head = envelope(answer.id)
+	}
 	dir, err := makeSpilledResponseDir()
 	if err != nil {
 		return "", err
