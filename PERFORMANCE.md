@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约两次实测否决）
-- FlClash main：`d6b013eb`
-- Clash.Meta main：`bb07d551d`
+- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies` 免锁一轮：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约两次实测否决）
+- FlClash main：`443b9842`
+- Clash.Meta main：`c4a135561`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 132 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 133 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -834,6 +834,15 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 | `writeRuleSetFile`（temp 文件 + rename 的原子写）：替换已存在的集、temp 不残留；父路径是文件 → MkdirAll 报错；目标是目录 → rename 失败并带走 temp | -（仅 wrapper） | `d6b013eb` | 3 个用例。`writeRuleSetFile` 64.7% → **82.4%** |
 | `pollRoute`：上下文已取消即退出（不等下一个 tick）；活着时跨过一个 tick 仍在轮询；再取消才退 | -（仅 wrapper） | `d6b013eb` | 2 个用例（第二个跨 5s tick，耗时 5.35s）。`pollRoute` 71.4% → **100%** |
 
+
+### 2026-11-11 `AllProxies` 免读锁轮次（性能，子模块）
+
+剖析答案路径时发现：`tunnel.AllProxies()` 单独测 **17.73ns / 0 alloc**，占答案路径约 9%，而它只是个读——却为"比较 provider 版本 + 返回 map"拿了写锁。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `allProxies`/`allProxiesVersions` 两个全局合并为单个 `atomic.Pointer[allProxiesTable]`（表 + 构建时的 provider 版本同指针发布，读者见两者或都不见）；`AllProxies` 读路径免锁，只有重建加锁，且锁内先重查缓存避免重复重建装两张表 | `c4a135561` | `443b9842` | 微基准 `AllProxies` 17.73n → **9.4n（-47%）**；端到端 n=7 交替 A/B：`BenchmarkHandleGetProxies` geomean **-6.02%**，200 组各行 **-4.97% ~ -7.73%**（p≤0.026），**分配不变**。`TestAllProxiesCacheAndInvalidation` 继续钉住缓存存活、版本保持、四种失效与显式丢弃 |
+
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
@@ -974,7 +983,7 @@ dart run tool/test.dart   # exit 0
 
 | 路径 | 现状 | 结论 |
 |---|---|---|
-| 代理表答案（最热 IPC） | 200 组 **137.9ns / 1 alloc / 32 B**；本会话 5.105µ → 0.138µ（约 37 倍） | 唯一剩的分配是信封，契约改造两次实测否决（见第 3 节两行） |
+| 代理表答案（最热 IPC） | 200 组 **138.9n / 1 alloc / 32 B**（本会话 5.105µ → 0.139µ，约 37 倍）；其中 `AllProxies` 9.4n 免锁、`GetProxyNameList` RLock 约 2% | 唯一剩的分配是信封；`config.GetProxyNameList` 每答案一次 RWMutex 读锁（子模块），要省得把名单表换成原子指针 |
 | 连接轮询 | 500 连接 31.4µ：`xsync.Map.Range` 85% cum（回调占大头）、`stale` 20% flat、接口 map 查询 27% cum | `stale` 的十字段比较是"生产线永不触发"的防御，按 2026-11-09 定案不删；接口 map 的 equal 可省 6.8% 但要 unsafe 取指针，收益不抵 |
 | 连接 resync | 206µs / 698KB，GC 占 45% | 三个非缓存 `document()`（Traffic/Delta/ProviderList）可池化，但频率低、绝对量每秒几百字节；`proxiesAnswer` 的缓冲被帧缓存持有，不可池化 |
 | 路由刷新 | 13.8µs / 0 allocs：`providerVersionsEqual` 23%、`Selector.selectedProxy` 29% | 均为必要工作（provider 版本是外部推进的，读取不可省；选中缓存命中只需 3 次原子读） |
