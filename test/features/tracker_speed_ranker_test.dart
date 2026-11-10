@@ -101,7 +101,8 @@ void main() {
     final ranker = TrackerSpeedRanker();
     ranker.rank([_tracker('a', upload: 100, download: 1000)], t0);
     expect(
-      ranker.rank([_tracker('a', upload: 1100, download: 5000)], at(2))
+      ranker
+          .rank([_tracker('a', upload: 1100, download: 5000)], at(2))
           .single
           .uploadSpeed,
       500,

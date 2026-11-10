@@ -87,20 +87,17 @@ class TrackerSpeedRanker {
     final Int32List order;
     if (!anyActive) {
       order = Int32List.fromList(
-        List<int>.generate(count, (index) => index)
-          ..sort((a, b) {
-            final trafficCompare = traffic[b].compareTo(traffic[a]);
-            if (trafficCompare != 0) {
-              return trafficCompare;
-            }
-            final start = trackerInfos[b].start.compareTo(
-              trackerInfos[a].start,
-            );
-            if (start != 0) {
-              return start;
-            }
-            return trackerInfos[a].id.compareTo(trackerInfos[b].id);
-          }),
+        List<int>.generate(count, (index) => index)..sort((a, b) {
+          final trafficCompare = traffic[b].compareTo(traffic[a]);
+          if (trafficCompare != 0) {
+            return trafficCompare;
+          }
+          final start = trackerInfos[b].start.compareTo(trackerInfos[a].start);
+          if (start != 0) {
+            return start;
+          }
+          return trackerInfos[a].id.compareTo(trackerInfos[b].id);
+        }),
       );
     } else {
       var maxBucket = 0;
