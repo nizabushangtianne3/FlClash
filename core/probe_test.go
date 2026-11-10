@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -22,37 +21,6 @@ func probeServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return server
-}
-
-// countingListener answers the question the pooled transport is judged by:
-// how many connections the peer had to accept.
-type countingListener struct {
-	net.Listener
-	accepted *atomic.Int32
-}
-
-func (l countingListener) Accept() (net.Conn, error) {
-	conn, err := l.Listener.Accept()
-	if err == nil {
-		l.accepted.Add(1)
-	}
-	return conn, err
-}
-
-func probeConnectionServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, *atomic.Int32) {
-	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	accepted := &atomic.Int32{}
-	server := &httptest.Server{
-		Listener: countingListener{Listener: listener, accepted: accepted},
-		Config:   &http.Server{Handler: handler},
-	}
-	server.Start()
-	t.Cleanup(server.Close)
-	return server, accepted
 }
 
 func withProbeProxies(t *testing.T, names ...string) {
