@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁 + 信封就地构建一轮（答案路径归零分配）：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约前两次写法否决、第三次（预留容量走算术）落地）；覆盖再加一轮：`adapter/outboundgroup` 的 `GetProxies` 53.5% → 95.8%（包 72.7% → 76.1%）；数据平面每连接缓冲复用一轮（答案路径之外的真实负载面：harness 100 并发 13.1 万→20.3 万 req/s、relay 分配 -94.81%）；每连接建立路径与启动文档解析两轮审计记账（产品侧均无可拿的净收益，各有一条实验撤销），再加 UDP 数据报全链一轮（同样地板），千人并发竞争面一轮（同样地板），代理链路两跳一轮（同样地板）；晚间会话新增连接轮询稳态免扫描一轮：500 连接 32.78µs → 371ns（-98.87%），stale 十字段与十个镜像字段整段删除）
-- FlClash main：`ec5b76d4`
-- Clash.Meta main：`5018ea4c4`
+- FlClash main：`8a4c8258`
+- Clash.Meta main：`302f80350`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -929,6 +929,16 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 ### 连接答案路径覆盖收口（2026-11-09）
 
 `core/connection.go` 的 18 个函数现已 **100% 覆盖**（此前 `appendDocument` 68.8%、`documentSize` 71.4%、`rowAnswerSize` 81.8%、`handleResetNetwork` 0%）。补齐的四条都是仪表盘真实会走到的路径：带 GeoIP 的行（答案缓冲按 `rowAnswerSize` 预分配，两个字符串切片若不计入，每次 resync 都会扩容）、nil 行、一次轮询里离开多行的分隔符、按 id 关闭存活行。另外钉住一条不变量：`rowAnswerSize` 永不低于编码后长度（预分配就靠它）。父仓库 `b8bd4801`，包覆盖率 82.9% → 83.3%。
+
+### 2026-11-11 UDP 数据报主路径覆盖轮次（测试）
+
+账本「覆盖侧剩余缺口」表里写着子模块 `tunnel` 剩 `processUDP`/`startUDPSender`/`dialUDPSender`——用 coverprofile 逐函数核了一遍：这三个函数分别 50%/0%/0%，`handleUDPConn` 58.1%。它们合起来就是「一个数据报从进来到被代理应答」的完整路径，产品每时每刻都在走，却一行覆盖都没有。此前没测是因为它们需要真 UDP 往返 + 一个能 `ListenPacketContext` 的代理。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| 两个测试从真实入口 `tunnel.HandleUDPPacket` 驱动整条路径：一个代理应答本地 echo 服务器（覆盖入队→`processUDP`→`handleUDPConn`→`startUDPSender`→`dialUDPSender`→`handleUDPToLocal`→write-back 回包），一个代理拒绝（覆盖 `startUDPSender` 的错误分支：flow 不留表、不计连接、已入队数据报被 drop） | `302f80350` | 本轮父仓库提交 | `tunnel` 包覆盖 **76.5% → 82.7%**：`processUDP` 0/100%、`handleUDPConn` 58.1% → 80.6%、`startUDPSender` 0% → 100%、`dialUDPSender` 0% → 89.6%。`go test ./tunnel/ -count=3` 连续三遍通过；子模块全量 104 包 ok；tunnel 四平台 vet exit 0 |
+
+**踩过的坑（已写进测试注释，后续复用）**：① `net.DialUDP` 得到的是**已连接** socket，`WriteTo` 直接报 `use of WriteTo with pre-connected connection`——代理必须用 `net.ListenPacket` 给未连接 socket；② flow key 是源地址 SNAT 键，`tunnel_test.go` 的既有用例在 `require.Eventually` 里用 `natTable.GetOrCreate` 探测，会**留下一个没有 Process 循环的 sender**，同源端口的新测试必须像既有用例那样先 `DeleteForFlow`，否则新数据报入队后无人写；③ 断言「表里没有条目」有竞态（worker 还没处理时表里本来就没有），必须等一个确定终态（数据报被 drop）再查表；④ 自定义错误不在 `shouldStopRetry` 的终态分类里，重试要走满预算（10 次），等待窗口至少 8s。
 ### 2026-11-09 验证矩阵（当前状态，父仓库 main `d43b5bea` / 子模块 `3d6e4cbe8`）
 
 | 验证项 | 命令 | 结果 |
