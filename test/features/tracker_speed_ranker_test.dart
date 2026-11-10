@@ -97,6 +97,41 @@ void main() {
     expect(ranked.single.downloadSpeed, 1000);
   });
 
+  test('a connection that comes back starts over', () {
+    final ranker = TrackerSpeedRanker();
+    ranker.rank([_tracker('a', upload: 100, download: 1000)], t0);
+    expect(
+      ranker.rank([_tracker('a', upload: 1100, download: 5000)], at(2))
+          .single
+          .uploadSpeed,
+      500,
+    );
+
+    // Absent for a poll, its counters moved on without it: a delta measured
+    // across the gap would read as a spike on a connection that only changed
+    // network.
+    ranker.rank([_tracker('b')], at(3));
+    final back = ranker.rank([_tracker('a', upload: 1101)], at(4));
+    expect(back.single.uploadSpeed, 0);
+    expect(back.single.downloadSpeed, 0);
+  });
+
+  test('connections that never come back are not carried into the order', () {
+    final ranker = TrackerSpeedRanker();
+    final live = [_tracker('live-a', download: 10), _tracker('live-b')];
+    final first = ranker.rank(live, t0);
+
+    // More unique connections than the state map holds for absent ones, so
+    // the rows that left are dropped while these keep their published slots.
+    for (var index = 0; index < 3000; index++) {
+      ranker.rank([_tracker('transient-$index', upload: index)], t0);
+    }
+    final again = ranker.rank(live, t0);
+    expect(ids(again), ['live-a', 'live-b']);
+    expect(again.first.downloadSpeed, first.first.downloadSpeed);
+    expect(again.last.downloadSpeed, first.last.downloadSpeed);
+  });
+
   test('hands back an unchanged connection as the same instance', () {
     final ranker = TrackerSpeedRanker();
     ranker.rank([_tracker('idle'), _tracker('active')], t0);
