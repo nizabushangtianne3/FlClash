@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁 + 信封就地构建一轮（答案路径归零分配）：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约前两次写法否决、第三次（预留容量走算术）落地）
-- FlClash main：`a18f91a0`
-- Clash.Meta main：`697114569`
+- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮 + 规则集写入/路由轮询覆盖两轮 + `AllProxies`/`GetProxyNameList` 两轮免锁 + 信封就地构建一轮（答案路径归零分配）：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约前两次写法否决、第三次（预留容量走算术）落地）；覆盖再加一轮：`adapter/outboundgroup` 的 `GetProxies` 53.5% → 95.8%（包 72.7% → 76.1%）
+- FlClash main：`78b830de`
+- Clash.Meta main：`fcaf694ac`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 135 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 136 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -865,6 +865,16 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 
 **覆盖**：新代码 `size`/`bytes`/`envelopeLen`/`appendEnvelope` 均 100%。等价不变量由既有测试显式钉住——`connection_test.go:96/99/316/319` 把 id 形态与匿名形态的信封字节分别对拍 `json.Marshal(MethodResponse{...})` 的输出（四条全过，`frame_test.go` 的 `answerFrame` 已改走 id 形态）。spill 路径的 head 物化由 `TestHandleMethodCallSpillsAFrameWriterDocument` 覆盖。
 
+### 2026-11-11 outboundgroup `GetProxies` 覆盖轮次（测试，非性能）
+
+`GetProxies` 是 `adapter/outboundgroup` 内最大的未覆盖块（53.5%），而它每条未覆盖分支都直接改变宿主读到的成员名单：谁能活过滤、按什么顺序排、exclude 丢谁、空组拿谁顶。本轮只补测试，生产代码一行未动。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `GetProxies` 五条行为钉住：touch 契约（没要 touch 的读不碰 provider）、compatible provider 不过 filter、多 filter 跨 provider 按 filter 顺序重排、exclude-filter 与 exclude-type 两类剔除、空组回退 `EmptyFallback` | `fcaf694ac` | `78b830de` | `GetProxies` **53.5% → 95.8%**，包 **72.7% → 76.1%**；新增 5 例 focused 全过（连既有共 7 例）、focused race 通过、原生 `go vet ./...` 与 darwin/arm64、linux/arm64、android/arm64 三平台包级 vet 全部 exit 0、子模块全量 **104 包 ok** |
+
+两条易错点各钉一处：compatible provider 的成员是别处已经过滤过的，再过一次 filter 会把合格成员误杀；`len(providers) > 1 && len(filterRegs) > 1` 时必须按 filter 顺序整体重排（不是按 provider 顺序），否则成员名单顺序会随 provider 声明顺序漂移。
+
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
@@ -884,6 +894,7 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 | 全量 race | `go test . -race -count=1` | 仅 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 失败——**基线代码上同样复现**（已单独验证：stash 本轮改动后跑同一用例仍报同一 DATA RACE），属既有问题，见第 7 节 |
 | 资料页缓存 focused race | `go test -race . -run 'Profile\|Route\|Base\|Merge'` | 除同一既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 外全绿（2026-11-10，`profile_cache.go` 改动后） |
 | 2026-11-10 当日七轮 \+ 信封证伪（收官） | 见第 2 节各轮次小节 | wrapper 全量 ok；四平台 vet exit 0；focused race 仅既有 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent`（基线对照复现）；**子模块全量 104 包 ok + vet 0**；`ParseProxy` 8.6%→75.9%、`adapter` 62.1%→85.2%、wrapper 93.7%；父仓库 `068dd308` / 子模块 `778e0fb67`，两端远程均已同步 |
+| 2026-11-11 outboundgroup `GetProxies` 覆盖（测试轮） | 见第 2 节该轮次 | 新增 5 例 focused 全过（连既有共 7 例）、focused race 通过、原生 `go vet ./...` 与三平台包级 vet exit 0、子模块全量 **104 包 ok**；`GetProxies` 53.5% → 95.8%、包 72.7% → 76.1%；父仓库 `78b830de` / 子模块 `fcaf694ac`，两端远程均已同步 |
 
 | 2026-11-10 组答案代号 | 见第 2 节该轮次 | steady answer geomean **-74.68%**（n=7，p=0.001 各）；miss 路径 +1.55%（p=0.310 噪声内）；分配全项不变；选中变更/provider 刷新两条不变量由既有测试钉住 |
 **噪声带实测依据**（本轮新增，后续 A/B 准绳）：同一编译产物交替自比 4 轮，benchstat geomean +0.71%，个别场景差异 ±2.5% 且 p 可低至 0.021（loadbalance +2.34%，p=0.021）。因此本机「无差异」判定阈值取 p>0.2 或落在 ±2.5% 内；「有差异」判定沿用仓库规矩（p≤0.02 且幅度 ≥ 仓库认可量级）。
@@ -1024,7 +1035,7 @@ dart run tool/test.dart   # exit 0
 |---|---|---|
 | wrapper | 93.7% | 剩 6 个：`StartServer`（IPC 入口，测试走 `dispatchMethodCall`）、`handleCrash`（`core.crash` 就是让进程崩的 dev 旋钮，`TestEveryCoreMethodConstantIsDispatchable` 已单独记账）、`requestTrafficWatch.clear`（桌面构建 `hasEventListener()` 恒 true，该分支 Android 可达）、`dial_pipe.dial`、`ExitOnTermination`、`ownership_other` 三个 |
 | 子模块 `adapter` | 86.7% | 剩 `adapter.go` 的 `ListenPacketContext` 转发与 `testState` 部分分支；前者由隧道测试在运行时覆盖 |
-| 子模块 `adapter/outboundgroup` | 72.7% | 0% 全是 `DialContext`/`ListenPacketContext`/`SupportUDP` 一类接口方法，由 wrapper 与隧道测试在运行时覆盖 |
+| 子模块 `adapter/outboundgroup` | **76.1%** | 0% 全是 `DialContext`/`ListenPacketContext`/`SupportUDP` 一类接口方法，由 wrapper 与隧道测试在运行时覆盖 |
 | 子模块 `tunnel` | **76.5%**（本会话 60.5% 推上来） | 剩 `processUDP`/`startUDPSender`/`dialUDPSender`（真 UDP 往返 + 代理拨号）与两个 error 分支（`handleUDPToRemote` 写失败、`ResolveRoute` 的 `preHandleMetadata` 失败） |
 | 子模块 `tunnel/statistic` | 94.4% | 剩 `handle()` 的 1s ticker 循环（50%）与 tracker 对裸 conn 的读写（现有方向测试经真 pipe 已驱动） |
 
