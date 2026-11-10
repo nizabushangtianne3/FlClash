@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-10（当日十轮：资料页命中零分配 + 组刷新只走组行 + 组槽缓存行打包 + 组答案全局代号 + 表身份直读 + 答案结构随投影缓存 + 大答案 header 池化 + statistic 覆盖补全 + DNS 拨号器覆盖 + UDP 回写面覆盖 + 代理读取面覆盖；信封契约两次实测否决）
-- FlClash main：`4b30a94b`
-- Clash.Meta main：`3e99932c5`
+- 最近核对日期：2026-11-11（承 2026-11-10 十轮：答案路径 7 轮 + 覆盖 3 轮；今日新增 tunnel 覆盖四轮：ResolveRoute、存取器面、UDP worker 循环、回写面补齐；信封契约两次实测否决）
+- FlClash main：`8aa1b918`
+- Clash.Meta main：`d59a5a3e7`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 130 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 131 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -812,6 +812,17 @@ remaining uncovered there is the 1s ticker loop in `handle` and tracker-level re
 | 覆盖 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
 | `Proxy.Adapter`/`DelayHistory`/`DelayHistoryForTestUrl`（隧道对代理的三次读取，含「从未答过的代理返回 nil 而不是 panic」）；`urlToMetadata` 的默认端口三态、非法 URL、以及「scheme 不带端口即按名拒绝」 | `3e99932c5` | 本轮父仓库提交 | 2 个用例；**adapter 85.2% → 86.7%** |
+
+
+### 2026-11-11 tunnel 表面与路由覆盖轮次（测试，收口「覆盖全部核心代码」）
+
+把「测试必须覆盖全部核心代码」在子模块上收口：`tunnel` 从 60.5% 一路推到 **76.5%**，逐块补的都是 fork 自己写的真逻辑或宿主每次答案都要读的存取器。
+
+| 覆盖 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `ResolveRoute`（不拨号就问路由，宿主给连接命名用的）：match 表选中代理、空表返回 (nil, nil) 而不报错 | `e4891c7d3` | 本轮父仓库提交 | 0% → 80%（剩 `preHandleMetadata` 失败分支，构造代价不值） |
+| `tunnel.go` 存取器面：`Proxies/Providers/RuleProviders/Rules`（包级与接口版同一张表）、`Mode/SetMode`、`FindProcessMode/SetFindProcessMode`、`Status/OnSuspend/OnInnerLoading/OnRunning`、`IsSniffing/SetSniffing`（无 sniffer 时不动、装了 enabled sniffer 后开、可关）、`NatTable`（两个）、`RuleUpdateCallback`；`HandleUDPPacket` 丢弃无 flow key 的包 | `d59a5a3e7` | 本轮父仓库提交 | tunnel 74.6% → **76.5%** |
+| `packetSender.Process`（UDP worker 的主循环）：交给它的包被处理、`Close()` 后循环退出；`idlePacketConn.Upstream()` | `d59a5a3e7` | 本轮父仓库提交 | 0% → 覆盖。剩余 0% 只有 `processUDP`/`startUDPSender`/`dialUDPSender`（真 UDP 往返 + 代理拨号）与两个 error 分支 |
 
 ## 4. 当前验证矩阵
 
