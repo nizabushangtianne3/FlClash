@@ -2,9 +2,9 @@
 
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
-- 最近核对日期：2026-11-10（本会话六项：资料页命中零分配 + 组刷新只走组行 + 组槽缓存行打包 + 组答案全局代号 + 表身份直读 + 答案结构随投影缓存 + ParseProxy 全覆盖）
-- FlClash main：`6fe14a16`
-- Clash.Meta main：`778e0fb67`
+- 最近核对日期：2026-11-10（当日八轮：资料页命中零分配 + 组刷新只走组行 + 组槽缓存行打包 + 组答案全局代号 + 表身份直读 + 答案结构随投影缓存 + 大答案 header 池化 + statistic 覆盖补全；信封契约两次实测否决）
+- FlClash main：`c4492a89`
+- Clash.Meta main：`3cce3749f`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -22,7 +22,7 @@
 
 ### 2026-11-03 全量复核轮次
 
-本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 125 项。
+本轮从 wrapper/子模块 benchmark 地图重新测量，找出并落地五十项优化；审计中确认过但**未**改动的位置见本节末尾。加上 2026-11-04 后的持续重构轮次与 2026-11-08 核心答案路径轮次，账本当前共 127 项。
 
 | 优化 | core 提交 | 父仓库提交 | 结果 |
 |---|---|---|---|
@@ -769,6 +769,26 @@ CPU 剖析（`BenchmarkHandleGetProxies`）显示答案路径 58% 落在 `refres
 | `groupProjectionCache` 增持 `answer *proxiesAnswer`，命中即原样返回（结构体不可变：只有 `proxies`/`names` 两个字段，`document()` 改的是全局槽与帧缓存，不改自己） | -（仅 wrapper） | `131ba6da` | n=7 交替 A/B：sec/op geomean **-11.63%**（各行 -9.65% ~ -12.60%），B/op 96 → **64**、allocs 3 → **2**（-36%）。200 组答案路径 **164.0n → 145.7n** |
 
 **偶发失败记录**：一次全量里 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 在 2 秒截止时间（`route_test.go:440`）上超时失败，紧接其后的两次全量与单跑均通过；失败前机器刚跑完 7 轮 A/B（编译与基准负载拉满）。判定为负载型偶发，与代码无关，但它是这条链路上第二个不稳定点（另一个是 `-race` 下必现的 DATA RACE，见第 7 节）。
+
+
+### 2026-11-10 大答案 header 池化轮次（性能，答案路径收官）
+
+信封契约那条路两次被否之后（见第 3 节），答案路径仍剩 2 次分配。逐个归因：`envelope(id)` 一次、大文档路径的 `header := make([]byte, 4+len(answer.head))` 一次。后者的大小只由 id 决定，与答案本身无关，却每答案分配一次。
+
+| 优化 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `writeFrame` 大文档路径的 header 改从 `frameHeaderBuffers` 池取（初始 256B，够 `{"id":"` + 转义 id + `","result":` 的最坏形态），写完三个 piece 即归还；沿用 `maxPooledFrameSize` 作上限，超限的缓冲丢弃而不是常驻 | -（仅 wrapper） | `02858294` | n=7 交替 A/B：`BenchmarkHandleGetProxies` sec/op geomean **-2.17%**，200 组各行 **-1.29% ~ -3.52%**（p≤0.029）；B/op 64 → **32**、allocs 2 → **1**（各行均 -50%）。小文档路径不变（本就不分配 header）。至此答案路径 **2 allocs → 1**，唯一剩下的是信封本身 |
+
+### 2026-11-10 statistic 覆盖补全轮次（测试）
+
+「测试必须覆盖全部核心代码」在子模块的最小包上收口：`tunnel/statistic` 83.8%，而 0% 的恰是**仪表盘每秒读的计数器、连接页每次拉的整表、以及 tracker 交出去的计数包装**——全是宿主真的在读的东西。
+
+| 覆盖 | core 提交 | 父仓库提交 | 结果 |
+|---|---|---|---|
+| `Manager` 的 `Size`/`Now`/`Total`/`swapUploadTemp`/`swapDownloadTemp`/`swapProxyUploadTemp`/`swapProxyDownloadTemp`/`ResetStatistic`/`Get`/`Range`/`Join`/`Leave`/`AppendJSON`（含空表与带连接两种形态、以及「blip 只在 tick 动、push 不动」这条易错点） | `3cce3749f` | `c4492a89` | `TestManagerCountersAnswerWhatAPushLeftAndASwapTakes`、`TestManagerSizeAndLookupFollowJoinsAndLeaves`、`TestManagerAppendJSONCarriesTheCountersAndTheRows` |
+| `tcpCounterConn` 的 `Read`/`Write`/`ReadBuffer`/`WriteBuffer`（转发后计数仍落 tracker）与 `ReaderReplaceable`/`WriterReplaceable`（不可替换）；`udpTracker` 的 `ID`/`Upstream`/`WaitReadFrom` | `3cce3749f` | `c4492a89` | `TestTCPTrackerCounterKeepsAccountingAndRefusesReplacement`、`TestUDPTrackerAnswersItsIdItsConnAndAWait`。`tunnel/statistic` **83.8% → 94.4%** |
+
+remaining uncovered there is the 1s ticker loop in `handle` and tracker-level read/write of the raw conn, which the existing direction tests already drive through a real pipe.
 
 ## 4. 当前验证矩阵
 
