@@ -1037,6 +1037,15 @@ dart run tool/test.dart   # exit 0
 | 第三次派发 | 全绿：main 上 build（Go core / Dart / Rust / Desktop 三平台 / Android / Windows helper / Plugins）全部 success，发布 v1.0.5，**16 个产物 + SHA256SUMS**（Android 三 ABI、Linux 六包、macOS 两 dmg、Windows 四包）。发布说明已回填 25 条 Performance 条目 |
 
 **教训（后续必须遵守）**：① 本机验证的格式检查清单必须和 CI 的门禁逐字一致——CI 的 Go 门禁只 `gofmt -l` `./*.go ./cmd ./mobile ./platform ./timezone ./tun`，Dart 门禁是整仓 `dart format --set-exit-if-changed`；② Windows 上 `gofmt -l` 会因 CRLF 报一片假阳性，校验要按**已提交/暂存的 blob**（`git show :file | gofmt -d`）看，那才是 CI 看到的内容；③ 发布说明的条目按「上一个发布标签以来收集」，失败的发布会把条目消耗掉——v1.0.4 收了全部条目但没构建成功，v1.0.5 只剩 `style` 提交，所以 v1.0.5 的说明是按「产物里实际包含什么」手工回填的（仓库 `changelog.json` 未改，`verify` 依旧通过）。
+### 2026-11-11 连接排序稳态免排序轮次（性能，Dart UI isolate）
+
+上一轮把 `rank` 的三张 per-poll map 合成一张状态表后，用端到端探针（`poll_cycle_benchmark_test.dart`：rank → setTrackerInfos → filters.offer/apply → sorter → cellsOf）按「一次轮询的真实链路」重测：1000 行时 `rank` 仍占 947µs（其余各级 <600µs）。插桩拆开：sample 循环 ~10µs、**整套排序 ~420µs**、publish ~85µs——而排序里的大头是「空闲行比较器排序」，但稳态下遍历顺序（上一轮的发布顺序）本身就是比较器顺序。
+
+| 优化 | 父仓库提交 | 结果 |
+|---|---|---|
+| ① 空闲段排序前加「已有序」单遍校验（`_trafficOrdered`），稳态跳过比较器排序；② 更彻底：把上一轮发布顺序存下来，单遍校验「行集未变 + 桶沿序非降 + 空闲段比较器有序」即整体复用，整套计数排序/桶链/遍历全省；③ sample 的间隔比较从 `Duration` 改微秒算术（每行少一次分配） | `7a43e943` | 1000 行稳态：`rank` **947µs → 358µs（-62%）**，整条轮询链路 ~1.7ms → ~720µs；10000 行稳态一轮 **659µs**（对照组「每行都有流量」仍走慢路径，4206µs，与上轮基线 4087µs 同区间无回退）。新基准 `settledPolls`（1 万行稳态）与 `poll_cycle_benchmark_test.dart`（端到端分阶段）均为 `@Skip` 手动项 |
+
+**正确性论证**：校验规则三条——行集完全一致（长度相等 + 每个下标指向的行 stamp 为本轮）、桶值沿存储序非降（某行桶升高必然破坏非降 → 回退）、空闲相邻对满足比较器。新连接/离开连接由长度与 stamp 检查拦下；同行内顺序天然等于上一轮发布序（`_publish` 按输出序写 position）。反向用例「领头连接停止发送后落队」钉住：speed 逐轮减半、约十余轮后回到空闲，顺序回到按总流量排的初始序——校验失败走慢路径，结果与首轮一致。既有 9 个语义用例全绿，新增 2 个（稳态同序同实例、领头者安静后重排）。
 ## 5. 后续优化切入点
 
 ### 待优化项清单（2026-11-07 全量复核，均在本机实测过基线）
