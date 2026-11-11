@@ -1203,7 +1203,7 @@ feed flush 分解实测（每 300ms 窗口 400 日志 + 120 连接行 + 240 DNS 
 | 位置 | 实测基线（JIT） | 结论 / 下一步 |
 |---|---|---|
 | 实时连接 feed 的 `[...snapshot.connections]..sort(start 倒序)` | 300 行 19.7µs → 3.7µs（**-81.3%**，2026-11-12 已把排序下沉到 provider） | **已完结**：排序在 `Connections._merge` 重建行集合时做一次，`_orderedRows` 是不可变有序表，`updateTraffic` 只替换行对象、不改 `LinkedHashMap` 插入位，所以复用它仍然保持 start 倒序；仪表盘 `_showConnections` 直接读快照，免复制免排序。顺序护栏在 connections_table 的 counter-only 用例，基准 `connections_feed_benchmark_test.dart` 配对实测。剩余成本是每次刷新重建 20 行 ×8 列的 widget，要再降只能自绘表格 |
-| `RecordFacet.optionsOf`（剩余） | requests 页 500 行 ×3 个 offered facet：单值化 + 有界选取后约 49.5µs/次；rule 全去重场景 52.6µs/次 | 剩余是 map 计数本身（500 个不同字符串的哈希与插入，约 25µs）与选项终排。「同一列表实例跳过重算」不成立（三个调用点都由节流器在新数据到达时驱动，列表必然已变）；top-k 无法再近似，每个值都必须数到 |
+| `RecordFacet.optionsOf`（剩余） | requests 页 500 行 ×3 个 offered facet：单值化 + 有界选取后约 46.0µs/组；rule 全去重场景 50.7µs/次 | 剩余是 map 计数本身（500 个不同字符串的哈希与插入，约 25µs）与选项终排。「同一列表实例跳过重算」不成立（三个调用点都由节流器在新数据到达时驱动，列表必然已变）；top-k 无法再近似，每个值都必须数到 |
 | `RecordSorter.sort` 乱序路径 | 10000 行 ×1000 次同 `record_sorter_benchmark_test.dart`；`Expando` 缓存 sortKey 无效（见第 3 节） | 剩余可省的是 `order`+`sorted` 两个列表，需 in-place 置换且不能改调用方列表；上次尝试写反已回退，先写语义测试再上基准 |
 | 打包 int64 键替代索引排序（`computeSort`） | 设想：把 (priority,delay,group,index) 打成单个 int64 用 `Int64List.sort()` 免比较器排序。scratch 配对实测（1000 节点 ×500 次，顺序与索引排序完全一致）：172.4µs → 169.4µs（-1.7%，噪声内） | JIT 下 `Int64List.sort()` 并未比 `List<int>.sort(comparator)` 快，比较器本身已不是瓶颈；撤销 |
 | `computeSort` 延迟排序（剩余） | 1000 节点：叶子直取后约 280µs/次（此前 424µs，见第 2 节本轮落地行）；`order` 列表 + `List.sort` + 结果列表是余量 | 「已有序免排序」快路已存在；`order`+结果双列表要省需 in-place 置换且不能改调用方列表（上次尝试写反已回退），先写语义测试再上基准 |
