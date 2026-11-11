@@ -94,22 +94,22 @@ class _FrameScanner {
 
   List<CoreEvent>? readBatch() {
     _skipWhitespace();
-    if (_peek() != '{') return null;
+    if (_code() != 0x7B) return null;
     _at++;
     String? method;
     List<CoreEvent>? batch;
     _skipWhitespace();
-    if (_peek() == '}') return null;
+    if (_code() == 0x7D) return null;
     while (true) {
       _skipWhitespace();
-      if (_peek() != '"') return null;
+      if (_code() != 0x22) return null;
       final key = _readString();
       _skipWhitespace();
-      if (_peek() != ':') return null;
+      if (_code() != 0x3A) return null;
       _at++;
       _skipWhitespace();
       if (key == 'method') {
-        if (_peek() != '"') return null;
+        if (_code() != 0x22) return null;
         method = _readString();
       } else if (key == 'arguments') {
         if (method != CoreMethod.message.wireName) return null;
@@ -118,9 +118,9 @@ class _FrameScanner {
         _skipValue();
       }
       _skipWhitespace();
-      final next = _peek();
-      if (next == '}') break;
-      if (next != ',') return null;
+      final next = _code();
+      if (next == 0x7D) break;
+      if (next != 0x2C) return null;
       _at++;
     }
     return batch;
@@ -129,7 +129,7 @@ class _FrameScanner {
   List<CoreEvent> _readMessages() {
     final events = <CoreEvent>[];
     _skipWhitespace();
-    if (_peek() != '[') {
+    if (_code() != 0x5B) {
       final single = _readMessage();
       if (single != null) {
         events.add(single);
@@ -138,7 +138,7 @@ class _FrameScanner {
     }
     _at++;
     _skipWhitespace();
-    if (_peek() == ']') {
+    if (_code() == 0x5D) {
       _at++;
       return events;
     }
@@ -148,12 +148,12 @@ class _FrameScanner {
         events.add(event);
       }
       _skipWhitespace();
-      final next = _peek();
-      if (next == ']') {
+      final next = _code();
+      if (next == 0x5D) {
         _at++;
         return events;
       }
-      if (next != ',') throw const FormatException('batch item');
+      if (next != 0x2C) throw const FormatException('batch item');
       _at++;
     }
   }
@@ -163,7 +163,7 @@ class _FrameScanner {
   /// drops it exactly as it always did.
   CoreEvent? _readMessage() {
     _skipWhitespace();
-    if (_peek() != '{') {
+    if (_code() != 0x7B) {
       _skipValue();
       return null;
     }
@@ -172,16 +172,16 @@ class _FrameScanner {
     int dataStart = -1;
     int dataEnd = -1;
     _skipWhitespace();
-    if (_peek() != '}') {
+    if (_code() != 0x7D) {
       while (true) {
         _skipWhitespace();
         final key = _readString();
         _skipWhitespace();
-        if (_peek() != ':') throw const FormatException('field');
+        if (_code() != 0x3A) throw const FormatException('field');
         _at++;
         _skipWhitespace();
         if (key == 'type') {
-          if (_peek() != '"') throw const FormatException('type');
+          if (_code() != 0x22) throw const FormatException('type');
           type = _readString();
         } else if (key == 'data') {
           dataStart = _at;
@@ -191,9 +191,9 @@ class _FrameScanner {
           _skipValue();
         }
         _skipWhitespace();
-        final next = _peek();
-        if (next == '}') break;
-        if (next != ',') throw const FormatException('field end');
+        final next = _code();
+        if (next == 0x7D) break;
+        if (next != 0x2C) throw const FormatException('field end');
         _at++;
       }
     }
@@ -227,7 +227,7 @@ class _FrameScanner {
       case CoreEventType.requestTraffic:
         _at = dataStart;
         _skipWhitespace();
-        if (_peek() != '[') throw const FormatException('traffic counters');
+        if (_code() != 0x5B) throw const FormatException('traffic counters');
         return CoreEvent(type: coreType, data: _readTraffic());
       case CoreEventType.loaded:
       case CoreEventType.crash:
@@ -261,7 +261,7 @@ class _FrameScanner {
   /// its literal text here and a string keeps its unescaped value.
   String _readTextOrSlice(int dataStart) {
     _at = dataStart;
-    if (_peek() == '"') {
+    if (_code() == 0x22) {
       return _readString();
     }
     _skipValue();
@@ -286,7 +286,7 @@ class _FrameScanner {
 
   void _requireObject(String what) {
     _skipWhitespace();
-    if (_peek() != '{') throw FormatException(what);
+    if (_code() != 0x7B) throw FormatException(what);
   }
 
   Log _readLogPayload(DateTime clock) {
@@ -294,23 +294,23 @@ class _FrameScanner {
     var payload = '';
     _at++;
     _skipWhitespace();
-    if (_peek() != '}') {
+    if (_code() != 0x7D) {
       while (true) {
         _skipWhitespace();
         final key = _readString();
         _skipWhitespace();
-        if (_peek() != ':') throw const FormatException('field');
+        if (_code() != 0x3A) throw const FormatException('field');
         _at++;
         _skipWhitespace();
         switch (_logKeyCodes[key] ?? 0) {
           case 1:
-            if (_peek() == '"') {
+            if (_code() == 0x22) {
               level = logLevelOf(_readString()) ?? LogLevel.info;
             } else {
               _skipValue();
             }
           case 2:
-            if (_peek() == '"') {
+            if (_code() == 0x22) {
               payload = _readString();
             } else {
               _skipValue();
@@ -319,14 +319,14 @@ class _FrameScanner {
             _skipValue();
         }
         _skipWhitespace();
-        final next = _peek();
-        if (next == '}') break;
-        if (next != ',') throw const FormatException('field end');
+        final next = _code();
+        if (next == 0x7D) break;
+        if (next != 0x2C) throw const FormatException('field end');
         _at++;
       }
     }
     _skipWhitespace();
-    if (_peek() != '}') throw const FormatException('log payload');
+    if (_code() != 0x7D) throw const FormatException('log payload');
     _at++;
     return Log(logLevel: level, payload: payload, dateTime: clock);
   }
@@ -344,12 +344,12 @@ class _FrameScanner {
     Metadata? metadata;
     _at++;
     _skipWhitespace();
-    if (_peek() != '}') {
+    if (_code() != 0x7D) {
       while (true) {
         _skipWhitespace();
         final key = _readString();
         _skipWhitespace();
-        if (_peek() != ':') throw const FormatException('field');
+        if (_code() != 0x3A) throw const FormatException('field');
         _at++;
         _skipWhitespace();
         switch (_rowKeyCodes[key] ?? 0) {
@@ -378,9 +378,9 @@ class _FrameScanner {
             _skipValue();
         }
         _skipWhitespace();
-        final next = _peek();
-        if (next == '}') break;
-        if (next != ',') throw const FormatException('field end');
+        final next = _code();
+        if (next == 0x7D) break;
+        if (next != 0x2C) throw const FormatException('field end');
         _at++;
       }
     }
@@ -421,12 +421,12 @@ class _FrameScanner {
     var mitm = false;
     var mitmRefused = false;
     _skipWhitespace();
-    if (_peek() != '}') {
+    if (_code() != 0x7D) {
       while (true) {
         _skipWhitespace();
         final key = _readString();
         _skipWhitespace();
-        if (_peek() != ':') throw const FormatException('field');
+        if (_code() != 0x3A) throw const FormatException('field');
         _at++;
         _skipWhitespace();
         switch (_metadataKeyCodes[key] ?? 0) {
@@ -445,7 +445,7 @@ class _FrameScanner {
           case 7:
             host = _readString();
           case 8:
-            if (_peek() == '"') {
+            if (_code() == 0x22) {
               dnsMode = dnsModeOf(_readString());
             } else {
               _skipValue();
@@ -476,14 +476,14 @@ class _FrameScanner {
             _skipValue();
         }
         _skipWhitespace();
-        final next = _peek();
-        if (next == '}') break;
-        if (next != ',') throw const FormatException('field end');
+        final next = _code();
+        if (next == 0x7D) break;
+        if (next != 0x2C) throw const FormatException('field end');
         _at++;
       }
     }
     _skipWhitespace();
-    if (_peek() != '}') throw const FormatException('metadata');
+    if (_code() != 0x7D) throw const FormatException('metadata');
     _at++;
     return Metadata(
       uid: uid,
@@ -521,12 +521,12 @@ class _FrameScanner {
     var time = 0;
     _at++;
     _skipWhitespace();
-    if (_peek() != '}') {
+    if (_code() != 0x7D) {
       while (true) {
         _skipWhitespace();
         final key = _readString();
         _skipWhitespace();
-        if (_peek() != ':') throw const FormatException('field');
+        if (_code() != 0x3A) throw const FormatException('field');
         _at++;
         _skipWhitespace();
         switch (_dnsKeyCodes[key] ?? 0) {
@@ -535,7 +535,7 @@ class _FrameScanner {
           case 2:
             type = _readString();
           case 3:
-            if (_peek() == '"') {
+            if (_code() == 0x22) {
               initiator = _initiatorOf(_readString());
             } else {
               _skipValue();
@@ -558,9 +558,9 @@ class _FrameScanner {
             _skipValue();
         }
         _skipWhitespace();
-        final next = _peek();
-        if (next == '}') break;
-        if (next != ',') throw const FormatException('field end');
+        final next = _code();
+        if (next == 0x7D) break;
+        if (next != 0x2C) throw const FormatException('field end');
         _at++;
       }
     }
@@ -594,7 +594,7 @@ class _FrameScanner {
     final traffic = <String, RequestTraffic>{};
     _at++;
     _skipWhitespace();
-    if (_peek() == ']') {
+    if (_code() == 0x5D) {
       _at++;
       return traffic;
     }
@@ -603,15 +603,15 @@ class _FrameScanner {
       var upload = 0;
       var download = 0;
       _skipWhitespace();
-      if (_peek() != '{') throw const FormatException('counter');
+      if (_code() != 0x7B) throw const FormatException('counter');
       _at++;
       _skipWhitespace();
-      if (_peek() != '}') {
+      if (_code() != 0x7D) {
         while (true) {
           _skipWhitespace();
           final key = _readString();
           _skipWhitespace();
-          if (_peek() != ':') throw const FormatException('field');
+          if (_code() != 0x3A) throw const FormatException('field');
           _at++;
           _skipWhitespace();
           switch (_trafficKeyCodes[key] ?? 0) {
@@ -625,21 +625,21 @@ class _FrameScanner {
               _skipValue();
           }
           _skipWhitespace();
-          final next = _peek();
-          if (next == '}') break;
-          if (next != ',') throw const FormatException('field end');
+          final next = _code();
+          if (next == 0x7D) break;
+          if (next != 0x2C) throw const FormatException('field end');
           _at++;
         }
       }
       _at++;
       traffic[id] = (upload: upload, download: download);
       _skipWhitespace();
-      final next = _peek();
-      if (next == ']') {
+      final next = _code();
+      if (next == 0x5D) {
         _at++;
         return traffic;
       }
-      if (next != ',') throw const FormatException('counter end');
+      if (next != 0x2C) throw const FormatException('counter end');
       _at++;
     }
   }
@@ -651,16 +651,16 @@ class _FrameScanner {
     throw const FormatException('slice');
   }
 
-  String _peek() {
+  int _code() {
     if (_at >= _text.length) throw const FormatException('end of frame');
-    return _text[_at];
+    return _text.codeUnitAt(_at);
   }
 
   /// Reads a JSON string starting at its opening quote and returns it
   /// unescaped; the closing quote is consumed.
   String _readString() {
     final text = _text;
-    if (_peek() != '"') throw const FormatException('string');
+    if (_code() != 0x22) throw const FormatException('string');
     var at = _at + 1;
     final start = at;
     while (at < text.length) {
@@ -761,7 +761,7 @@ class _FrameScanner {
   /// row wears is mostly such values.
   void _skipString() {
     final text = _text;
-    if (_peek() != '"') throw const FormatException('string');
+    if (_code() != 0x22) throw const FormatException('string');
     var at = _at + 1;
     while (at < text.length) {
       final unit = text.codeUnitAt(at);
@@ -785,7 +785,7 @@ class _FrameScanner {
 
   int? _readOptionalInt() {
     _skipWhitespace();
-    if (_peek() == 'n') {
+    if (_code() == 0x6E) {
       _skipValue();
       return null;
     }
@@ -795,8 +795,8 @@ class _FrameScanner {
   num _readNumber() {
     _skipWhitespace();
     final start = _at;
-    final unit = _peek();
-    if (unit == '-' || unit == '+') {
+    final unit = _code();
+    if (unit == 0x2D || unit == 0x2B) {
       _at++;
     }
     while (_at < _text.length) {
@@ -835,15 +835,15 @@ class _FrameScanner {
 
   List<String>? _readStringList() {
     _skipWhitespace();
-    if (_peek() == 'n') {
+    if (_code() == 0x6E) {
       _skipValue();
       return null;
     }
-    if (_peek() != '[') throw const FormatException('list');
+    if (_code() != 0x5B) throw const FormatException('list');
     _at++;
     final items = <String>[];
     _skipWhitespace();
-    if (_peek() == ']') {
+    if (_code() == 0x5D) {
       _at++;
       return items;
     }
@@ -851,12 +851,12 @@ class _FrameScanner {
       _skipWhitespace();
       items.add(_readString());
       _skipWhitespace();
-      final next = _peek();
-      if (next == ']') {
+      final next = _code();
+      if (next == 0x5D) {
         _at++;
         return items;
       }
-      if (next != ',') throw const FormatException('item end');
+      if (next != 0x2C) throw const FormatException('item end');
       _at++;
     }
   }
@@ -864,12 +864,12 @@ class _FrameScanner {
   /// Advances past any JSON value at the cursor.
   void _skipValue() {
     _skipWhitespace();
-    final unit = _peek();
-    if (unit == '"') {
+    final unit = _code();
+    if (unit == 0x22) {
       _skipString();
       return;
     }
-    if (unit == '{' || unit == '[') {
+    if (unit == 0x7B || unit == 0x5B) {
       _skipContainer();
       return;
     }
@@ -889,13 +889,13 @@ class _FrameScanner {
   }
 
   void _skipContainer() {
-    final open = _peek();
-    final close = open == '{' ? '}' : ']';
+    final open = _code();
+    final close = open == 0x7B ? 0x7D : 0x5D;
     _at++;
     var depth = 1;
     while (depth > 0) {
-      final unit = _peek();
-      if (unit == '"') {
+      final unit = _code();
+      if (unit == 0x22) {
         _skipString();
         continue;
       }
