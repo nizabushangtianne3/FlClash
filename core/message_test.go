@@ -303,7 +303,7 @@ func TestRunMessageBatcherDrainsBulkAfterPriorityCloses(t *testing.T) {
 // rare state messages.
 func TestMessageBatchMatchesReflection(t *testing.T) {
 	tracker := newConnectionDeltaTracker(t, &C.Metadata{NetWork: C.TCP, Host: "first.example.com"})
-	time0 := time.Unix(1730000000, 123456789).UTC()
+	time0 := time.Unix(1730000000, 123456789).UTC().UnixMicro()
 
 	messages := []Message{
 		{Type: LogMessage, Data: log.Event{LogLevel: log.INFO, Payload: "[TCP] connected <ok> \u2028next"}},

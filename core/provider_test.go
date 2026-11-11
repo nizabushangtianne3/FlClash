@@ -13,7 +13,7 @@ import (
 )
 
 func TestProviderViewJSONMatchesEncoding(t *testing.T) {
-	updateAt := time.Date(2026, 11, 6, 3, 4, 5, 123456789, time.UTC)
+	updateAt := time.Date(2026, 11, 6, 3, 4, 5, 123456789, time.UTC).UnixMicro()
 	views := []ExternalProvider{
 		{
 			Name:             `quote"path`,

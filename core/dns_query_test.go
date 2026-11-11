@@ -55,8 +55,8 @@ func TestNewDnsQueryFlattensAnswers(t *testing.T) {
 	if !reflect.DeepEqual(query.Answers, want) {
 		t.Fatalf("answers = %q, want %q", query.Answers, want)
 	}
-	if !query.Time.Equal(start) {
-		t.Fatalf("time = %v, want %v", query.Time, start)
+	if query.Time != start.UnixMicro() {
+		t.Fatalf("time = %d, want %d", query.Time, start.UnixMicro())
 	}
 }
 

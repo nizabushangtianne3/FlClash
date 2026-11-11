@@ -9,16 +9,16 @@ import (
 )
 
 type DnsQuery struct {
-	Domain    string    `json:"domain"`
-	Type      string    `json:"type"`
-	Initiator string    `json:"initiator"`
-	Upstream  string    `json:"upstream,omitempty"`
-	Cached    bool      `json:"cached,omitempty"`
-	Answers   []string  `json:"answers"`
-	Rcode     string    `json:"rcode,omitempty"`
-	Error     string    `json:"error,omitempty"`
-	Delay     int64     `json:"delay"`
-	Time      int64     `json:"time"`
+	Domain    string   `json:"domain"`
+	Type      string   `json:"type"`
+	Initiator string   `json:"initiator"`
+	Upstream  string   `json:"upstream,omitempty"`
+	Cached    bool     `json:"cached,omitempty"`
+	Answers   []string `json:"answers"`
+	Rcode     string   `json:"rcode,omitempty"`
+	Error     string   `json:"error,omitempty"`
+	Delay     int64    `json:"delay"`
+	Time      int64    `json:"time"`
 }
 
 func newDnsQuery(record dns.QueryRecord) DnsQuery {

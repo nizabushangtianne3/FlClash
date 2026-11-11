@@ -27,7 +27,7 @@ func benchmarkBatchMessages(b *testing.B, count int) []Message {
 			messages = append(messages, Message{Type: DnsMessage, Data: DnsQuery{
 				Domain: "www.example.com", Type: "A", Initiator: "192.168.1.2",
 				Upstream: "8.8.8.8", Answers: []string{"1.2.3.4", "5.6.7.8"},
-				Delay: 21, Time: time.Unix(1730000000, 0),
+				Delay: 21, Time: time.Unix(1730000000, 0).UnixMicro(),
 			}})
 		case 7:
 			messages = append(messages, Message{Type: RequestTrafficMessage, Data: []RequestTraffic{
