@@ -11,6 +11,11 @@
           "type": "fix",
           "entries": [
             {
+              "id": "3118e52",
+              "scope": "test",
+              "text": "Serialize shared log buffer assertions"
+            },
+            {
               "id": "788bf6e",
               "scope": "ci",
               "text": "Drop working-tree guard that CI flips off"
