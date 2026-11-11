@@ -56,6 +56,14 @@ class TrackerSpeedRanker {
   Int32List _publishedOrder = Int32List(0);
   int _publishedStamp = 0;
 
+  /// The per-row scratch a poll fills, reused while the table keeps its size:
+  /// rebuilding them zero-fills and allocates on every poll, and a connection
+  /// table's size is the one number that changes least often.
+  int _scratchCount = 0;
+  List<_RowState> _scratchStates = const [];
+  Int64List _scratchTraffic = Int64List(0);
+  Int32List _scratchPositions = Int32List(0);
+  Int32List _scratchBuckets = Int32List(0);
   static final _vacant = _RowState(
     0,
     0,
@@ -71,12 +79,25 @@ class TrackerSpeedRanker {
     final count = trackerInfos.length;
     final stamp = ++_stamp;
     final previousStamp = stamp - 1;
-    final states = List<_RowState>.filled(count, _vacant);
+    if (count > _scratchCount) {
+      // A power of two keeps a table that grows and shrinks off the reallocation
+      // path, and every reader below is bounded by the poll's own count.
+      var capacity = 16;
+      while (capacity < count) {
+        capacity *= 2;
+      }
+      _scratchCount = capacity;
+      _scratchStates = List<_RowState>.filled(capacity, _vacant);
+      _scratchTraffic = Int64List(capacity);
+      _scratchPositions = Int32List(capacity);
+      _scratchBuckets = Int32List(capacity);
+    }
+    final states = _scratchStates;
 
     var anyActive = false;
-    final traffic = Int64List(count);
-    final positions = Int32List(count);
-    final buckets = Int32List(count);
+    final traffic = _scratchTraffic;
+    final positions = _scratchPositions;
+    final buckets = _scratchBuckets;
     for (var index = 0; index < count; index++) {
       final trackerInfo = trackerInfos[index];
       final row = _sample(trackerInfo, now, stamp, previousStamp, count);
@@ -228,7 +249,7 @@ class TrackerSpeedRanker {
       order = ranked;
     }
 
-    final published = _publish(trackerInfos, states, order);
+    final published = _publish(trackerInfos, states, order, count);
     if (settled == null) {
       if (_publishedOrder.length != count) {
         _publishedOrder = Int32List(count);
@@ -340,8 +361,8 @@ class TrackerSpeedRanker {
     List<TrackerInfo> trackerInfos,
     List<_RowState> states,
     List<int> order,
+    int count,
   ) {
-    final count = states.length;
     final ranked = List<TrackerInfo>.generate(count, (index) {
       final source = order[index];
       final row = states[source];
