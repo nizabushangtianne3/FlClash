@@ -957,15 +957,15 @@ DOMAIN-SUFFIX,ads.example.com,REJECT
 
   test('log and list tasks produce stable mapped output', () async {
     final logs = [
-      const Log(
+      Log(
         logLevel: LogLevel.info,
         payload: 'first',
-        dateTime: '2026-07-26 10:00:00',
+        dateTime: DateTime.utc(2026, 7, 26, 10),
       ),
-      const Log(
+      Log(
         logLevel: LogLevel.error,
         payload: 'second',
-        dateTime: '2026-07-26 10:00:01',
+        dateTime: DateTime.utc(2026, 7, 26, 10, 0, 1),
       ),
     ];
 

@@ -166,7 +166,7 @@ class _LogsViewState extends ConsumerState<LogsView>
         controller: _scrollController,
         hintBuilder: (fraction) {
           final index = (fraction * (logs.length - 1)).round();
-          return logs[index].dateTime;
+          return logs[index].dateTime.showFull;
         },
         child: ScrollToEndBox(
           onCancelToEnd: () {
@@ -216,7 +216,7 @@ class LogItem extends StatelessWidget {
       onTap: () {},
       header: RecordHeader(
         children: [
-          RecordTimestamp(log.dateTime),
+          RecordTimestamp(log.dateTime.showFull),
           RecordLabel(
             label: log.logLevel.name,
             tone: tone,

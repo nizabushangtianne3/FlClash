@@ -1237,7 +1237,7 @@ $MetadataCopyWith<$Res> get metadata {
 /// @nodoc
 mixin _$Log {
 
-@JsonKey(name: 'LogLevel') LogLevel get logLevel;@JsonKey(name: 'Payload') String get payload;@JsonKey(fromJson: _logDateTime) String get dateTime;
+@JsonKey(name: 'LogLevel') LogLevel get logLevel;@JsonKey(name: 'Payload') String get payload;@JsonKey(fromJson: _logNow, toJson: dateTimeToEpoch) DateTime get dateTime;
 /// Create a copy of Log
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -1275,7 +1275,7 @@ abstract mixin class $LogCopyWith<$Res>  {
   factory $LogCopyWith(Log value, $Res Function(Log) _then) = _$LogCopyWithImpl;
 @useResult
 $Res call({
-@JsonKey(name: 'LogLevel') LogLevel logLevel,@JsonKey(name: 'Payload') String payload,@JsonKey(fromJson: _logDateTime) String dateTime
+@JsonKey(name: 'LogLevel') LogLevel logLevel,@JsonKey(name: 'Payload') String payload,@JsonKey(fromJson: _logNow, toJson: dateTimeToEpoch) DateTime dateTime
 });
 
 
@@ -1297,7 +1297,7 @@ class _$LogCopyWithImpl<$Res>
 logLevel: null == logLevel ? _self.logLevel : logLevel // ignore: cast_nullable_to_non_nullable
 as LogLevel,payload: null == payload ? _self.payload : payload // ignore: cast_nullable_to_non_nullable
 as String,dateTime: null == dateTime ? _self.dateTime : dateTime // ignore: cast_nullable_to_non_nullable
-as String,
+as DateTime,
   ));
 }
 
@@ -1382,7 +1382,7 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function(@JsonKey(name: 'LogLevel')  LogLevel logLevel, @JsonKey(name: 'Payload')  String payload, @JsonKey(fromJson: _logDateTime)  String dateTime)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function(@JsonKey(name: 'LogLevel')  LogLevel logLevel, @JsonKey(name: 'Payload')  String payload, @JsonKey(fromJson: _logNow, toJson: dateTimeToEpoch)  DateTime dateTime)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _Log() when $default != null:
 return $default(_that.logLevel,_that.payload,_that.dateTime);case _:
@@ -1403,7 +1403,7 @@ return $default(_that.logLevel,_that.payload,_that.dateTime);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function(@JsonKey(name: 'LogLevel')  LogLevel logLevel, @JsonKey(name: 'Payload')  String payload, @JsonKey(fromJson: _logDateTime)  String dateTime)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function(@JsonKey(name: 'LogLevel')  LogLevel logLevel, @JsonKey(name: 'Payload')  String payload, @JsonKey(fromJson: _logNow, toJson: dateTimeToEpoch)  DateTime dateTime)  $default,) {final _that = this;
 switch (_that) {
 case _Log():
 return $default(_that.logLevel,_that.payload,_that.dateTime);case _:
@@ -1423,7 +1423,7 @@ return $default(_that.logLevel,_that.payload,_that.dateTime);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function(@JsonKey(name: 'LogLevel')  LogLevel logLevel, @JsonKey(name: 'Payload')  String payload, @JsonKey(fromJson: _logDateTime)  String dateTime)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function(@JsonKey(name: 'LogLevel')  LogLevel logLevel, @JsonKey(name: 'Payload')  String payload, @JsonKey(fromJson: _logNow, toJson: dateTimeToEpoch)  DateTime dateTime)?  $default,) {final _that = this;
 switch (_that) {
 case _Log() when $default != null:
 return $default(_that.logLevel,_that.payload,_that.dateTime);case _:
@@ -1438,12 +1438,12 @@ return $default(_that.logLevel,_that.payload,_that.dateTime);case _:
 @JsonSerializable()
 
 class _Log implements Log {
-  const _Log({@JsonKey(name: 'LogLevel') this.logLevel = LogLevel.info, @JsonKey(name: 'Payload') this.payload = '', @JsonKey(fromJson: _logDateTime) required this.dateTime});
+  const _Log({@JsonKey(name: 'LogLevel') this.logLevel = LogLevel.info, @JsonKey(name: 'Payload') this.payload = '', @JsonKey(fromJson: _logNow, toJson: dateTimeToEpoch) required this.dateTime});
   factory _Log.fromJson(Map<String, dynamic> json) => _$LogFromJson(json);
 
 @override@JsonKey(name: 'LogLevel') final  LogLevel logLevel;
 @override@JsonKey(name: 'Payload') final  String payload;
-@override@JsonKey(fromJson: _logDateTime) final  String dateTime;
+@override@JsonKey(fromJson: _logNow, toJson: dateTimeToEpoch) final  DateTime dateTime;
 
 /// Create a copy of Log
 /// with the given fields replaced by the non-null parameter values.
@@ -1480,7 +1480,7 @@ abstract mixin class _$LogCopyWith<$Res> implements $LogCopyWith<$Res> {
   factory _$LogCopyWith(_Log value, $Res Function(_Log) _then) = __$LogCopyWithImpl;
 @override @useResult
 $Res call({
-@JsonKey(name: 'LogLevel') LogLevel logLevel,@JsonKey(name: 'Payload') String payload,@JsonKey(fromJson: _logDateTime) String dateTime
+@JsonKey(name: 'LogLevel') LogLevel logLevel,@JsonKey(name: 'Payload') String payload,@JsonKey(fromJson: _logNow, toJson: dateTimeToEpoch) DateTime dateTime
 });
 
 
@@ -1502,7 +1502,7 @@ class __$LogCopyWithImpl<$Res>
 logLevel: null == logLevel ? _self.logLevel : logLevel // ignore: cast_nullable_to_non_nullable
 as LogLevel,payload: null == payload ? _self.payload : payload // ignore: cast_nullable_to_non_nullable
 as String,dateTime: null == dateTime ? _self.dateTime : dateTime // ignore: cast_nullable_to_non_nullable
-as String,
+as DateTime,
   ));
 }
 

@@ -106,8 +106,11 @@ void main() {
   });
 
   group('LogsState.list', () {
-    Log log(LogLevel level, String payload) =>
-        Log(logLevel: level, payload: payload, dateTime: '2024-01-01');
+    Log log(LogLevel level, String payload) => Log(
+      logLevel: level,
+      payload: payload,
+      dateTime: DateTime.utc(2024, 1, 1),
+    );
 
     test('returns all logs when the query is empty', () {
       final state = LogsState(

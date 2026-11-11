@@ -237,20 +237,19 @@ extension TrackerInfoExt on TrackerInfo {
   ];
 }
 
-String _logDateTime(dynamic _) {
-  return DateTime.now().showFull;
-}
+DateTime _logNow(dynamic _) => DateTime.now();
 
 @freezed
 abstract class Log with _$Log {
   const factory Log({
     @JsonKey(name: 'LogLevel') @Default(LogLevel.info) LogLevel logLevel,
     @JsonKey(name: 'Payload') @Default('') String payload,
-    @JsonKey(fromJson: _logDateTime) required String dateTime,
+    @JsonKey(fromJson: _logNow, toJson: dateTimeToEpoch)
+    required DateTime dateTime,
   }) = _Log;
 
   factory Log.app(String payload) {
-    return Log(payload: payload, dateTime: _logDateTime(null));
+    return Log(payload: payload, dateTime: _logNow(null));
   }
 
   factory Log.fromJson(Map<String, Object?> json) => _$LogFromJson(json);

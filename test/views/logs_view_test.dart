@@ -22,7 +22,7 @@ void main() {
 
   List<Log> seedLogs() => List.generate(
     logCount,
-    (i) => Log(payload: 'log $i', dateTime: '2024-01-01 12:00:$i'),
+    (i) => Log(payload: 'log $i', dateTime: DateTime.utc(2024, 1, 1, 12, i)),
   );
 
   Future<void> pumpLogsView(WidgetTester tester) async {
@@ -68,7 +68,10 @@ void main() {
     final label = tester.widget<Text>(
       find.descendant(of: find.byKey(hintKey), matching: find.byType(Text)),
     );
-    expect(seedLogs().map((log) => log.dateTime), contains(label.data));
+    expect(
+      seedLogs().map((log) => log.dateTime.showFull),
+      contains(label.data),
+    );
 
     final scrollableRect = tester.getRect(find.byType(Scrollable).first);
     // The list runs under the bar, so the scrollbar track starts at the
@@ -116,7 +119,7 @@ void main() {
 
     container
         .read(logsProvider.notifier)
-        .add(const Log(payload: 'log new', dateTime: '2024-01-01 12:00:new'));
+        .add(Log(payload: 'log new', dateTime: DateTime.utc(2024, 1, 1, 12)));
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
@@ -125,12 +128,15 @@ void main() {
 
   testWidgets('a one-line log is only as tall as its content', (tester) async {
     await tester.pumpWidget(
-      const TestApp(
+      TestApp(
         child: HostScaffold(
           body: Column(
             children: [
               LogItem(
-                log: Log(payload: 'short', dateTime: '2024-01-01 12:00:00'),
+                log: Log(
+                  payload: 'short',
+                  dateTime: DateTime.utc(2024, 1, 1, 12),
+                ),
               ),
             ],
           ),
@@ -152,12 +158,12 @@ void main() {
         child: HostScaffold(
           body: RecordFilterScope(
             onFilter: (filter) => clicked = filter,
-            child: const LogItem(
+            child: LogItem(
               log: Log(
                 logLevel: LogLevel.warning,
                 payload:
                     '[TCP] dial Proxy 10.0.0.2:1 --> a.example:443 error: EOF',
-                dateTime: '2024-01-01 12:00:00',
+                dateTime: DateTime.utc(2024, 1, 1, 12),
               ),
             ),
           ),
@@ -205,7 +211,9 @@ void main() {
     await pumpLogsView(tester);
     final notifier = container.read(logsProvider.notifier);
     for (var i = logCount; i < maxLogsLength; i++) {
-      notifier.add(Log(payload: 'log $i', dateTime: '2024-01-01 12:00:00'));
+      notifier.add(
+        Log(payload: 'log $i', dateTime: DateTime.utc(2024, 1, 1, 12)),
+      );
     }
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
@@ -217,7 +225,7 @@ void main() {
       }
     };
     addTearDown(() => debugOnRebuildDirtyWidget = null);
-    notifier.add(const Log(payload: 'new', dateTime: '2024-01-01 12:00:00'));
+    notifier.add(Log(payload: 'new', dateTime: DateTime.utc(2024, 1, 1, 12)));
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
     debugOnRebuildDirtyWidget = null;
