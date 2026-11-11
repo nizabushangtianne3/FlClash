@@ -3,9 +3,9 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-11 深夜（晚间接续会话，全部本机实测）：连接轮询稳态免扫描一轮（500 连接 32.78µs -> 371ns，-98.87%；stale 十字段与十个镜像字段整段删除）；Dart 侧连接排序一轮（1 万行每快照 10.4ms -> ~4.19ms，-60.7%，三张 per-poll 字符串 map 合并为一张状态表）；UDP 数据报主路径覆盖一轮（tunnel 76.5% -> 82.7%，processUDP/startUDPSender/dialUDPSender 从 0/0/50% 到 100/100/89.6%）；wrapper IPC 入口覆盖一轮（StartServer 走真实命名管道，93.7% -> 93.9%）；死代码清扫一轮（staticcheck 名下未用测试 helper 与两处死赋值）；另有三项实测否决记账（feed flush 归属拆解、GOGC 策略、连接 churn 增量日志）
-- FlClash main：`1860ec80`
+- FlClash main：`4a4154bc`
 - Clash.Meta main：`bbf113d6f`
-- 深夜会话后半程（全部本机实测）：时间戳改纪元微秒一轮（wire 端到端契约变更，到达路径 10.25ms -> 3.06ms），该轮曾把 Go 门禁弄红（gofmt 三文件 + 四个测试文件仍在传 time.Time），已修复；Log 到达免格式化一轮（3.06ms -> 0.98ms）；到达路径批量轮次（信封手写解码 -69%、log 读入 -77%、端到端配对 -10%/min -26%）
+- 深夜会话后半程（全部本机实测）：时间戳改纪元微秒一轮（wire 端到端契约变更，到达路径 10.25ms -> 3.06ms），该轮曾把 Go 门禁弄红（gofmt 三文件 + 四个测试文件仍在传 time.Time），已修复；Log 到达免格式化一轮（3.06ms -> 0.98ms）；到达路径批量轮次（信封手写解码 -69%、log 读入 -77%、端到端配对 -10%/min -26%）；连接行解码轮次（行读入 -29%，位置化原型 -49% 因需改 wire 未做，记入账本）
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -1081,6 +1081,18 @@ dart run tool/test.dart   # exit 0
 
 **配套与踩坑**：① `coreEventsFromData` 的 `is! Map<String, Object?>` 守卫顺带消灭未类型化 map 的拷贝路径——`jsonDecode` 产出的 `_Map<String, dynamic>` 本就是 `Map<String, Object?>` 的子类型（运行时实测 `is` 为 true），旧代码里的 `Map.from` 拷贝从未真正复制过；② 服务层契约从逐条改批量（onServiceEvent → onServiceEvents），`_MutatingListener` 一类中途注销的语义不变（快照仍在每次派发前取）；③ **分轮测量的中位数噪声可达 ±15%**——同一函数两次独立测到 326µs 与 482µs，信封解码因此一度被误判「无收益」，同运行内配对方才给出可信结论。后续所有微基准一律配对；④ `jsonDecode` 占生产路径约 140µs/760 事件，通用解析器已是该形状下的地板，手写扫描器的风险收益不相称，记账不做。
 
+### 2026-11-11 连接行解码轮次（性能，Dart）
+
+位置化行编组的原型（行改 JSON 数组、metadata 仍为对象）配对实测 **-49%**（232µs → 118µs/95 行），但改 wire 格式要动子模块编码器、`rowAnswerSize` 与两侧契约测试，风险面大；逐段归因发现收益的大头在「外层 9 字段 + chains 分配 + 嵌套 fromJson 调用」，于是只重写 Dart 侧读取器、不碰 wire：`trackerInfoFromData` 内联 metadata 构造，chains 空表共享 `const []`，两个生产调用点（`_addedConnections` 与 request 事件）换用。
+
+| 优化 | 提交 | 结果 |
+|---|---|---|
+| `trackerInfoFromData` 手写行读取器 + `dnsModeOf` 字符串 switch，与生成版**逐字段等价** | `4a4154bc` | 配对：95 行 **188µs → 133µs（min 158 → 122），-29%**；500 行 resync 每次页面打开约省 290µs |
+
+**等价性钉死**：`test/models/common_test.dart` 新增三组——全字段行同输入对拍、缺省行对拍、含全部 dnsMode 名的对拍，外加 **200 组随机在场性模糊**（确定性种子，每个 metadata 键 50% 概率缺席， uid/dnsMode/geoIP/mitm 按类型生成）。模糊测试当场抓出两处我原本写宽容了的字段（`metadata` 与 `chains` 缺失时生成版直接抛、手写版默认补空）——Go 编码器（`appendPrefixJSON`/`appendSuffixJSON`）保证两者恒在，遂把手写版改成同样严格，语义完全对齐。
+
+**踩坑**：`TrackerInfo.toJson()` 不递归序列化嵌套对象（freezed 原样写 `instance.metadata`），不能拿它做 round-trip 基准；等价测试必须**同一份输入 map 喂两个读取器**。
+
 ## 5. 后续优化切入点
 
 ### 待优化项清单（2026-11-07 全量复核，均在本机实测过基线）
@@ -1238,6 +1250,8 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 只有时间、内存或分配有明确收益才继续；否则恢复改动并记录拒绝原因。
 
 ## 7. 已知维护事项
+
+- 2026-11-11 `dart run tool/test.dart` 全量第 6 个失败：`test/core/desktop/process_probe_test.dart`「an exited child process is not alive」在满载机器上偶发（探针在子进程退出后仍报存活），单独重跑与安静环境均通过；该测试 kill 掉 `ping` 后立即探测，属时序敏感，与本会话 Dart 改动无交互。已知既有失败集仍是 5 个（4 个 Linux-only mitm + window 探针）。
 
 - 2026-11-11 门禁修复（非性能）：epoch 微秒轮次（`b14ea82f`）把 Go 门禁弄红了两处——`core/dns_query.go`、`core/protocol.go`、`core/provider.go` 被 gofmt 点名（前两个文件尾丢换行，`int64` 字段撑开结构体对齐后未重新对齐）；且 `core/dns_query_test.go`、`core/message_test.go`、`core/message_bench_test.go`、`core/provider_test.go` 仍在给 int64 字段传 `time.Time`（`go vet .` 编译测试时才炸）。已由 `05f5e29e` 修复。教训：改字段类型必须同步所有 `_test.go`——wrapper 的 CI gofmt 只扫 `./*.go ./cmd ./mobile ./platform ./timezone ./tun`，但 `go vet .` 编译测试，类型漂移只在编译期暴露。
 - 2026-11-11 环境备忘：本机 `flutter analyze` 必崩（analysis server 在 LSP initialize 消息上报 `FormatException: Unexpected end of input`——`java项目` 路径使 Content-Length 与实际字节数不符），CI（Linux）不复现；本机改用 `dart analyze`（全仓库 No issues found，结论一致）。另：`dart format` 探针文件若拷出仓库（无 pubspec 上游）会按最新语言版本套「高样式」产生假阳性，仓库内 1083 个文件实测 0 changed，勿被误导。
