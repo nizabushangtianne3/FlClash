@@ -1027,6 +1027,17 @@ dart run tool/test.dart   # exit 0
 **踩过的坑（写进测试注释）**：① `bufferedConn()` 闭包只在嗅探块和 NeedHandshake 块里被调用——想让「已是 BufferedConn」分支执行，必须打开嗅探或让远端连接需要握手，光传一个缓冲连接不够；② 「预热写失败」要让**拨号成功、写失败**，所以 dial 要指向真实监听器，错误用一个被拒的 TCP 拨号错误（重试循环据此判为终态，一次尝试即结束）；③ 嗅探用例改用**预置缓冲**的连接（`Read` 先吐出自带字节再委托管道），彻底摆脱嗅探 1 秒预读窗口与测试写字节之间的时序耦合——此前 7 次全包里偶发 1 次 5 秒超时，根因就是那个耦合；④ patch 的锚文本在两个用例里相同时会落到第一个，两个用例用了同一段 `UpdateProxies/SetMode`，差点把嗅探配置加错测试。
 
 **至此 tunnel 包的主数据路径全部有测试驱动**：`HandleTCPConn`/`processUDP`/`startUDPSender` 100%，`dialUDPSender` 91.7%、`handleUDPConn` 80.6%、`match` 59.6%、`logMetadata` 45.5%（其余是日志分支与进程查找，属平台/日志级组合）。
+### 2026-11-11 正式发布轮次（v1.0.6）
+
+v1.0.5 之后到达路径又落了三个实测轮次（Log 到达免格式化、到达路径批量化、连接行解码内联、融合帧读取、连接环索引、flush 缓冲交换、扫描边界码点比较、键字面量 + 整数解析、字段名字符串 switch），本轮把它们收进一个正式版本。
+
+| 项 | 内容 |
+|---|---|
+| 版本 | `1.0.6+2026111101`，标签 `v1.0.6`（本地） |
+| 收录条目 | Bug Fixes 1 条（wrapper 编译与格式修复 `05f5e29`）+ Performance 12 条（`a05bcb4` / `8347731` / `a78ef86` / `f29bf54` / `9de4ea5` / `1adbfd5` / `4a4154b` / `1860ec8` / `ea7045d` / `b14ea82` / `3a9f22e` / `7a43e94`） |
+| 验证 | `changelog build --unreleased` 与 `changelog verify` 均通过；本地核心测试全量失败集仍是 5 个既有问题 |
+| 推送 | `main:main` 已推送；**`v1.0.6` 标签未推送**——`build.yaml` 由 `v*` 标签触发，按用户要求不跑 Actions 测试与发布流程 |
+
 ### 2026-11-11 正式发布轮次（v1.0.5）
 
 按用户要求发正式版：派发 `release-stable.yaml`，由 CI 跑 `tool/release.sh stable --push --yes`（升版本、写 changelog、打标签），再链到 `build.yaml` 构建并发布 GitHub Release。
