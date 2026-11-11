@@ -3,9 +3,9 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-11 深夜（晚间接续会话，全部本机实测）：连接轮询稳态免扫描一轮（500 连接 32.78µs -> 371ns，-98.87%；stale 十字段与十个镜像字段整段删除）；Dart 侧连接排序一轮（1 万行每快照 10.4ms -> ~4.19ms，-60.7%，三张 per-poll 字符串 map 合并为一张状态表）；UDP 数据报主路径覆盖一轮（tunnel 76.5% -> 82.7%，processUDP/startUDPSender/dialUDPSender 从 0/0/50% 到 100/100/89.6%）；wrapper IPC 入口覆盖一轮（StartServer 走真实命名管道，93.7% -> 93.9%）；死代码清扫一轮（staticcheck 名下未用测试 helper 与两处死赋值）；另有三项实测否决记账（feed flush 归属拆解、GOGC 策略、连接 churn 增量日志）
-- FlClash main：`ea7045d3`
+- FlClash main：`1860ec80`
 - Clash.Meta main：`bbf113d6f`
-- 深夜会话后半程（全部本机实测）：时间戳改纪元微秒一轮（wire 端到端契约变更，到达路径 10.25ms -> 3.06ms），该轮曾把 Go 门禁弄红（gofmt 三文件 + 四个测试文件仍在传 time.Time），已修复；Log 到达免格式化一轮（3.06ms -> 0.98ms，两轮累计 -90%）
+- 深夜会话后半程（全部本机实测）：时间戳改纪元微秒一轮（wire 端到端契约变更，到达路径 10.25ms -> 3.06ms），该轮曾把 Go 门禁弄红（gofmt 三文件 + 四个测试文件仍在传 time.Time），已修复；Log 到达免格式化一轮（3.06ms -> 0.98ms）；到达路径批量轮次（信封手写解码 -69%、log 读入 -77%、端到端配对 -10%/min -26%）
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -1068,6 +1068,18 @@ dart run tool/test.dart   # exit 0
 | `Log.dateTime` 由 String 改 DateTime，到达即停（`_logNow`），显示端 `showFull` | `ea7045d3` | 到达基准 `sendEvent x760` **3.06ms -> 0.98ms（min 0.81ms，-68%）**；连同上轮 wire 改造累计 10.25ms -> 0.98ms，**-90%** |
 
 **配套与踩坑**：fixtures 全部改构造 `DateTime`；`test/views/logs_view_test.dart` 的 scrollbar 时间提示断言改为比 `showFull` 文本——`DateTime` 与 `String` 永不相等，该用例在 bundle 与单跑中都必失败，不要误判成 bundle 跨文件干扰。
+
+### 2026-11-11 到达路径批量轮次（性能，Dart，分发契约变更）
+
+上一轮之后端到端量「生产到达路径」（`jsonDecode` → `coreEventsFromData` → 逐个 `sendEvent`，760 事件/批）：1318µs。逐项拆：`CoreEvent.fromJson` 每事件 0.43µs（`$enumDecode` 反查）、`Log.fromJson` 每条约 0.42µs（`DateTime.now()` + `$enumDecodeNullable` + 字段读）、逐事件分发机制约 330ns。本轮三项改动全部用**配对实测**（同一次运行内新旧交替、各 9 组取中位数）验证：
+
+| 优化 | 提交 | 结果 |
+|---|---|---|
+| 信封解析改手写 `coreEventFrom`：线上名字符串 switch（按频率排序），替掉 `$enumDecode` 反查 | `1860ec80` | 配对：**283µs → 88µs（min 172 → 46），-69%** |
+| `logFromData` 手写解码（`logLevelOf` 字符串 switch）+ `sendEvents` 批量分发：一批日志共享一次到达时钟 | `1860ec80` | 每 log 读入 **423ns → 99ns（-77%）** |
+| `ServiceListener.onServiceEvent` 契约改批量 `onServiceEvents`；桌面 rpc_client 与 Android service 两条分发链整批交给 manager | `1860ec80` | 端到端配对：**1318µs → 1182µs（median -10%），min 1097 → 810（-26%）** |
+
+**配套与踩坑**：① `coreEventsFromData` 的 `is! Map<String, Object?>` 守卫顺带消灭未类型化 map 的拷贝路径——`jsonDecode` 产出的 `_Map<String, dynamic>` 本就是 `Map<String, Object?>` 的子类型（运行时实测 `is` 为 true），旧代码里的 `Map.from` 拷贝从未真正复制过；② 服务层契约从逐条改批量（onServiceEvent → onServiceEvents），`_MutatingListener` 一类中途注销的语义不变（快照仍在每次派发前取）；③ **分轮测量的中位数噪声可达 ±15%**——同一函数两次独立测到 326µs 与 482µs，信封解码因此一度被误判「无收益」，同运行内配对方才给出可信结论。后续所有微基准一律配对；④ `jsonDecode` 占生产路径约 140µs/760 事件，通用解析器已是该形状下的地板，手写扫描器的风险收益不相称，记账不做。
 
 ## 5. 后续优化切入点
 
