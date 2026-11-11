@@ -273,6 +273,25 @@ void main() {
     expectSameEvents(frame);
   });
 
+  test('an escaped spelling of a key keeps reaching its field', () {
+    // The fast path matches only the bytes the core writes, so a key
+    // spelled with an escape sequence has to drop to the general path,
+    // which reads the key as a string and dispatches on its unescaped
+    // name; otherwise the field it names is silently lost.
+    final head = '{"method":"message","arguments":[{';
+    final mid = '"type":"log","data":{"LogLevel":"info",';
+    final tail = ':"escaped payload"}}]}';
+    final plain = head + mid + '"Payload"' + tail;
+    final escaped =
+        head + mid + '"' + String.fromCharCode(0x5C) + 'u0050ayload"' + tail;
+
+    expect(messageBatchFromFrame(utf8.encode(plain))?.single.data, isA<Log>());
+    final log = messageBatchFromFrame(utf8.encode(escaped))?.single.data;
+    expect(log, isA<Log>());
+    expect((log as Log).payload, 'escaped payload');
+    expectSameEvents(utf8.encode(escaped));
+  });
+
   test('matches the decoded path on randomized batches', () {
     final random = Random(7);
     const levels = ['debug', 'info', 'warning', 'error', 'silent'];

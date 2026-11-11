@@ -30,8 +30,6 @@ List<CoreEvent>? messageBatchFromFrame(Uint8List frame) {
 /// Key codes: a wire field name goes through a table once and the readers
 /// switch on a small int, which the VM turns into a jump instead of the
 /// string comparisons a switch on the names would walk.
-const _logKeyCodes = <String, int>{'LogLevel': 1, 'Payload': 2};
-
 const _rowKeyCodes = <String, int>{
   'metadata': 1,
   'id': 2,
@@ -175,20 +173,32 @@ class _FrameScanner {
     if (_code() != 0x7D) {
       while (true) {
         _skipWhitespace();
-        final key = _readString();
-        _skipWhitespace();
-        if (_code() != 0x3A) throw const FormatException('field');
-        _at++;
-        _skipWhitespace();
-        if (key == 'type') {
+        // An envelope carries only these two keys; the literals match
+        // the bytes the core writes so a key never becomes a string,
+        // and any other spelling of either name drops to the general
+        // path below.
+        if (_skipKeyIs('"type"')) {
+          _skipFieldColon('type');
           if (_code() != 0x22) throw const FormatException('type');
           type = _readString();
-        } else if (key == 'data') {
+        } else if (_skipKeyIs('"data"')) {
+          _skipFieldColon('data');
           dataStart = _at;
           _skipValue();
           dataEnd = _at;
         } else {
-          _skipValue();
+          final key = _readString();
+          _skipFieldColon('field');
+          if (key == 'type') {
+            if (_code() != 0x22) throw const FormatException('type');
+            type = _readString();
+          } else if (key == 'data') {
+            dataStart = _at;
+            _skipValue();
+            dataEnd = _at;
+          } else {
+            _skipValue();
+          }
         }
         _skipWhitespace();
         final next = _code();
@@ -297,26 +307,33 @@ class _FrameScanner {
     if (_code() != 0x7D) {
       while (true) {
         _skipWhitespace();
-        final key = _readString();
-        _skipWhitespace();
-        if (_code() != 0x3A) throw const FormatException('field');
-        _at++;
-        _skipWhitespace();
-        switch (_logKeyCodes[key] ?? 0) {
-          case 1:
-            if (_code() == 0x22) {
-              level = logLevelOf(_readString()) ?? LogLevel.info;
-            } else {
-              _skipValue();
-            }
-          case 2:
-            if (_code() == 0x22) {
-              payload = _readString();
-            } else {
-              _skipValue();
-            }
-          default:
+        // A log carries its level and its text; the literals match the
+        // bytes the core writes, and any other spelling of either name
+        // drops to the general path below.
+        if (_skipKeyIs('"LogLevel"')) {
+          _skipFieldColon('field');
+          if (_code() == 0x22) {
+            level = logLevelOf(_readString()) ?? LogLevel.info;
+          } else {
             _skipValue();
+          }
+        } else if (_skipKeyIs('"Payload"')) {
+          _skipFieldColon('field');
+          if (_code() == 0x22) {
+            payload = _readString();
+          } else {
+            _skipValue();
+          }
+        } else {
+          final key = _readString();
+          _skipFieldColon('field');
+          if (key == 'LogLevel' && _code() == 0x22) {
+            level = logLevelOf(_readString()) ?? LogLevel.info;
+          } else if (key == 'Payload' && _code() == 0x22) {
+            payload = _readString();
+          } else {
+            _skipValue();
+          }
         }
         _skipWhitespace();
         final next = _code();
@@ -658,6 +675,26 @@ class _FrameScanner {
 
   /// Reads a JSON string starting at its opening quote and returns it
   /// unescaped; the closing quote is consumed.
+
+  /// True when the cursor sits on the quoted key [literal] names,
+  /// quotes included; matching a key the wire always writes keeps it
+  /// from becoming a string only to be looked up, and the quotes are
+  /// consumed with it.
+  bool _skipKeyIs(String literal) {
+    if (!_text.startsWith(literal, _at)) return false;
+    _at += literal.length;
+    return true;
+  }
+
+  /// Consumes the colon that separates a key from its value and the
+  /// whitespace on either side of it.
+  void _skipFieldColon(String what) {
+    _skipWhitespace();
+    if (_code() != 0x3A) throw FormatException(what);
+    _at++;
+    _skipWhitespace();
+  }
+
   String _readString() {
     final text = _text;
     if (_code() != 0x22) throw const FormatException('string');
@@ -778,9 +815,28 @@ class _FrameScanner {
   }
 
   int _readInt() {
-    final value = _readNumber();
-    if (value is! int) throw const FormatException('number');
-    return value;
+    _skipWhitespace();
+    var negative = false;
+    final unit = _code();
+    if (unit == 0x2D) {
+      negative = true;
+      _at++;
+    } else if (unit == 0x2B) {
+      _at++;
+    }
+    var value = 0;
+    var digits = 0;
+    while (_at < _text.length) {
+      final digit = _text.codeUnitAt(_at);
+      if (digit < 0x30 || digit > 0x39) break;
+      value = value * 10 + (digit - 0x30);
+      _at++;
+      digits++;
+    }
+    // A value the wire never writes, a fraction among them, stops the read
+    // and the frame falls back to the decoded path.
+    if (digits == 0) throw const FormatException('number');
+    return negative ? -value : value;
   }
 
   int? _readOptionalInt() {
@@ -790,34 +846,6 @@ class _FrameScanner {
       return null;
     }
     return _readInt();
-  }
-
-  num _readNumber() {
-    _skipWhitespace();
-    final start = _at;
-    final unit = _code();
-    if (unit == 0x2D || unit == 0x2B) {
-      _at++;
-    }
-    while (_at < _text.length) {
-      final digit = _text.codeUnitAt(_at);
-      if (digit >= 0x30 && digit <= 0x39) {
-        _at++;
-        continue;
-      }
-      if (digit == 0x2E ||
-          digit == 0x65 ||
-          digit == 0x45 ||
-          digit == 0x2D ||
-          digit == 0x2B) {
-        _at++;
-        continue;
-      }
-      break;
-    }
-    final text = _text.substring(start, _at);
-    if (text.isEmpty) throw const FormatException('number');
-    return num.parse(text);
   }
 
   bool _readBool() {
