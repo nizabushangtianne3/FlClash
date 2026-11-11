@@ -917,6 +917,7 @@ mod tests {
     use std::io::Write;
 
     static PROCESS_STATE: Mutex<()> = Mutex::new(());
+    static LOG_STATE: Mutex<()> = Mutex::new(());
 
     fn lock_process_state() -> std::sync::MutexGuard<'static, ()> {
         PROCESS_STATE
@@ -1650,6 +1651,7 @@ mod tests {
 
     #[test]
     fn logging_survives_a_panic_that_poisoned_the_log_buffer() {
+        let _guard = LOG_STATE.lock().unwrap();
         let _ = std::panic::catch_unwind(|| {
             let _guard = LOGS.lock().unwrap();
             panic!("poison the log buffer");
@@ -1664,6 +1666,7 @@ mod tests {
 
     #[test]
     fn a_batch_of_core_lines_lands_whole_and_in_order() {
+        let _guard = LOG_STATE.lock().unwrap();
         let mut pending = vec!["first".to_string(), "second".to_string()];
         flush_logs(&mut pending);
 
@@ -1679,6 +1682,7 @@ mod tests {
 
     #[test]
     fn a_batch_that_overflows_the_buffer_keeps_its_newest_lines() {
+        let _guard = LOG_STATE.lock().unwrap();
         let mut pending = (0..LOG_CAPACITY + 8)
             .map(|index| format!("line-{index}"))
             .collect::<Vec<String>>();
