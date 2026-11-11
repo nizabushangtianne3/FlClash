@@ -1051,6 +1051,15 @@ v1.0.5 之后到达路径又落了三个实测轮次（Log 到达免格式化、
 
 同一修复的 tag run `43087616821` 证明新增的工作区守门与 CI 自身流程冲突：Dart job 先用 `yq` 把 `setup.build_assets` 置为 `false` 再跑全量测试，守门用例随即断言失败；同 run 的 `Go core` success，桌面构建按工作流规则跳过。该用例与 CI 装配流程语义相斥，已删除；保留的参数化守门仍覆盖"两个包都必须开启原生资产"的核心约束。教训：面向工作区的守门不能放进会被 CI 预处理的工作流执行路径，守门应走独立脚本或在 CI 改写前执行。
 
+### 2026-11-12 v1.0.6 正式发布轮次
+
+tag run `43099736561` 全绿：`Dart`/`Go core`/`Android unit tests`/`Plugins`/`Rust`/`Windows helper test` 全部通过，三平台桌面 + Android 正式包构建通过，`upload` job 完成发布；GitHub Release `v1.0.6` 已创建（16 个资产含 SHA256SUMS）。
+
+| 项 | 内容 |
+|---|---|
+| 测试修复 | `services/helper/src/service/hub.rs` 三个依赖共享 `LOGS` 缓冲的测试加互斥锁串行化：毒化用例的消息会被溢出用例挤出，CI 在 run `43093513202` 暴露了本地未触发的竞态 |
+| 发布验证 | Dart 覆盖门槛、changelog 校验、7 个测试 job、8 个构建 job、Release 上传全部通过；tag `v1.0.6` 指向 `ec662f15`，main 与远程一致 |
+
 ### 2026-11-11 正式发布轮次（v1.0.5）
 
 按用户要求发正式版：派发 `release-stable.yaml`，由 CI 跑 `tool/release.sh stable --push --yes`（升版本、写 changelog、打标签），再链到 `build.yaml` 构建并发布 GitHub Release。
