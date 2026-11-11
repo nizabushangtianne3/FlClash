@@ -3,8 +3,9 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-11 深夜（晚间接续会话，全部本机实测）：连接轮询稳态免扫描一轮（500 连接 32.78µs -> 371ns，-98.87%；stale 十字段与十个镜像字段整段删除）；Dart 侧连接排序一轮（1 万行每快照 10.4ms -> ~4.19ms，-60.7%，三张 per-poll 字符串 map 合并为一张状态表）；UDP 数据报主路径覆盖一轮（tunnel 76.5% -> 82.7%，processUDP/startUDPSender/dialUDPSender 从 0/0/50% 到 100/100/89.6%）；wrapper IPC 入口覆盖一轮（StartServer 走真实命名管道，93.7% -> 93.9%）；死代码清扫一轮（staticcheck 名下未用测试 helper 与两处死赋值）；另有三项实测否决记账（feed flush 归属拆解、GOGC 策略、连接 churn 增量日志）
-- FlClash main：`b14ea82f`
+- FlClash main：`ea7045d3`
 - Clash.Meta main：`bbf113d6f`
+- 深夜会话后半程（全部本机实测）：时间戳改纪元微秒一轮（wire 端到端契约变更，到达路径 10.25ms -> 3.06ms），该轮曾把 Go 门禁弄红（gofmt 三文件 + 四个测试文件仍在传 time.Time），已修复；Log 到达免格式化一轮（3.06ms -> 0.98ms，两轮累计 -90%）
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -1058,6 +1059,16 @@ dart run tool/test.dart   # exit 0
 
 **踩坑（后续复用）**：① 本机 build_runner 的 AOT 快照写入必失败（`Unable to write file .dart_tool/build/entrypoint/build.dart.aot`，PowerShell/dart 手工写同路径却成功），加 **`--force-jit`** 即可跑完；② 自定义转换函数必须放在 `part` 指令**之后**，否则整库编译报「Directives must appear before any declarations」；③ Windows 上跑 gofmt 要看**已提交/暂存的 blob**（`git show :file | gofmt -d`），工作副本的 CRLF 会报一片假阳性。
 
+### 2026-11-11 Log 到达免格式化轮次（性能，Dart）
+
+上轮把 wire 时间戳改成纪元微秒后，`sendEvent x760` 还剩 3.06ms；其中日志路径每到来一条就 `DateTime.now().showFull` 全量格式化一遍，只为在到达时拿到一个字符串，而行组件随后又会格式化一次。本轮 `Log.dateTime` 直接持有 `DateTime`，两处显示点改调 `showFull`（Expando 已有缓存，与 `TrackerInfo.start`/`DnsQuery.time` 的显示方式一致），`fromJson`/`Log.app` 只取当下时刻，`toJson` 走 `dateTimeToEpoch`。
+
+| 优化 | 提交 | 结果 |
+|---|---|---|
+| `Log.dateTime` 由 String 改 DateTime，到达即停（`_logNow`），显示端 `showFull` | `ea7045d3` | 到达基准 `sendEvent x760` **3.06ms -> 0.98ms（min 0.81ms，-68%）**；连同上轮 wire 改造累计 10.25ms -> 0.98ms，**-90%** |
+
+**配套与踩坑**：fixtures 全部改构造 `DateTime`；`test/views/logs_view_test.dart` 的 scrollbar 时间提示断言改为比 `showFull` 文本——`DateTime` 与 `String` 永不相等，该用例在 bundle 与单跑中都必失败，不要误判成 bundle 跨文件干扰。
+
 ## 5. 后续优化切入点
 
 ### 待优化项清单（2026-11-07 全量复核，均在本机实测过基线）
@@ -1215,6 +1226,9 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 只有时间、内存或分配有明确收益才继续；否则恢复改动并记录拒绝原因。
 
 ## 7. 已知维护事项
+
+- 2026-11-11 门禁修复（非性能）：epoch 微秒轮次（`b14ea82f`）把 Go 门禁弄红了两处——`core/dns_query.go`、`core/protocol.go`、`core/provider.go` 被 gofmt 点名（前两个文件尾丢换行，`int64` 字段撑开结构体对齐后未重新对齐）；且 `core/dns_query_test.go`、`core/message_test.go`、`core/message_bench_test.go`、`core/provider_test.go` 仍在给 int64 字段传 `time.Time`（`go vet .` 编译测试时才炸）。已由 `05f5e29e` 修复。教训：改字段类型必须同步所有 `_test.go`——wrapper 的 CI gofmt 只扫 `./*.go ./cmd ./mobile ./platform ./timezone ./tun`，但 `go vet .` 编译测试，类型漂移只在编译期暴露。
+- 2026-11-11 环境备忘：本机 `flutter analyze` 必崩（analysis server 在 LSP initialize 消息上报 `FormatException: Unexpected end of input`——`java项目` 路径使 Content-Length 与实际字节数不符），CI（Linux）不复现；本机改用 `dart analyze`（全仓库 No issues found，结论一致）。另：`dart format` 探针文件若拷出仓库（无 pubspec 上游）会按最新语言版本套「高样式」产生假阳性，仓库内 1083 个文件实测 0 changed，勿被误导。
 
 - 2026-11-07 门禁修复（非性能）：`test/lint/prism_list_test.dart`、`test/lint/typography_test.dart` 在 Windows 上误报——`p.relative` 返回反斜杠，而豁免名单与 `_editorSizes` 都按正斜杠写。已按仓库既有写法（`design_package_test.dart`、`platform_layering_test.dart` 等本来就是 `p.relative(...).replaceAll('\', '/')`）统一规范化；`test/lint/dead_file_test.dart` 的 `path.startsWith('lib/')` 在 Windows 上恒为 false、整个测试被跳过，也一并改为规范化后比较，Windows 上首次真正生效（实测无孤儿文件）。Linux 上这些替换均为 no-op，CI 行为不变。
 - `miekg/dns` 的 `ClientExchangeUDP` 中 `Context.AfterFunc` 每次分配一个 stop 闭包；单独优化收益小，建议与 P1 一起重构。
