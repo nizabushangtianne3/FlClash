@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-11 深夜（晚间接续会话，全部本机实测）：连接轮询稳态免扫描一轮（500 连接 32.78µs -> 371ns，-98.87%；stale 十字段与十个镜像字段整段删除）；Dart 侧连接排序一轮（1 万行每快照 10.4ms -> ~4.19ms，-60.7%，三张 per-poll 字符串 map 合并为一张状态表）；UDP 数据报主路径覆盖一轮（tunnel 76.5% -> 82.7%，processUDP/startUDPSender/dialUDPSender 从 0/0/50% 到 100/100/89.6%）；wrapper IPC 入口覆盖一轮（StartServer 走真实命名管道，93.7% -> 93.9%）；死代码清扫一轮（staticcheck 名下未用测试 helper 与两处死赋值）；另有三项实测否决记账（feed flush 归属拆解、GOGC 策略、连接 churn 增量日志）
-- FlClash main：`3a2bd731`
-- Clash.Meta main：`6f9aafcd2`
+- FlClash main：`b14ea82f`
+- Clash.Meta main：`bbf113d6f`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -1046,6 +1046,18 @@ dart run tool/test.dart   # exit 0
 | ① 空闲段排序前加「已有序」单遍校验（`_trafficOrdered`），稳态跳过比较器排序；② 更彻底：把上一轮发布顺序存下来，单遍校验「行集未变 + 桶沿序非降 + 空闲段比较器有序」即整体复用，整套计数排序/桶链/遍历全省；③ sample 的间隔比较从 `Duration` 改微秒算术（每行少一次分配） | `7a43e943` | 1000 行稳态：`rank` **947µs → 358µs（-62%）**，整条轮询链路 ~1.7ms → ~720µs；10000 行稳态一轮 **659µs**（对照组「每行都有流量」仍走慢路径，4206µs，与上轮基线 4087µs 同区间无回退）。新基准 `settledPolls`（1 万行稳态）与 `poll_cycle_benchmark_test.dart`（端到端分阶段）均为 `@Skip` 手动项 |
 
 **正确性论证**：校验规则三条——行集完全一致（长度相等 + 每个下标指向的行 stamp 为本轮）、桶值沿存储序非降（某行桶升高必然破坏非降 → 回退）、空闲相邻对满足比较器。新连接/离开连接由长度与 stamp 检查拦下；同行内顺序天然等于上一轮发布序（`_publish` 按输出序写 position）。反向用例「领头连接停止发送后落队」钉住：speed 逐轮减半、约十余轮后回到空闲，顺序回到按总流量排的初始序——校验失败走慢路径，结果与首轮一致。既有 9 个语义用例全绿，新增 2 个（稳态同序同实例、领头者安静后重排）。
+### 2026-11-11 时间戳改纪元微秒轮次（性能，wrapper + 子模块 + Dart，端到端契约变更）
+
+上一轮端到端探针（新增 `test/manager/event_arrival_benchmark_test.dart`：sendEvent 一批 760 个 log/request/dns 事件）量事件到达路径，发现这批要 **10.25ms**：插桩显示 `Log.fromJson` 1.9ms、`TrackerInfo.fromJson` 2.4ms、`DnsQuery.fromJson` 4.4ms，而三者唯一的共性成本是 **`DateTime.parse`**——单独实测 **17.9µs/次**，一批里约 360 次解析就占 ~6.5ms，一帧装不下。
+
+| 优化 | 提交 | 结果 |
+|---|---|---|
+| 时间戳全线改「纪元微秒 + UTC 构造」：子模块 `TrackerInfo.Start` 改 int64、`AppendJSON` 直写数字；wrapper `DnsQuery.Time`、`ExternalProvider.UpdateAt` 改 int64、手写编码器直写数字；Dart `TrackerInfo.start`/`DnsQuery.time`/`ExternalProvider.updateAt` 加 `dateTimeFromEpoch`/`dateTimeToEpoch` 转换器（`fromMicrosecondsSinceEpoch(isUtc: true)`），build_runner 重生成 | 子模块 `bbf113d6f` / 父仓库 `b14ea82f` | 微基准：时间戳构造 **17.9µs → 0.114µs（-157 倍）**；端到端 `sendEvent x760` **10.25ms → 3.06ms（-70%，min 2.65ms）**；500 行 resync 不再解析 500 个时间戳。`isUtc: true` 是关键：本地时间构造 4.1µs，UTC 只要 0.114µs |
+
+**契约与兼容**：wire 形状从字符串改为数字，三层一起改、不留兼容分支——Go 侧 `ExternalProvider`/`DnsQuery` 字段类型直接改 int64，`json.Marshal` 与手写编码器因此天然一致（provider 两条等价测试**原样通过**）；子模块金标文档同步改微秒。Rust 侧（MITM 模块）不在本仓库源码内，`MitmExchange`/`MitmExchangeSummary`/`MitmExchangeList.since`/`MitmCertificate` 四个字段保持 ISO 字符串，其 fixture 已还原。
+
+**踩坑（后续复用）**：① 本机 build_runner 的 AOT 快照写入必失败（`Unable to write file .dart_tool/build/entrypoint/build.dart.aot`，PowerShell/dart 手工写同路径却成功），加 **`--force-jit`** 即可跑完；② 自定义转换函数必须放在 `part` 指令**之后**，否则整库编译报「Directives must appear before any declarations」；③ Windows 上跑 gofmt 要看**已提交/暂存的 blob**（`git show :file | gofmt -d`），工作副本的 CRLF 会报一片假阳性。
+
 ## 5. 后续优化切入点
 
 ### 待优化项清单（2026-11-07 全量复核，均在本机实测过基线）
