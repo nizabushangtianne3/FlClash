@@ -4,12 +4,17 @@
     {
       "version": "1.0.6",
       "tag": "v1.0.6",
-      "date": "2026-11-11",
+      "date": "2026-11-12",
       "prerelease": false,
       "groups": [
         {
           "type": "fix",
           "entries": [
+            {
+              "id": "5f66401",
+              "scope": "release",
+              "text": "Keep native build assets on for tag builds"
+            },
             {
               "id": "05f5e29",
               "scope": "core",

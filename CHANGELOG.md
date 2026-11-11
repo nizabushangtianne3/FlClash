@@ -1,9 +1,10 @@
 # Changelog
 
-## v1.0.6 (2026-11-11)
+## v1.0.6 (2026-11-12)
 
 **Bug Fixes**
 
+- **release** Keep native build assets on for tag builds (5f66401)
 - **core** Keep the wrapper compiling and formatted (05f5e29)
 
 **Performance**
