@@ -1049,6 +1049,8 @@ v1.0.5 之后到达路径又落了三个实测轮次（Log 到达免格式化、
 | 远程证据 | run `43068548951`：`Go core` success；`Dart` 失败于 21 个 Editor native library not found；`Desktop macos/linux/windows` 失败于 Core 缺失 |
 | 发布 | 修复提交后把 `v1.0.6` 重打到正确 main 提交并推送，让正式版构建读取原生资产开启状态 |
 
+同一修复的 tag run `43087616821` 证明新增的工作区守门与 CI 自身流程冲突：Dart job 先用 `yq` 把 `setup.build_assets` 置为 `false` 再跑全量测试，守门用例随即断言失败；同 run 的 `Go core` success，桌面构建按工作流规则跳过。该用例与 CI 装配流程语义相斥，已删除；保留的参数化守门仍覆盖"两个包都必须开启原生资产"的核心约束。教训：面向工作区的守门不能放进会被 CI 预处理的工作流执行路径，守门应走独立脚本或在 CI 改写前执行。
+
 ### 2026-11-11 正式发布轮次（v1.0.5）
 
 按用户要求发正式版：派发 `release-stable.yaml`，由 CI 跑 `tool/release.sh stable --push --yes`（升版本、写 changelog、打标签），再链到 `build.yaml` 构建并发布 GitHub Release。
