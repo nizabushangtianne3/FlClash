@@ -916,7 +916,7 @@ as bool,
 /// @nodoc
 mixin _$TrackerInfo {
 
- String get id; int get upload; int get download; DateTime get start; Metadata get metadata; List<String> get chains; String get rule; String get rulePayload; int? get downloadSpeed; int? get uploadSpeed;
+ String get id; int get upload; int get download;@JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch) DateTime get start; Metadata get metadata; List<String> get chains; String get rule; String get rulePayload; int? get downloadSpeed; int? get uploadSpeed;
 /// Create a copy of TrackerInfo
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -954,7 +954,7 @@ abstract mixin class $TrackerInfoCopyWith<$Res>  {
   factory $TrackerInfoCopyWith(TrackerInfo value, $Res Function(TrackerInfo) _then) = _$TrackerInfoCopyWithImpl;
 @useResult
 $Res call({
- String id, int upload, int download, DateTime start, Metadata metadata, List<String> chains, String rule, String rulePayload, int? downloadSpeed, int? uploadSpeed
+ String id, int upload, int download,@JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch) DateTime start, Metadata metadata, List<String> chains, String rule, String rulePayload, int? downloadSpeed, int? uploadSpeed
 });
 
 
@@ -1077,7 +1077,7 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  int upload,  int download,  DateTime start,  Metadata metadata,  List<String> chains,  String rule,  String rulePayload,  int? downloadSpeed,  int? uploadSpeed)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  int upload,  int download, @JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch)  DateTime start,  Metadata metadata,  List<String> chains,  String rule,  String rulePayload,  int? downloadSpeed,  int? uploadSpeed)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _TrackerInfo() when $default != null:
 return $default(_that.id,_that.upload,_that.download,_that.start,_that.metadata,_that.chains,_that.rule,_that.rulePayload,_that.downloadSpeed,_that.uploadSpeed);case _:
@@ -1098,7 +1098,7 @@ return $default(_that.id,_that.upload,_that.download,_that.start,_that.metadata,
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  int upload,  int download,  DateTime start,  Metadata metadata,  List<String> chains,  String rule,  String rulePayload,  int? downloadSpeed,  int? uploadSpeed)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  int upload,  int download, @JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch)  DateTime start,  Metadata metadata,  List<String> chains,  String rule,  String rulePayload,  int? downloadSpeed,  int? uploadSpeed)  $default,) {final _that = this;
 switch (_that) {
 case _TrackerInfo():
 return $default(_that.id,_that.upload,_that.download,_that.start,_that.metadata,_that.chains,_that.rule,_that.rulePayload,_that.downloadSpeed,_that.uploadSpeed);case _:
@@ -1118,7 +1118,7 @@ return $default(_that.id,_that.upload,_that.download,_that.start,_that.metadata,
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  int upload,  int download,  DateTime start,  Metadata metadata,  List<String> chains,  String rule,  String rulePayload,  int? downloadSpeed,  int? uploadSpeed)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  int upload,  int download, @JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch)  DateTime start,  Metadata metadata,  List<String> chains,  String rule,  String rulePayload,  int? downloadSpeed,  int? uploadSpeed)?  $default,) {final _that = this;
 switch (_that) {
 case _TrackerInfo() when $default != null:
 return $default(_that.id,_that.upload,_that.download,_that.start,_that.metadata,_that.chains,_that.rule,_that.rulePayload,_that.downloadSpeed,_that.uploadSpeed);case _:
@@ -1133,13 +1133,13 @@ return $default(_that.id,_that.upload,_that.download,_that.start,_that.metadata,
 @JsonSerializable()
 
 class _TrackerInfo implements TrackerInfo {
-  const _TrackerInfo({required this.id, this.upload = 0, this.download = 0, required this.start, required this.metadata, required  List<String> chains, required this.rule, required this.rulePayload, this.downloadSpeed, this.uploadSpeed}): _chains = chains;
+  const _TrackerInfo({required this.id, this.upload = 0, this.download = 0, @JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch) required this.start, required this.metadata, required  List<String> chains, required this.rule, required this.rulePayload, this.downloadSpeed, this.uploadSpeed}): _chains = chains;
   factory _TrackerInfo.fromJson(Map<String, dynamic> json) => _$TrackerInfoFromJson(json);
 
 @override final  String id;
 @override@JsonKey() final  int upload;
 @override@JsonKey() final  int download;
-@override final  DateTime start;
+@override@JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch) final  DateTime start;
 @override final  Metadata metadata;
  final  List<String> _chains;
 @override List<String> get chains {
@@ -1188,7 +1188,7 @@ abstract mixin class _$TrackerInfoCopyWith<$Res> implements $TrackerInfoCopyWith
   factory _$TrackerInfoCopyWith(_TrackerInfo value, $Res Function(_TrackerInfo) _then) = __$TrackerInfoCopyWithImpl;
 @override @useResult
 $Res call({
- String id, int upload, int download, DateTime start, Metadata metadata, List<String> chains, String rule, String rulePayload, int? downloadSpeed, int? uploadSpeed
+ String id, int upload, int download,@JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch) DateTime start, Metadata metadata, List<String> chains, String rule, String rulePayload, int? downloadSpeed, int? uploadSpeed
 });
 
 
@@ -2065,7 +2065,7 @@ as bool,
 /// @nodoc
 mixin _$DnsQuery {
 
- String get domain; String get type;@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) DnsQueryInitiator? get initiator; String get upstream; bool get cached; List<String> get answers; String get rcode; String get error; int get delay; DateTime get time;
+ String get domain; String get type;@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) DnsQueryInitiator? get initiator; String get upstream; bool get cached; List<String> get answers; String get rcode; String get error; int get delay;@JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch) DateTime get time;
 /// Create a copy of DnsQuery
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -2103,7 +2103,7 @@ abstract mixin class $DnsQueryCopyWith<$Res>  {
   factory $DnsQueryCopyWith(DnsQuery value, $Res Function(DnsQuery) _then) = _$DnsQueryCopyWithImpl;
 @useResult
 $Res call({
- String domain, String type,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) DnsQueryInitiator? initiator, String upstream, bool cached, List<String> answers, String rcode, String error, int delay, DateTime time
+ String domain, String type,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) DnsQueryInitiator? initiator, String upstream, bool cached, List<String> answers, String rcode, String error, int delay,@JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch) DateTime time
 });
 
 
@@ -2217,7 +2217,7 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String domain,  String type, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  DnsQueryInitiator? initiator,  String upstream,  bool cached,  List<String> answers,  String rcode,  String error,  int delay,  DateTime time)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String domain,  String type, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  DnsQueryInitiator? initiator,  String upstream,  bool cached,  List<String> answers,  String rcode,  String error,  int delay, @JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch)  DateTime time)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _DnsQuery() when $default != null:
 return $default(_that.domain,_that.type,_that.initiator,_that.upstream,_that.cached,_that.answers,_that.rcode,_that.error,_that.delay,_that.time);case _:
@@ -2238,7 +2238,7 @@ return $default(_that.domain,_that.type,_that.initiator,_that.upstream,_that.cac
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String domain,  String type, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  DnsQueryInitiator? initiator,  String upstream,  bool cached,  List<String> answers,  String rcode,  String error,  int delay,  DateTime time)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String domain,  String type, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  DnsQueryInitiator? initiator,  String upstream,  bool cached,  List<String> answers,  String rcode,  String error,  int delay, @JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch)  DateTime time)  $default,) {final _that = this;
 switch (_that) {
 case _DnsQuery():
 return $default(_that.domain,_that.type,_that.initiator,_that.upstream,_that.cached,_that.answers,_that.rcode,_that.error,_that.delay,_that.time);case _:
@@ -2258,7 +2258,7 @@ return $default(_that.domain,_that.type,_that.initiator,_that.upstream,_that.cac
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String domain,  String type, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  DnsQueryInitiator? initiator,  String upstream,  bool cached,  List<String> answers,  String rcode,  String error,  int delay,  DateTime time)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String domain,  String type, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  DnsQueryInitiator? initiator,  String upstream,  bool cached,  List<String> answers,  String rcode,  String error,  int delay, @JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch)  DateTime time)?  $default,) {final _that = this;
 switch (_that) {
 case _DnsQuery() when $default != null:
 return $default(_that.domain,_that.type,_that.initiator,_that.upstream,_that.cached,_that.answers,_that.rcode,_that.error,_that.delay,_that.time);case _:
@@ -2273,7 +2273,7 @@ return $default(_that.domain,_that.type,_that.initiator,_that.upstream,_that.cac
 @JsonSerializable()
 
 class _DnsQuery implements DnsQuery {
-  const _DnsQuery({required this.domain, required this.type, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) this.initiator, this.upstream = '', this.cached = false,  List<String> answers = const [], this.rcode = '', this.error = '', this.delay = 0, required this.time}): _answers = answers;
+  const _DnsQuery({required this.domain, required this.type, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) this.initiator, this.upstream = '', this.cached = false,  List<String> answers = const [], this.rcode = '', this.error = '', this.delay = 0, @JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch) required this.time}): _answers = answers;
   factory _DnsQuery.fromJson(Map<String, dynamic> json) => _$DnsQueryFromJson(json);
 
 @override final  String domain;
@@ -2291,7 +2291,7 @@ class _DnsQuery implements DnsQuery {
 @override@JsonKey() final  String rcode;
 @override@JsonKey() final  String error;
 @override@JsonKey() final  int delay;
-@override final  DateTime time;
+@override@JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch) final  DateTime time;
 
 /// Create a copy of DnsQuery
 /// with the given fields replaced by the non-null parameter values.
@@ -2328,7 +2328,7 @@ abstract mixin class _$DnsQueryCopyWith<$Res> implements $DnsQueryCopyWith<$Res>
   factory _$DnsQueryCopyWith(_DnsQuery value, $Res Function(_DnsQuery) _then) = __$DnsQueryCopyWithImpl;
 @override @useResult
 $Res call({
- String domain, String type,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) DnsQueryInitiator? initiator, String upstream, bool cached, List<String> answers, String rcode, String error, int delay, DateTime time
+ String domain, String type,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) DnsQueryInitiator? initiator, String upstream, bool cached, List<String> answers, String rcode, String error, int delay,@JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch) DateTime time
 });
 
 

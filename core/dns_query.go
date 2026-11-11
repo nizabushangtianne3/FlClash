@@ -18,7 +18,7 @@ type DnsQuery struct {
 	Rcode     string    `json:"rcode,omitempty"`
 	Error     string    `json:"error,omitempty"`
 	Delay     int64     `json:"delay"`
-	Time      time.Time `json:"time"`
+	Time      int64     `json:"time"`
 }
 
 func newDnsQuery(record dns.QueryRecord) DnsQuery {
@@ -30,7 +30,7 @@ func newDnsQuery(record dns.QueryRecord) DnsQuery {
 		Cached:    record.Cached,
 		Answers:   []string{},
 		Delay:     time.Since(record.Start).Milliseconds(),
-		Time:      record.Start,
+		Time:      record.Start.UnixMicro(),
 	}
 	if record.Err != nil {
 		query.Error = record.Err.Error()

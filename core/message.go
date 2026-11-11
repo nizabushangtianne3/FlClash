@@ -357,7 +357,7 @@ func appendDnsQueryJSON(dst []byte, query DnsQuery) []byte {
 	dst = append(dst, `,"delay":`...)
 	dst = strconv.AppendInt(dst, query.Delay, 10)
 	dst = append(dst, `,"time":`...)
-	dst = jsonutil.AppendTime(dst, query.Time)
+	dst = strconv.AppendInt(dst, query.Time, 10)
 	return append(dst, '}')
 }
 

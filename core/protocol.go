@@ -2,7 +2,6 @@ package core
 
 import (
 	"strconv"
-	"time"
 
 	"github.com/metacubex/mihomo/adapter/provider"
 	P "github.com/metacubex/mihomo/component/process"
@@ -323,7 +322,7 @@ type ExternalProvider struct {
 	VehicleType      string                     `json:"vehicle-type"`
 	Count            int                        `json:"count"`
 	Path             string                     `json:"path"`
-	UpdateAt         time.Time                  `json:"update-at"`
+	UpdateAt         int64                      `json:"update-at"`
 	SubscriptionInfo *provider.SubscriptionInfo `json:"subscription-info"`
 }
 

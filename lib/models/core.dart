@@ -462,7 +462,12 @@ abstract class ExternalProvider with _$ExternalProvider {
     @JsonKey(name: 'subscription-info', fromJson: subscriptionInfoFormCore)
     SubscriptionInfo? subscriptionInfo,
     @JsonKey(name: 'vehicle-type') required String vehicleType,
-    @JsonKey(name: 'update-at') required DateTime updateAt,
+    @JsonKey(
+      name: 'update-at',
+      fromJson: dateTimeFromEpoch,
+      toJson: dateTimeToEpoch,
+    )
+    required DateTime updateAt,
   }) = _ExternalProvider;
 
   factory ExternalProvider.fromJson(Map<String, Object?> json) =>

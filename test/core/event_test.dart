@@ -113,7 +113,7 @@ void main() {
           'metadata': {'network': 'tcp'},
           'upload': 0,
           'download': 0,
-          'start': '2026-09-18T04:30:01Z',
+          'start': 1789705801000000,
           'chains': <String>[],
           'rule': 'MATCH',
           'rulePayload': '',
@@ -123,11 +123,7 @@ void main() {
     coreEventManager.sendEvent(
       const CoreEvent(
         type: CoreEventType.dns,
-        data: {
-          'domain': 'example.test',
-          'type': 'A',
-          'time': '2026-09-18T04:30:01Z',
-        },
+        data: {'domain': 'example.test', 'type': 'A', 'time': 1789705801000000},
       ),
     );
 
@@ -148,7 +144,7 @@ void main() {
           'metadata': {'network': 'tcp'},
           'upload': 0,
           'download': 0,
-          'start': '2026-09-18T04:30:01Z',
+          'start': 1789705801000000,
           'chains': <String>[],
           'rule': 'MATCH',
           'rulePayload': '',
@@ -158,11 +154,7 @@ void main() {
     coreEventManager.sendEvent(
       const CoreEvent(
         type: CoreEventType.dns,
-        data: {
-          'domain': 'example.test',
-          'type': 'A',
-          'time': '2026-09-18T04:30:01Z',
-        },
+        data: {'domain': 'example.test', 'type': 'A', 'time': 1789705801000000},
       ),
     );
 
@@ -191,7 +183,7 @@ void main() {
           'metadata': {'network': 'tcp'},
           'upload': 0,
           'download': 0,
-          'start': '2026-09-18T04:30:01Z',
+          'start': 1789705801000000,
           'chains': <String>[],
           'rule': 'MATCH',
           'rulePayload': '',
@@ -201,11 +193,7 @@ void main() {
     coreEventManager.sendEvent(
       const CoreEvent(
         type: CoreEventType.dns,
-        data: {
-          'domain': 'example.test',
-          'type': 'A',
-          'time': '2026-09-18T04:30:01Z',
-        },
+        data: {'domain': 'example.test', 'type': 'A', 'time': 1789705801000000},
       ),
     );
     await pumpEventQueue();

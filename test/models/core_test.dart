@@ -217,7 +217,7 @@ void main() {
         'type': 'Proxy',
         'count': 10,
         'vehicle-type': 'HTTP',
-        'update-at': '2024-01-01T00:00:00.000Z',
+        'update-at': 1704067200000000,
         'subscription-info': {
           'Upload': 100,
           'Download': 200,

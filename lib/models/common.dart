@@ -16,6 +16,14 @@ part 'generated/common.freezed.dart';
 
 part 'generated/common.g.dart';
 
+/// The core carries timestamps as epoch microseconds. Parsing one string per
+/// event was the most expensive thing a feed did, and this constructor costs a
+/// fraction of that; the clock is UTC, and display converts when it shows.
+DateTime dateTimeFromEpoch(Object? value) =>
+    DateTime.fromMicrosecondsSinceEpoch((value as num).toInt(), isUtc: true);
+
+int dateTimeToEpoch(DateTime value) => value.microsecondsSinceEpoch;
+
 @freezed
 abstract class NavigationItem with _$NavigationItem {
   const factory NavigationItem({
@@ -119,6 +127,7 @@ abstract class TrackerInfo with _$TrackerInfo {
     required String id,
     @Default(0) int upload,
     @Default(0) int download,
+    @JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch)
     required DateTime start,
     required Metadata metadata,
     required List<String> chains,
@@ -362,6 +371,7 @@ abstract class DnsQuery with _$DnsQuery {
     @Default('') String rcode,
     @Default('') String error,
     @Default(0) int delay,
+    @JsonKey(fromJson: dateTimeFromEpoch, toJson: dateTimeToEpoch)
     required DateTime time,
   }) = _DnsQuery;
 

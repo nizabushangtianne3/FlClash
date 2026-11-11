@@ -72,7 +72,7 @@ void main() {
               'metadata': {'network': 'tcp'},
               'upload': 0,
               'download': 0,
-              'start': DateTime.now().toIso8601String(),
+              'start': DateTime.now().microsecondsSinceEpoch,
               'chains': <String>[],
               'rule': 'MATCH',
               'rulePayload': '',
@@ -87,7 +87,7 @@ void main() {
             data: {
               'domain': 'example$i.test',
               'type': 'A',
-              'time': DateTime.now().toIso8601String(),
+              'time': DateTime.now().microsecondsSinceEpoch,
             },
           ),
         );

@@ -85,7 +85,7 @@ _TrackerInfo _$TrackerInfoFromJson(Map<String, dynamic> json) => _TrackerInfo(
   id: json['id'] as String,
   upload: (json['upload'] as num?)?.toInt() ?? 0,
   download: (json['download'] as num?)?.toInt() ?? 0,
-  start: DateTime.parse(json['start'] as String),
+  start: dateTimeFromEpoch(json['start']),
   metadata: Metadata.fromJson(json['metadata'] as Map<String, dynamic>),
   chains: (json['chains'] as List<dynamic>).map((e) => e as String).toList(),
   rule: json['rule'] as String,
@@ -99,7 +99,7 @@ Map<String, dynamic> _$TrackerInfoToJson(_TrackerInfo instance) =>
       'id': instance.id,
       'upload': instance.upload,
       'download': instance.download,
-      'start': instance.start.toIso8601String(),
+      'start': dateTimeToEpoch(instance.start),
       'metadata': instance.metadata,
       'chains': instance.chains,
       'rule': instance.rule,
@@ -145,7 +145,7 @@ _DnsQuery _$DnsQueryFromJson(Map<String, dynamic> json) => _DnsQuery(
   rcode: json['rcode'] as String? ?? '',
   error: json['error'] as String? ?? '',
   delay: (json['delay'] as num?)?.toInt() ?? 0,
-  time: DateTime.parse(json['time'] as String),
+  time: dateTimeFromEpoch(json['time']),
 );
 
 Map<String, dynamic> _$DnsQueryToJson(_DnsQuery instance) => <String, dynamic>{
@@ -158,7 +158,7 @@ Map<String, dynamic> _$DnsQueryToJson(_DnsQuery instance) => <String, dynamic>{
   'rcode': instance.rcode,
   'error': instance.error,
   'delay': instance.delay,
-  'time': instance.time.toIso8601String(),
+  'time': dateTimeToEpoch(instance.time),
 };
 
 const _$DnsQueryInitiatorEnumMap = {

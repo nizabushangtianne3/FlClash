@@ -40,7 +40,7 @@ void main() {
           data: {
             'LogLevel': 'info',
             'Payload': 'warm-$index',
-            'dateTime': '2026-11-07T00:00:00Z',
+            'dateTime': 1794009600000000,
           },
         ),
       );
@@ -54,7 +54,7 @@ void main() {
           data: {
             'LogLevel': 'info',
             'Payload': 'log-$index',
-            'dateTime': '2026-11-07T00:00:00Z',
+            'dateTime': 1794009600000000,
           },
         ),
       );
@@ -75,7 +75,7 @@ void main() {
             'metadata': {'network': 'tcp'},
             'upload': 0,
             'download': 0,
-            'start': '2026-11-07T00:00:00Z',
+            'start': 1794009600000000,
             'chains': <String>[],
             'rule': 'MATCH',
             'rulePayload': '',

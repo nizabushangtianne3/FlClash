@@ -15,7 +15,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/metacubex/mihomo/adapter/provider"
 	"github.com/metacubex/mihomo/common/jsonutil"
@@ -88,7 +87,7 @@ func toExternalProvider(p cp.Provider) (ExternalProvider, error) {
 			Type:             typed.Type().String(),
 			VehicleType:      typed.VehicleType().String(),
 			Count:            typed.Count(),
-			UpdateAt:         typed.UpdatedAt(),
+			UpdateAt:         typed.UpdatedAt().UnixMicro(),
 			Path:             typed.Vehicle().Path(),
 			SubscriptionInfo: typed.GetSubscriptionInfo(),
 		}, nil
@@ -98,7 +97,7 @@ func toExternalProvider(p cp.Provider) (ExternalProvider, error) {
 			Type:        typed.Type().String(),
 			VehicleType: typed.VehicleType().String(),
 			Count:       typed.Count(),
-			UpdateAt:    typed.UpdatedAt(),
+			UpdateAt:    typed.UpdatedAt().UnixMicro(),
 			Path:        typed.Vehicle().Path(),
 		}, nil
 	default:
@@ -156,9 +155,8 @@ func appendExternalProviderJSON(dst []byte, view ExternalProvider) []byte {
 	dst = strconv.AppendInt(dst, int64(view.Count), 10)
 	dst = append(dst, `,"path":`...)
 	dst = jsonutil.AppendString(dst, view.Path)
-	dst = append(dst, `,"update-at":"`...)
-	dst = view.UpdateAt.AppendFormat(dst, time.RFC3339Nano)
-	dst = append(dst, '"')
+	dst = append(dst, `,"update-at":`...)
+	dst = strconv.AppendInt(dst, view.UpdateAt, 10)
 	if view.SubscriptionInfo == nil {
 		dst = append(dst, `,"subscription-info":null`...)
 		return append(dst, '}')

@@ -58,7 +58,7 @@ void main() {
           {
             'id': 'c1',
             'metadata': {'network': 'tcp'},
-            'start': '2026-01-01',
+            'start': 1767225600000000,
             'chains': ['DIRECT'],
             'rule': 'MATCH',
             'rulePayload': '',

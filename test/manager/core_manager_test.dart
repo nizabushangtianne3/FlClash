@@ -439,7 +439,7 @@ void main() {
             'type': 'A',
             'answers': ['1.1.1.1'],
             'delay': 3,
-            'time': '2026-09-18T04:30:01Z',
+            'time': 1789705801000000,
           },
         ),
       );
@@ -483,7 +483,7 @@ void main() {
             },
             'upload': 0,
             'download': 0,
-            'start': '2026-09-18T04:30:01Z',
+            'start': 1789705801000000,
             'chains': <String>[],
             'rule': 'MATCH',
             'rulePayload': '',
@@ -498,7 +498,7 @@ void main() {
             'type': 'A',
             'answers': ['1.1.1.1'],
             'delay': 3,
-            'time': '2026-09-18T04:30:01Z',
+            'time': 1789705801000000,
           },
         ),
       );
@@ -547,7 +547,7 @@ void main() {
         data: {
           'domain': 'background.test',
           'type': 'A',
-          'time': '2026-09-18T04:30:01Z',
+          'time': 1789705801000000,
         },
       ),
     );
@@ -766,7 +766,7 @@ void main() {
           'metadata': <String, Object?>{'network': 'tcp'},
           'upload': 0,
           'download': 0,
-          'start': '2026-09-18T04:30:01Z',
+          'start': 1789705801000000,
           'chains': <String>[],
           'rule': 'MATCH',
           'rulePayload': '',

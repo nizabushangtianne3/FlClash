@@ -55,7 +55,7 @@ class _RecordingCoreHandler extends CoreHandlerInterface {
             'metadata': {'network': 'tcp'},
             'upload': 0,
             'download': 0,
-            'start': '2024-01-01',
+            'start': 1704067200000000,
             'chains': ['DIRECT'],
             'rule': 'DIRECT',
             'rulePayload': '',
@@ -70,7 +70,7 @@ class _RecordingCoreHandler extends CoreHandlerInterface {
           'type': 'Proxy',
           'count': 1,
           'vehicle-type': 'HTTP',
-          'update-at': '2024-01-01T00:00:00.000Z',
+          'update-at': 1704067200000000,
         },
       ],
       CoreMethod.providerGet => {
@@ -78,7 +78,7 @@ class _RecordingCoreHandler extends CoreHandlerInterface {
         'type': 'Proxy',
         'count': 1,
         'vehicle-type': 'HTTP',
-        'update-at': '2024-01-01T00:00:00.000Z',
+        'update-at': 1704067200000000,
       },
       CoreMethod.configRead => {
         'mode': 'rule',
@@ -470,7 +470,7 @@ void main() {
           'answers': ['93.184.216.34'],
           'rcode': 'NOERROR',
           'delay': 0,
-          'time': '2026-09-18T12:30:01.123456789+08:00',
+          'time': 1789705801123456,
         },
       },
       {
@@ -484,7 +484,7 @@ void main() {
           'answers': <String>[],
           'error': 'i/o timeout',
           'delay': 5000,
-          'time': '2026-09-18T04:30:02Z',
+          'time': 1789705802000000,
         },
       },
     ]);

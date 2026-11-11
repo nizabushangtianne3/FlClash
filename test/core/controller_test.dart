@@ -250,7 +250,7 @@ void main() {
         'metadata': {'network': 'tcp'},
         'upload': 0,
         'download': 0,
-        'start': '2024-01-01',
+        'start': 1704067200000000,
         'chains': ['Proxy'],
         'rule': 'DIRECT',
         'rulePayload': '',
