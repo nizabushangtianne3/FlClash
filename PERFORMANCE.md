@@ -3,8 +3,8 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-11 深夜（晚间接续会话，全部本机实测）：连接轮询稳态免扫描一轮（500 连接 32.78µs -> 371ns，-98.87%；stale 十字段与十个镜像字段整段删除）；Dart 侧连接排序一轮（1 万行每快照 10.4ms -> ~4.19ms，-60.7%，三张 per-poll 字符串 map 合并为一张状态表）；UDP 数据报主路径覆盖一轮（tunnel 76.5% -> 82.7%，processUDP/startUDPSender/dialUDPSender 从 0/0/50% 到 100/100/89.6%）；wrapper IPC 入口覆盖一轮（StartServer 走真实命名管道，93.7% -> 93.9%）；死代码清扫一轮（staticcheck 名下未用测试 helper 与两处死赋值）；另有三项实测否决记账（feed flush 归属拆解、GOGC 策略、连接 churn 增量日志）
-- FlClash main：`2514892b`
-- Clash.Meta main：`c7e42d821`
+- FlClash main：`3a2bd731`
+- Clash.Meta main：`6f9aafcd2`
 - 基准主机：Intel Core i9-9900，Windows/amd64
 - 基准策略：改动前后使用同一负载、同一 Go 缓存目录，`benchstat` 至少 7 组；时间显著回退的方案即使内存/分配更好也要撤销。
 
@@ -1026,6 +1026,17 @@ dart run tool/test.dart   # exit 0
 **踩过的坑（写进测试注释）**：① `bufferedConn()` 闭包只在嗅探块和 NeedHandshake 块里被调用——想让「已是 BufferedConn」分支执行，必须打开嗅探或让远端连接需要握手，光传一个缓冲连接不够；② 「预热写失败」要让**拨号成功、写失败**，所以 dial 要指向真实监听器，错误用一个被拒的 TCP 拨号错误（重试循环据此判为终态，一次尝试即结束）；③ 嗅探用例改用**预置缓冲**的连接（`Read` 先吐出自带字节再委托管道），彻底摆脱嗅探 1 秒预读窗口与测试写字节之间的时序耦合——此前 7 次全包里偶发 1 次 5 秒超时，根因就是那个耦合；④ patch 的锚文本在两个用例里相同时会落到第一个，两个用例用了同一段 `UpdateProxies/SetMode`，差点把嗅探配置加错测试。
 
 **至此 tunnel 包的主数据路径全部有测试驱动**：`HandleTCPConn`/`processUDP`/`startUDPSender` 100%，`dialUDPSender` 91.7%、`handleUDPConn` 80.6%、`match` 59.6%、`logMetadata` 45.5%（其余是日志分支与进程查找，属平台/日志级组合）。
+### 2026-11-11 正式发布轮次（v1.0.5）
+
+按用户要求发正式版：派发 `release-stable.yaml`，由 CI 跑 `tool/release.sh stable --push --yes`（升版本、写 changelog、打标签），再链到 `build.yaml` 构建并发布 GitHub Release。
+
+| 动作 | 结果 |
+|---|---|
+| 第一次派发 | CI 生成 v1.0.4 标签，但 build 在 **Check format**（Dart）失败——本会话改写的 `tracker_speed_ranker.dart` 与它的测试文件没跑 `dart format`。修复后 push |
+| 第二次派发 | build 在 **Go core** 的 `gofmt -l ./*.go ./cmd ./mobile ./platform ./timezone ./tun` 失败：`connection.go`（本会话改的，删字段后没重新对齐）与 `spill_test.go`（上一轮遗留的 import 顺序 + 空行）。修复后 push |
+| 第三次派发 | 全绿：main 上 build（Go core / Dart / Rust / Desktop 三平台 / Android / Windows helper / Plugins）全部 success，发布 v1.0.5，**16 个产物 + SHA256SUMS**（Android 三 ABI、Linux 六包、macOS 两 dmg、Windows 四包）。发布说明已回填 25 条 Performance 条目 |
+
+**教训（后续必须遵守）**：① 本机验证的格式检查清单必须和 CI 的门禁逐字一致——CI 的 Go 门禁只 `gofmt -l` `./*.go ./cmd ./mobile ./platform ./timezone ./tun`，Dart 门禁是整仓 `dart format --set-exit-if-changed`；② Windows 上 `gofmt -l` 会因 CRLF 报一片假阳性，校验要按**已提交/暂存的 blob**（`git show :file | gofmt -d`）看，那才是 CI 看到的内容；③ 发布说明的条目按「上一个发布标签以来收集」，失败的发布会把条目消耗掉——v1.0.4 收了全部条目但没构建成功，v1.0.5 只剩 `style` 提交，所以 v1.0.5 的说明是按「产物里实际包含什么」手工回填的（仓库 `changelog.json` 未改，`verify` 依旧通过）。
 ## 5. 后续优化切入点
 
 ### 待优化项清单（2026-11-07 全量复核，均在本机实测过基线）
