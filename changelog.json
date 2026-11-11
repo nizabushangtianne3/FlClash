@@ -2,6 +2,89 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "1.0.6",
+      "tag": "v1.0.6",
+      "date": "2026-11-11",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "05f5e29",
+              "scope": "core",
+              "text": "Keep the wrapper compiling and formatted"
+            }
+          ]
+        },
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "a05bcb4",
+              "scope": "reader",
+              "text": "Dispatch field names through a string switch"
+            },
+            {
+              "id": "8347731",
+              "scope": "reader",
+              "text": "Match keys as literals and read ints directly"
+            },
+            {
+              "id": "a78ef86",
+              "scope": "reader",
+              "text": "Compare code units instead of one-character strings"
+            },
+            {
+              "id": "f29bf54",
+              "scope": "feed",
+              "text": "Swap the flush buffers instead of copying them"
+            },
+            {
+              "id": "9de4ea5",
+              "scope": "state",
+              "text": "Drop a connection ring's head without walking its index"
+            },
+            {
+              "id": "1adbfd5",
+              "scope": "core",
+              "text": "Read a flushed batch straight off its frame"
+            },
+            {
+              "id": "4a4154b",
+              "scope": "models",
+              "text": "Read a connection row with its metadata inlined"
+            },
+            {
+              "id": "1860ec8",
+              "scope": "core",
+              "text": "Read a flushed batch once and share its arrival clock"
+            },
+            {
+              "id": "ea7045d",
+              "scope": "ui",
+              "text": "Carry a log's moment instead of formatting it on arrival"
+            },
+            {
+              "id": "b14ea82",
+              "scope": "core",
+              "text": "Read event and answer timestamps as epoch microseconds"
+            },
+            {
+              "id": "3a9f22e",
+              "scope": "core",
+              "text": "Reuse the per-row scratch a connection poll fills"
+            },
+            {
+              "id": "7a43e94",
+              "scope": "core",
+              "text": "Answer a settled connection poll with the order it published"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.5",
       "tag": "v1.0.5",
       "date": "2026-11-11",

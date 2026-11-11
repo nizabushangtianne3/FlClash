@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.0.6 (2026-11-11)
+
+**Bug Fixes**
+
+- **core** Keep the wrapper compiling and formatted (05f5e29)
+
+**Performance**
+
+- **reader** Dispatch field names through a string switch (a05bcb4)
+- **reader** Match keys as literals and read ints directly (8347731)
+- **reader** Compare code units instead of one-character strings (a78ef86)
+- **feed** Swap the flush buffers instead of copying them (f29bf54)
+- **state** Drop a connection ring's head without walking its index (9de4ea5)
+- **core** Read a flushed batch straight off its frame (1adbfd5)
+- **models** Read a connection row with its metadata inlined (4a4154b)
+- **core** Read a flushed batch once and share its arrival clock (1860ec8)
+- **ui** Carry a log's moment instead of formatting it on arrival (ea7045d)
+- **core** Read event and answer timestamps as epoch microseconds (b14ea82)
+- **core** Reuse the per-row scratch a connection poll fills (3a9f22e)
+- **core** Answer a settled connection poll with the order it published (7a43e94)
+
 ## v1.0.5 (2026-11-11)
 
 Internal improvements only.
