@@ -29,10 +29,10 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     with CoreEventListener {
   CoreController get _core => ref.read(coreHandlerProvider);
 
-  final _logs = ListQueue<Log>();
-  final _requests = <TrackerInfo>[];
-  final _dnsQueries = <DnsQuery>[];
-  final _traffic = <String, RequestTraffic>{};
+  ListQueue<Log> _logs = ListQueue<Log>();
+  List<TrackerInfo> _requests = <TrackerInfo>[];
+  List<DnsQuery> _dnsQueries = <DnsQuery>[];
+  Map<String, RequestTraffic> _traffic = <String, RequestTraffic>{};
   Timer? _feedTimer;
 
   @override
@@ -197,14 +197,16 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     if (!mounted) {
       return;
     }
-    final logs = ListQueue<Log>.from(_logs);
-    _logs.clear();
-    final requests = List<TrackerInfo>.from(_requests);
-    _requests.clear();
-    final dnsQueries = List<DnsQuery>.from(_dnsQueries);
-    _dnsQueries.clear();
-    final traffic = Map<String, RequestTraffic>.from(_traffic);
-    _traffic.clear();
+    // The buffers are swapped, not copied: what the flush took is its own,
+    // and whatever arrives while it runs lands in the fresh buffer.
+    final logs = _logs;
+    _logs = ListQueue<Log>();
+    final requests = _requests;
+    _requests = <TrackerInfo>[];
+    final dnsQueries = _dnsQueries;
+    _dnsQueries = <DnsQuery>[];
+    final traffic = _traffic;
+    _traffic = <String, RequestTraffic>{};
     if (logs.isNotEmpty) {
       ref.read(logsProvider.notifier).addAll(logs);
     }
