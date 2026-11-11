@@ -1113,6 +1113,8 @@ feed flush 分解实测（每 300ms 窗口 400 日志 + 120 连接行 + 240 DNS 
 |---|---|---|
 | FixedList 键索引改虚拟坐标 + 队头偏移；顺带修复既有 bug：`add` 在满环溢出分支从未给最新入环的行建键（流量更新会丢掉最新连接），由「满环最新行仍可按键命中」用例钉住 | `9de4ea51` | 满 1600 环 `appendAll x120` **125µs → 26µs（-79%）**；widget 级 feed flush **1299µs → 1088µs（-16%）** |
 
+同轮追加：`_flushFeeds` 的四个入队缓冲从「拷贝 + clear」改为**引用交换**——flush 拿走自己那份，运行期间到达的事件落进新缓冲，语义不变；省掉每次 flush 960 个元素的拷贝与 4 个集合分配，feed flush 1088µs → 1040µs。
+
 **踩坑（后续复用）**：① 量 provider 成本必须**持有 notifier**（照 `requests_update_benchmark_test.dart` 的写法）——无监听者的 autoDispose notifier 每次 `container.read` 都会重建，量出 ~50µs/次的假量子，我第一次分解就被它带偏；② 本轮分解顺序：先用 provider 级部件基准定位热点，再用 FixedList 裸基准确认成本在结构内，最后才动结构。
 
 ## 5. 后续优化切入点
