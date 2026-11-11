@@ -167,7 +167,7 @@ List<TrackerInfo> _addedConnections(Object? value) {
   if (value is! List) return const [];
   return [
     for (final item in value)
-      if (item is Map) TrackerInfo.fromJson(_typedMap(item)!),
+      if (item is Map) trackerInfoFromData(_typedMap(item)!),
   ];
 }
 
@@ -190,6 +190,66 @@ ConnectionDelta connectionDeltaOf(Object? data) {
 }
 
 typedef RequestTraffic = ({int upload, int download});
+
+/// Reads a connection row the feed or a resync carries, metadata inlined: the
+/// generated reader walks the same map twice through a second call, and a row
+/// arrives once per new connection and once per resynced one. The shape is
+/// pinned against the generated reader by the equivalence test.
+TrackerInfo trackerInfoFromData(Map<String, Object?> json) {
+  final metadata = json['metadata'] as Map<String, Object?>;
+  final chainsJson = json['chains'] as List;
+  return TrackerInfo(
+    id: json['id'] as String,
+    upload: (json['upload'] as num?)?.toInt() ?? 0,
+    download: (json['download'] as num?)?.toInt() ?? 0,
+    start: dateTimeFromEpoch(json['start']),
+    metadata: Metadata(
+      uid: (metadata['uid'] as num?)?.toInt() ?? 0,
+      network: metadata['network'] as String? ?? '',
+      sourceIP: metadata['sourceIP'] as String? ?? '',
+      sourcePort: metadata['sourcePort'] as String? ?? '',
+      destinationIP: metadata['destinationIP'] as String? ?? '',
+      destinationPort: metadata['destinationPort'] as String? ?? '',
+      host: metadata['host'] as String? ?? '',
+      dnsMode: dnsModeOf(metadata['dnsMode']),
+      process: metadata['process'] as String? ?? '',
+      processPath: metadata['processPath'] as String? ?? '',
+      remoteDestination: metadata['remoteDestination'] as String? ?? '',
+      sourceGeoIP: _stringListOf(metadata['sourceGeoIP']) ?? const [],
+      destinationGeoIP: _stringListOf(metadata['destinationGeoIP']) ?? const [],
+      destinationIPASN: metadata['destinationIPASN'] as String? ?? '',
+      sourceIPASN: metadata['sourceIPASN'] as String? ?? '',
+      specialRules: metadata['specialRules'] as String? ?? '',
+      specialProxy: metadata['specialProxy'] as String? ?? '',
+      mitm: metadata['mitm'] as bool? ?? false,
+      mitmRefused: metadata['mitmRefused'] as bool? ?? false,
+    ),
+    chains: chainsJson.isEmpty
+        ? const []
+        : List<String>.of(chainsJson.cast<String>()),
+    rule: json['rule'] as String,
+    rulePayload: json['rulePayload'] as String,
+    downloadSpeed: (json['downloadSpeed'] as num?)?.toInt(),
+    uploadSpeed: (json['uploadSpeed'] as num?)?.toInt(),
+  );
+}
+
+/// A list of strings the wire may have left out of metadata; an empty answer
+/// is shared so the common row allocates nothing for the lists it lacks.
+List<String>? _stringListOf(Object? value) {
+  if (value is! List) return null;
+  return value.isEmpty ? const [] : List<String>.of(value.cast<String>());
+}
+
+DnsMode? dnsModeOf(Object? value) {
+  return switch (value) {
+    'normal' => DnsMode.normal,
+    'fake-ip' => DnsMode.fakeIp,
+    'redir-host' => DnsMode.redirHost,
+    'hosts' => DnsMode.hosts,
+    _ => null,
+  };
+}
 
 extension TrackerInfoExt on TrackerInfo {
   String get title {

@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'dart:math';
+
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
@@ -363,6 +365,166 @@ void main() {
       }
       expect(logLevelOf(null), isNull);
       expect(logLevelOf('verbose'), isNull);
+    });
+  });
+
+  group('trackerInfoFromData', () {
+    Map<String, Object?> fullRowMap() {
+      return {
+        'id': 'c-1',
+        'upload': 11,
+        'download': 22,
+        'start': 1789705801000000,
+        'metadata': const {
+          'uid': 1000,
+          'network': 'tcp',
+          'sourceIP': '192.168.1.2',
+          'sourcePort': '51000',
+          'destinationIP': '1.2.3.4',
+          'destinationPort': '443',
+          'host': 'example.com',
+          'dnsMode': 'fake-ip',
+          'process': 'chrome',
+          'processPath': '/usr/bin/chrome',
+          'remoteDestination': '5.6.7.8:443',
+          'sourceGeoIP': ['CN', 'HK'],
+          'destinationGeoIP': ['US'],
+          'destinationIPASN': 'AS15169',
+          'sourceIPASN': 'AS4134',
+          'specialRules': 'rule-a',
+          'specialProxy': 'Proxy',
+          'mitm': true,
+          'mitmRefused': true,
+        },
+        'chains': ['Proxy-A', 'Proxy-B'],
+        'rule': 'Rule-Set',
+        'rulePayload': 'example.com',
+        'downloadSpeed': 100,
+        'uploadSpeed': 200,
+      };
+    }
+
+    test('reads a row the generated reader and it agree on', () {
+      final map = fullRowMap();
+      final row = trackerInfoFromData(map);
+
+      expect(row, TrackerInfo.fromJson(map));
+      expect(row.metadata.dnsMode, DnsMode.fakeIp);
+      expect(row.metadata.sourceGeoIP, ['CN', 'HK']);
+      expect(row.chains, ['Proxy-A', 'Proxy-B']);
+      expect(row.downloadSpeed, 100);
+      expect(row.uploadSpeed, 200);
+    });
+
+    test('fills defaults where the wire leaves a field out', () {
+      final map = {
+        'id': 'c-2',
+        'start': 1789705801000000,
+        'metadata': const {'network': 'udp'},
+        'chains': const <String>[],
+        'rule': 'MATCH',
+        'rulePayload': '',
+      };
+      final row = trackerInfoFromData(map);
+
+      expect(row.upload, 0);
+      expect(row.download, 0);
+      expect(row.downloadSpeed, isNull);
+      expect(row.metadata.uid, 0);
+      expect(row.metadata.host, isEmpty);
+      expect(row.metadata.dnsMode, isNull);
+      expect(row.metadata.mitm, isFalse);
+      expect(row.chains, isEmpty);
+      expect(row, TrackerInfo.fromJson(map));
+    });
+
+    test('names every dns mode the core writes', () {
+      for (final mode in DnsMode.values) {
+        final row = trackerInfoFromData({
+          'id': 'c-3',
+          'start': 1789705801000000,
+          'metadata': {
+            'dnsMode': switch (mode) {
+              DnsMode.fakeIp => 'fake-ip',
+              DnsMode.redirHost => 'redir-host',
+              _ => mode.name,
+            },
+          },
+          'chains': const <String>[],
+          'rule': 'MATCH',
+          'rulePayload': '',
+        });
+
+        expect(row.metadata.dnsMode, mode, reason: mode.name);
+      }
+      expect(dnsModeOf(null), isNull);
+      expect(dnsModeOf('bogus'), isNull);
+    });
+
+    test('matches the generated reader on randomized presence', () {
+      final random = Random(42);
+      const metadataKeys = [
+        'uid',
+        'network',
+        'sourceIP',
+        'sourcePort',
+        'destinationIP',
+        'destinationPort',
+        'host',
+        'dnsMode',
+        'process',
+        'processPath',
+        'remoteDestination',
+        'sourceGeoIP',
+        'destinationGeoIP',
+        'destinationIPASN',
+        'sourceIPASN',
+        'specialRules',
+        'specialProxy',
+        'mitm',
+        'mitmRefused',
+      ];
+      const dnsModes = ['normal', 'fake-ip', 'redir-host', 'hosts'];
+      Object? sample(String key) => switch (key) {
+        'uid' => random.nextInt(10000),
+        'dnsMode' => dnsModes[random.nextInt(dnsModes.length)],
+        'sourceGeoIP' || 'destinationGeoIP' => List.generate(
+          random.nextInt(3),
+          (_) => 'AS${random.nextInt(999)}',
+        ),
+        'mitm' || 'mitmRefused' => random.nextBool(),
+        _ => 'v-${random.nextInt(999)}',
+      };
+
+      for (var attempt = 0; attempt < 200; attempt++) {
+        final metadata = <String, Object?>{
+          for (final key in metadataKeys)
+            if (random.nextBool()) key: sample(key),
+        };
+        final row = <String, Object?>{
+          'id': 'c-$attempt',
+          'start': 1789705801000000 + attempt,
+          'metadata': metadata,
+          // The core writes chains on every row; the generated reader
+          // requires it, so the fuzz holds the wire's always-present piece.
+          'chains': List.generate(
+            random.nextInt(3),
+            (_) => 'Proxy-${random.nextInt(9)}',
+          ),
+          'rule': 'MATCH',
+          'rulePayload': '',
+        };
+        if (random.nextBool()) row['upload'] = random.nextInt(9999);
+        if (random.nextBool()) row['download'] = random.nextInt(9999);
+        if (random.nextBool()) row['downloadSpeed'] = random.nextInt(9999);
+        if (random.nextBool()) row['uploadSpeed'] = random.nextInt(9999);
+
+        expect(
+          trackerInfoFromData(row),
+          TrackerInfo.fromJson(row),
+          reason: 'row $attempt: $row',
+        );
+      }
     });
   });
 }

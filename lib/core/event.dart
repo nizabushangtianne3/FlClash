@@ -160,7 +160,7 @@ class CoreEventManager {
       case CoreEventType.delay:
         return Delay.fromJson(_eventData(event));
       case CoreEventType.request:
-        return TrackerInfo.fromJson(_eventData(event));
+        return trackerInfoFromData(_eventData(event));
       case CoreEventType.requestTraffic:
         return {
           for (final Map item in event.data as List)
