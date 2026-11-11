@@ -182,4 +182,100 @@ void main() {
       expect(retainTrimmedHead(current, latest, 5), items.sublist(0, 5));
     });
   });
+
+  group('keyed ring', () {
+    test('a lookup finds the row that is still in the ring', () {
+      final list = FixedList<int>(3, keyOf: (item) => item);
+      list.appendAll([1, 2, 3]);
+      list.appendAll([4, 5]);
+
+      expect(list.list, [3, 4, 5]);
+      final visited = <int>[];
+      final next = list.updateByKey({3: 'x', 5: 'y'}, (row, value) {
+        visited.add(row);
+        return row;
+      });
+      expect(
+        next,
+        same(list),
+        reason: 'an unchanged update keeps the generation',
+      );
+      expect(visited, [3, 5]);
+    });
+
+    test('a dropped key is not matched and is forgotten', () {
+      final list = FixedList<int>(3, keyOf: (item) => item);
+      list.appendAll([1, 2, 3]);
+      list.appendAll([4]);
+
+      expect(list.list, [2, 3, 4]);
+      var calls = 0;
+      list.updateByKey({1: 'gone', 4: 'here'}, (row, value) {
+        calls++;
+        return row;
+      });
+      expect(calls, 1, reason: 'only the row still in the ring is visited');
+
+      // The forgotten key costs no insert on the way back in.
+      list.appendAll([1]);
+      expect(list.list, [3, 4, 1]);
+      calls = 0;
+      list.updateByKey({1: 'back'}, (row, value) {
+        calls++;
+        return row;
+      });
+      expect(calls, 1);
+    });
+
+    test('the newest row of a full ring keeps its key', () {
+      final list = FixedList<int>(3, keyOf: (item) => item);
+      list.appendAll([1, 2, 3]);
+      final next = list.append(4);
+
+      expect(next.list, [2, 3, 4]);
+      var calls = 0;
+      next.updateByKey({4: 'newest'}, (row, value) {
+        calls++;
+        return row + 10;
+      });
+      expect(calls, 1);
+      expect(next.list, [2, 3, 14]);
+    });
+
+    test('many rounds of drop and refill keep answering correctly', () {
+      final list = FixedList<int>(8, keyOf: (item) => item);
+      for (var round = 0; round < 50; round++) {
+        list.appendAll([round * 3, round * 3 + 1, round * 3 + 2]);
+        final survivor = list.list;
+        for (final key in survivor) {
+          var calls = 0;
+          list.updateByKey({key: 'x'}, (row, value) {
+            calls++;
+            return row;
+          });
+          expect(calls, 1, reason: 'key $key in round $round');
+        }
+        final dropped = keyOfRound(round);
+        if (dropped != null) {
+          var calls = 0;
+          list.updateByKey({dropped: 'x'}, (row, value) {
+            calls++;
+            return row;
+          });
+          expect(
+            calls,
+            0,
+            reason: 'key $dropped left the ring in round $round',
+          );
+        }
+      }
+    });
+  });
+}
+
+/// The key each round's append pushed out of an eight-slot ring that takes
+/// three keys per round; nothing has left before the third round.
+int? keyOfRound(int round) {
+  final dropped = round * 3 - 6;
+  return dropped < 0 ? null : dropped;
 }

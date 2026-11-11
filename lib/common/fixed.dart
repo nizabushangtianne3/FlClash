@@ -6,6 +6,11 @@ class FixedList<T> {
   final List<T> _list;
   final Map<Object, int>? _keyIndexes;
 
+  /// How much of the head has left the ring. A key remembers the virtual
+  /// position its row was appended at, so a drop moves this instead of
+  /// walking the index.
+  int _keyBase;
+
   final int _revision;
   List<T>? _snapshot;
 
@@ -13,6 +18,7 @@ class FixedList<T> {
     : assert(maxLength > 0, 'FixedList without a cap grows without bound'),
       _list = (list ?? [])..truncate(maxLength),
       _keyIndexes = keyOf == null ? null : {},
+      _keyBase = 0,
       _revision = 0 {
     _reindexKeys();
   }
@@ -23,6 +29,7 @@ class FixedList<T> {
     this._revision,
     this.keyOf,
     this._keyIndexes,
+    this._keyBase,
   );
 
   int get revision => _revision;
@@ -32,8 +39,12 @@ class FixedList<T> {
     _list.add(item);
     final overflow = oldLength + 1 - maxLength;
     if (overflow > 0) {
-      _dropIndexedHead(overflow);
+      _keyBase += overflow;
       _list.removeRange(0, overflow);
+      // The row that just took the tail seat needs its key too, or the
+      // newest row of a full ring is the one a lookup cannot find.
+      _indexKey(_list.length - 1, item);
+      _compactKeysIfSparse();
     } else {
       _indexKey(oldLength, item);
     }
@@ -43,6 +54,7 @@ class FixedList<T> {
   void clear() {
     _list.clear();
     _keyIndexes?.clear();
+    _keyBase = 0;
     _snapshot = null;
   }
 
@@ -62,13 +74,15 @@ class FixedList<T> {
       _list.clear();
       _list.addAll(items);
       _list.truncate(maxLength);
+      _keyBase = 0;
       _reindexKeys();
     } else {
       final oldLength = _list.length;
       final overflow = oldLength + incomingLength - maxLength;
       if (overflow > 0) {
-        _dropIndexedHead(overflow);
+        _keyBase += overflow;
         _list.removeRange(0, overflow);
+        _compactKeysIfSparse();
       }
       final firstIncomingIndex = _list.length;
       _list.addAll(items);
@@ -108,8 +122,16 @@ class FixedList<T> {
     }
     var changed = false;
     values.forEach((key, value) {
-      final index = indexes[key];
-      if (index == null) {
+      final stored = indexes[key];
+      if (stored == null) {
+        return;
+      }
+      // A key remembers the virtual position its row was appended at and the
+      // base is how much of the head has left since; a negative answer means
+      // the row is gone, and its key goes with it.
+      final index = stored - _keyBase;
+      if (index < 0) {
+        indexes.remove(key);
         return;
       }
       final current = _list[index];
@@ -128,32 +150,33 @@ class FixedList<T> {
   }
 
   FixedList<T> _next() {
-    return FixedList._(maxLength, _list, _revision + 1, keyOf, _keyIndexes);
+    return FixedList._(
+      maxLength,
+      _list,
+      _revision + 1,
+      keyOf,
+      _keyIndexes,
+      _keyBase,
+    );
   }
 
-  void _dropIndexedHead(int dropped) {
+  /// A row that left the ring keeps its key until something asks for it, so
+  /// a long run with no lookups is compacted back to the rows that remain.
+  void _compactKeysIfSparse() {
     final indexes = _keyIndexes;
     if (indexes == null) {
       return;
     }
-    final removed = <Object>[];
-    for (final entry in indexes.entries) {
-      final index = entry.value;
-      if (index < dropped) {
-        removed.add(entry.key);
-      } else {
-        indexes[entry.key] = index - dropped;
-      }
+    if (indexes.length - _list.length < maxLength) {
+      return;
     }
-    for (final key in removed) {
-      indexes.remove(key);
-    }
+    _reindexKeys();
   }
 
   void _indexKey(int index, T item) {
     final key = keyOf?.call(item);
     if (key != null) {
-      _keyIndexes?[key] = index;
+      _keyIndexes?[key] = index + _keyBase;
     }
   }
 

@@ -1105,6 +1105,16 @@ dart run tool/test.dart   # exit 0
 
 **正确性**：`test/core/event_json_test.dart` 新增 6 个用例：全 10 类事件的读取与非消息帧拒识、截断帧整体回落、单对象 arguments、**转义专项**（引号/反斜杠/换行/控制符/CJK/emoji/代理对，载荷里埋 `{"type":"crash"}` 与 `","arguments":[...]}` 陷阱串）、以及 **60 组随机批次与解码路径逐事件对拍**（8 类转义片段随机拼装、种子确定性）。
 
+### 2026-11-11 连接环索引轮次（性能，Dart，含一处既有 bug 修复）
+
+feed flush 分解实测（每 300ms 窗口 400 日志 + 120 连接行 + 240 DNS + 200 流量）：`Requests.addRequests` 占 137µs，其中 FixedList 自己就占 125µs——满环（连接表稳态就是满环）时每次 `appendAll` 都要走一遍整个键索引（`_dropIndexedHead` 遍历全部条目做位移）。本轮把键索引改成**虚拟坐标 + 队头偏移**：键记住行入环时的虚拟位置，丢头只把 `_keyBase` 加一下，O(1)；查不到的键（行已出环）在 `updateByKey` 命中时顺手删除，长时间无查找则由 `_compactKeysIfSparse` 按摊销重建。
+
+| 优化 | 提交 | 结果 |
+|---|---|---|
+| FixedList 键索引改虚拟坐标 + 队头偏移；顺带修复既有 bug：`add` 在满环溢出分支从未给最新入环的行建键（流量更新会丢掉最新连接），由「满环最新行仍可按键命中」用例钉住 | `<hash>` | 满 1600 环 `appendAll x120` **125µs → 26µs（-79%）**；widget 级 feed flush **1299µs → 1088µs（-16%）** |
+
+**踩坑（后续复用）**：① 量 provider 成本必须**持有 notifier**（照 `requests_update_benchmark_test.dart` 的写法）——无监听者的 autoDispose notifier 每次 `container.read` 都会重建，量出 ~50µs/次的假量子，我第一次分解就被它带偏；② 本轮分解顺序：先用 provider 级部件基准定位热点，再用 FixedList 裸基准确认成本在结构内，最后才动结构。
+
 ## 5. 后续优化切入点
 
 ### 待优化项清单（2026-11-07 全量复核，均在本机实测过基线）
