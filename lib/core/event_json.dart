@@ -27,59 +27,8 @@ List<CoreEvent>? messageBatchFromFrame(Uint8List frame) {
   }
 }
 
-/// Key codes: a wire field name goes through a table once and the readers
-/// switch on a small int, which the VM turns into a jump instead of the
-/// string comparisons a switch on the names would walk.
-const _rowKeyCodes = <String, int>{
-  'metadata': 1,
-  'id': 2,
-  'upload': 3,
-  'download': 4,
-  'start': 5,
-  'chains': 6,
-  'rule': 7,
-  'rulePayload': 8,
-  'downloadSpeed': 9,
-  'uploadSpeed': 10,
-};
-
-const _metadataKeyCodes = <String, int>{
-  'uid': 1,
-  'network': 2,
-  'sourceIP': 3,
-  'sourcePort': 4,
-  'destinationIP': 5,
-  'destinationPort': 6,
-  'host': 7,
-  'dnsMode': 8,
-  'process': 9,
-  'processPath': 10,
-  'remoteDestination': 11,
-  'sourceGeoIP': 12,
-  'destinationGeoIP': 13,
-  'destinationIPASN': 14,
-  'sourceIPASN': 15,
-  'specialRules': 16,
-  'specialProxy': 17,
-  'mitm': 18,
-  'mitmRefused': 19,
-};
-
-const _dnsKeyCodes = <String, int>{
-  'domain': 1,
-  'type': 2,
-  'initiator': 3,
-  'upstream': 4,
-  'cached': 5,
-  'answers': 6,
-  'rcode': 7,
-  'error': 8,
-  'delay': 9,
-  'time': 10,
-};
-
-const _trafficKeyCodes = <String, int>{'id': 1, 'upload': 2, 'download': 3};
-
+/// A field name the wire writes goes through one string switch: the table
+/// lookups it used to walk cost more than the comparisons they avoided.
 class _FrameScanner {
   _FrameScanner(this._text);
 
@@ -369,28 +318,28 @@ class _FrameScanner {
         if (_code() != 0x3A) throw const FormatException('field');
         _at++;
         _skipWhitespace();
-        switch (_rowKeyCodes[key] ?? 0) {
-          case 2:
-            id = _readString();
-          case 3:
-            upload = _readInt();
-          case 4:
-            download = _readInt();
-          case 5:
-            start = _readInt();
-          case 6:
-            chains = _readStringList() ?? const [];
-          case 7:
-            rule = _readString();
-          case 8:
-            rulePayload = _readString();
-          case 9:
-            downloadSpeed = _readOptionalInt();
-          case 10:
-            uploadSpeed = _readOptionalInt();
-          case 1:
+        switch (key) {
+          case 'metadata':
             _at++;
             metadata = _readMetadata();
+          case 'id':
+            id = _readString();
+          case 'upload':
+            upload = _readInt();
+          case 'download':
+            download = _readInt();
+          case 'start':
+            start = _readInt();
+          case 'chains':
+            chains = _readStringList() ?? const [];
+          case 'rule':
+            rule = _readString();
+          case 'rulePayload':
+            rulePayload = _readString();
+          case 'downloadSpeed':
+            downloadSpeed = _readOptionalInt();
+          case 'uploadSpeed':
+            uploadSpeed = _readOptionalInt();
           default:
             _skipValue();
         }
@@ -446,48 +395,48 @@ class _FrameScanner {
         if (_code() != 0x3A) throw const FormatException('field');
         _at++;
         _skipWhitespace();
-        switch (_metadataKeyCodes[key] ?? 0) {
-          case 1:
+        switch (key) {
+          case 'uid':
             uid = _readInt();
-          case 2:
+          case 'network':
             network = _readString();
-          case 3:
+          case 'sourceIP':
             sourceIP = _readString();
-          case 4:
+          case 'sourcePort':
             sourcePort = _readString();
-          case 5:
+          case 'destinationIP':
             destinationIP = _readString();
-          case 6:
+          case 'destinationPort':
             destinationPort = _readString();
-          case 7:
+          case 'host':
             host = _readString();
-          case 8:
+          case 'dnsMode':
             if (_code() == 0x22) {
               dnsMode = dnsModeOf(_readString());
             } else {
               _skipValue();
             }
-          case 9:
+          case 'process':
             process = _readString();
-          case 10:
+          case 'processPath':
             processPath = _readString();
-          case 11:
+          case 'remoteDestination':
             remoteDestination = _readString();
-          case 12:
+          case 'sourceGeoIP':
             sourceGeoIP = _readStringList() ?? const [];
-          case 13:
+          case 'destinationGeoIP':
             destinationGeoIP = _readStringList() ?? const [];
-          case 14:
+          case 'destinationIPASN':
             destinationIPASN = _readString();
-          case 15:
+          case 'sourceIPASN':
             sourceIPASN = _readString();
-          case 16:
+          case 'specialRules':
             specialRules = _readString();
-          case 17:
+          case 'specialProxy':
             specialProxy = _readString();
-          case 18:
+          case 'mitm':
             mitm = _readBool();
-          case 19:
+          case 'mitmRefused':
             mitmRefused = _readBool();
           default:
             _skipValue();
@@ -546,30 +495,30 @@ class _FrameScanner {
         if (_code() != 0x3A) throw const FormatException('field');
         _at++;
         _skipWhitespace();
-        switch (_dnsKeyCodes[key] ?? 0) {
-          case 1:
+        switch (key) {
+          case 'domain':
             domain = _readString();
-          case 2:
+          case 'type':
             type = _readString();
-          case 3:
+          case 'initiator':
             if (_code() == 0x22) {
               initiator = _initiatorOf(_readString());
             } else {
               _skipValue();
             }
-          case 4:
+          case 'upstream':
             upstream = _readString();
-          case 5:
+          case 'cached':
             cached = _readBool();
-          case 6:
+          case 'answers':
             answers = _readStringList() ?? const [];
-          case 7:
+          case 'rcode':
             rcode = _readString();
-          case 8:
+          case 'error':
             error = _readString();
-          case 9:
+          case 'delay':
             delay = _readInt();
-          case 10:
+          case 'time':
             time = _readInt();
           default:
             _skipValue();
@@ -631,12 +580,12 @@ class _FrameScanner {
           if (_code() != 0x3A) throw const FormatException('field');
           _at++;
           _skipWhitespace();
-          switch (_trafficKeyCodes[key] ?? 0) {
-            case 1:
+          switch (key) {
+            case 'id':
               id = _readString();
-            case 2:
+            case 'upload':
               upload = _readInt();
-            case 3:
+            case 'download':
               download = _readInt();
             default:
               _skipValue();
