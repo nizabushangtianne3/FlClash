@@ -3,7 +3,7 @@
 本文记录 FlClash 主仓库与 `core/Clash.Meta` 子模块的性能优化成果、验证结果、已拒绝方案和后续切入点。后续继续优化时，先读本文，再按当前工作区重新测量，不要直接复用旧数据当作当前结论。
 
 - 最近核对日期：2026-11-11 深夜（晚间接续会话，全部本机实测）：连接轮询稳态免扫描一轮（500 连接 32.78µs -> 371ns，-98.87%；stale 十字段与十个镜像字段整段删除）；Dart 侧连接排序一轮（1 万行每快照 10.4ms -> ~4.19ms，-60.7%，三张 per-poll 字符串 map 合并为一张状态表）；UDP 数据报主路径覆盖一轮（tunnel 76.5% -> 82.7%，processUDP/startUDPSender/dialUDPSender 从 0/0/50% 到 100/100/89.6%）；wrapper IPC 入口覆盖一轮（StartServer 走真实命名管道，93.7% -> 93.9%）；死代码清扫一轮（staticcheck 名下未用测试 helper 与两处死赋值）；另有三项实测否决记账（feed flush 归属拆解、GOGC 策略、连接 churn 增量日志）
-- FlClash main：`1adbfd55`
+- FlClash main：`a78ef866`
 - Clash.Meta main：`bbf113d6f`
 - 深夜会话后半程（全部本机实测）：时间戳改纪元微秒一轮（wire 端到端契约变更，到达路径 10.25ms -> 3.06ms），该轮曾把 Go 门禁弄红（gofmt 三文件 + 四个测试文件仍在传 time.Time），已修复；Log 到达免格式化一轮（3.06ms -> 0.98ms）；到达路径批量轮次（信封手写解码 -69%、log 读入 -77%、端到端配对 -10%/min -26%）；连接行解码轮次（行读入 -29%）；融合帧读取轮次（到达路径 median -33%、min -40%）；连接环索引轮次（满环 append -79%，feed flush -16%，修一处 newest-row 丢键 bug）
 - 基准主机：Intel Core i9-9900，Windows/amd64
