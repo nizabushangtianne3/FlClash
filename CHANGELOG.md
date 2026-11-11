@@ -4,6 +4,7 @@
 
 **Bug Fixes**
 
+- **ci** Drop working-tree guard that CI flips off (788bf6e)
 - **release** Keep native build assets on for tag builds (5f66401)
 - **core** Keep the wrapper compiling and formatted (05f5e29)
 

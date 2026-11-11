@@ -11,6 +11,11 @@
           "type": "fix",
           "entries": [
             {
+              "id": "788bf6e",
+              "scope": "ci",
+              "text": "Drop working-tree guard that CI flips off"
+            },
+            {
               "id": "5f66401",
               "scope": "release",
               "text": "Keep native build assets on for tag builds"
