@@ -1038,6 +1038,17 @@ v1.0.5 之后到达路径又落了三个实测轮次（Log 到达免格式化、
 | 验证 | `changelog build --unreleased` 与 `changelog verify` 均通过；本地核心测试全量失败集仍是 5 个既有问题 |
 | 推送 | `main:main` 已推送；**`v1.0.6` 标签未推送**——`build.yaml` 由 `v*` 标签触发，按用户要求不跑 Actions 测试与发布流程 |
 
+### 2026-11-12 原生构建资产守门轮次（发布修复）
+
+`v1.0.6` 发布提交把 `pubspec.yaml` 的 `setup.build_assets` 与 `rust_api.build_assets` 写成 `false` 后，远程 main 的 build run 证明这不是无害开关：Dart 21 个用例因 `librust_api` 缺失挂掉，macOS/Linux/Windows 桌面构建都因 `FlClashCore` 缺失挂掉；同 run 里 Go core job 本身是 success，根因在原生资产配置而不是 Go 代码。上一轮记录过 `43d01ef7` 修复提交，但当前分支、标签与 reflog 里都没有该对象，属于交接状态失真；本轮按当前工作区重建修复。
+
+| 项 | 内容 |
+|---|---|
+| 修复 | `pubspec.yaml` 两个 `build_assets` 恢复为 `true`；`test/setup_test.dart` 新增工作区守门，防止发布配置再提交关闭状态 |
+| 本机验证 | `flutter test test/setup_test.dart` 9 个用例全过；`dart run tool/changelog.dart verify` 通过；`process_probe_test` 单用例重复 10 次全过，另做 10 次真实进程回收采样全部为已退出，判定上一轮唯一本地失败是 Windows 控制台子进程回收偶发，不改生产代码 |
+| 远程证据 | run `43068548951`：`Go core` success；`Dart` 失败于 21 个 Editor native library not found；`Desktop macos/linux/windows` 失败于 Core 缺失 |
+| 发布 | 修复提交后把 `v1.0.6` 重打到正确 main 提交并推送，让正式版构建读取原生资产开启状态 |
+
 ### 2026-11-11 正式发布轮次（v1.0.5）
 
 按用户要求发正式版：派发 `release-stable.yaml`，由 CI 跑 `tool/release.sh stable --push --yes`（升版本、写 changelog、打标签），再链到 `build.yaml` 构建并发布 GitHub Release。

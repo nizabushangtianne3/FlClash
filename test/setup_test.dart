@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:test/test.dart';
 
 import '../setup.dart' as setup;
@@ -59,6 +61,12 @@ hooks:
 
       expect(setup.packagesNotBuildingAssets(pubspec), ['setup']);
       expect(setup.packagesNotBuildingAssets('name: x\n'), isEmpty);
+    });
+
+    test('keeps every native asset on in the working tree', () {
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+
+      expect(setup.packagesNotBuildingAssets(pubspec), isEmpty);
     });
 
     test('packages every Linux format on every architecture', () {
