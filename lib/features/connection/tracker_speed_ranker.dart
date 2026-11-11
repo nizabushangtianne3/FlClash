@@ -29,6 +29,7 @@ class TrackerSpeedRanker {
   // Closing a connection triggers an out-of-band refresh; a delta over a few
   // milliseconds would read as a spike, so such samples keep the last speed.
   static const _minSampleGap = Duration(milliseconds: 500);
+  static final int _minSampleGapMicros = _minSampleGap.inMicroseconds;
   static const _smoothing = 0.5;
 
   /// One map keyed by connection id carries what three per-poll maps used to:
@@ -48,6 +49,13 @@ class TrackerSpeedRanker {
   // stays amortized against the joins that filled the map.
   static const _purgeSlack = 1024;
 
+  /// The order the last published poll answered, as source indices, and the
+  /// stamp of the poll that produced it. A table whose rows, buckets and idle
+  /// order all still stand answers with it again, which is what keeps a steady
+  /// poll off the whole ordering pass.
+  Int32List _publishedOrder = Int32List(0);
+  int _publishedStamp = 0;
+
   static final _vacant = _RowState(
     0,
     0,
@@ -65,7 +73,6 @@ class TrackerSpeedRanker {
     final previousStamp = stamp - 1;
     final states = List<_RowState>.filled(count, _vacant);
 
-    // All idle: sort by traffic once, then keep the resulting order stable.
     var anyActive = false;
     final traffic = Int64List(count);
     final positions = Int32List(count);
@@ -85,7 +92,10 @@ class TrackerSpeedRanker {
     }
 
     final Int32List order;
-    if (!anyActive) {
+    final settled = _settledOrder(count, stamp, states, buckets, trackerInfos);
+    if (settled != null) {
+      order = settled;
+    } else if (!anyActive) {
       order = Int32List.fromList(
         List<int>.generate(count, (index) => index)..sort((a, b) {
           final trafficCompare = traffic[b].compareTo(traffic[a]);
@@ -192,17 +202,25 @@ class TrackerSpeedRanker {
           idle[idleCursor++] = source;
           source = nextIndices[source];
         }
-        idle.sort((a, b) {
-          final trafficCompare = traffic[b].compareTo(traffic[a]);
-          if (trafficCompare != 0) {
-            return trafficCompare;
-          }
-          final start = trackerInfos[b].start.compareTo(trackerInfos[a].start);
-          if (start != 0) {
-            return start;
-          }
-          return trackerInfos[a].id.compareTo(trackerInfos[b].id);
-        });
+        // The walk leaves the idle rows in the order they were published last
+        // poll, and an idle row's traffic does not move: one pass confirms that
+        // is still the order the comparator would give, and the sort is the
+        // expensive part of a poll over a table that is mostly idle.
+        if (!_trafficOrdered(idle, traffic, trackerInfos)) {
+          idle.sort((a, b) {
+            final trafficCompare = traffic[b].compareTo(traffic[a]);
+            if (trafficCompare != 0) {
+              return trafficCompare;
+            }
+            final start = trackerInfos[b].start.compareTo(
+              trackerInfos[a].start,
+            );
+            if (start != 0) {
+              return start;
+            }
+            return trackerInfos[a].id.compareTo(trackerInfos[b].id);
+          });
+        }
         for (final index in idle) {
           ranked[cursor++] = index;
         }
@@ -211,10 +229,108 @@ class TrackerSpeedRanker {
     }
 
     final published = _publish(trackerInfos, states, order);
+    if (settled == null) {
+      if (_publishedOrder.length != count) {
+        _publishedOrder = Int32List(count);
+      }
+      for (var index = 0; index < count; index++) {
+        _publishedOrder[index] = order[index];
+      }
+    }
+    _publishedStamp = stamp;
     if (_rows.length > count + _purgeSlack) {
       _rows.removeWhere((_, row) => row.stamp != stamp);
     }
     return published;
+  }
+
+  /// The order the previous poll published, when it still answers this one: the
+  /// rows are the ones it was built from, a row's bucket only ever moves it
+  /// later in the order, and the pair of idle rows stands in the order its
+  /// traffic gives. The whole ordering pass then has nothing to decide.
+  Int32List? _settledOrder(
+    int count,
+    int stamp,
+    List<_RowState> states,
+    Int32List buckets,
+    List<TrackerInfo> trackerInfos,
+  ) {
+    if (_publishedStamp != stamp - 1 || _publishedOrder.length != count) {
+      return null;
+    }
+    final published = _publishedOrder;
+    if (states[published[0]].stamp != stamp) {
+      return null;
+    }
+    var previous = published[0];
+    var previousBucket = buckets[previous];
+    for (var index = 1; index < count; index++) {
+      final source = published[index];
+      if (states[source].stamp != stamp) {
+        return null;
+      }
+      final bucket = buckets[source];
+      if (bucket > previousBucket) {
+        return null;
+      }
+      if (bucket == 0 &&
+          previousBucket == 0 &&
+          !_precedes(trackerInfos[previous], trackerInfos[source])) {
+        return null;
+      }
+      previous = source;
+      previousBucket = bucket;
+    }
+    return published;
+  }
+
+  /// Whether [first] stands where the ranking puts it ahead of [second] when
+  /// neither carries traffic: more total traffic, then an earlier start, then
+  /// the id.
+  bool _precedes(TrackerInfo first, TrackerInfo second) {
+    final firstTraffic = first.upload + first.download;
+    final secondTraffic = second.upload + second.download;
+    if (firstTraffic != secondTraffic) {
+      return firstTraffic > secondTraffic;
+    }
+    final start = first.start.compareTo(second.start);
+    if (start != 0) {
+      return start > 0;
+    }
+    return first.id.compareTo(second.id) <= 0;
+  }
+
+  /// Whether the rows already stand in the order the comparator gives:
+  /// traffic first, then an earlier start, then the id.
+  bool _trafficOrdered(
+    List<int> rows,
+    Int64List traffic,
+    List<TrackerInfo> trackerInfos,
+  ) {
+    for (var index = 1; index < rows.length; index++) {
+      final previous = rows[index - 1];
+      final current = rows[index];
+      final trafficCompare = traffic[current].compareTo(traffic[previous]);
+      if (trafficCompare > 0) {
+        return false;
+      }
+      if (trafficCompare < 0) {
+        continue;
+      }
+      final start = trackerInfos[current].start.compareTo(
+        trackerInfos[previous].start,
+      );
+      if (start > 0) {
+        return false;
+      }
+      if (start < 0) {
+        continue;
+      }
+      if (trackerInfos[previous].id.compareTo(trackerInfos[current].id) > 0) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Answers the order as rows, reusing the published instance of a row whose
@@ -268,12 +384,15 @@ class TrackerSpeedRanker {
       _rows[id] = row;
       return row;
     }
-    final elapsed = now.difference(existing.at);
-    if (elapsed < _minSampleGap) {
+    // A difference in microseconds rather than a Duration: one is arithmetic,
+    // the other allocates for every row of every poll.
+    final elapsed =
+        now.microsecondsSinceEpoch - existing.at.microsecondsSinceEpoch;
+    if (elapsed < _minSampleGapMicros) {
       existing.stamp = stamp;
       return existing;
     }
-    final seconds = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
+    final seconds = elapsed / Duration.microsecondsPerSecond;
     final uploadSpeed = max(0, trackerInfo.upload - existing.upload) / seconds;
     final downloadSpeed =
         max(0, trackerInfo.download - existing.download) / seconds;

@@ -152,4 +152,69 @@ void main() {
     expect(byId(second, 'active'), isNot(same(byId(first, 'active'))));
     expect(byId(second, 'active').downloadSpeed, 2000);
   });
+
+  test('answers a settled poll with the order it published', () {
+    final ranker = TrackerSpeedRanker();
+    final rows = [
+      for (var index = 0; index < 200; index++)
+        _tracker('node-$index', download: index * 137),
+    ];
+
+    final first = ranker.rank(rows, t0);
+    final second = ranker.rank(rows, t0);
+    final third = ranker.rank(rows, t0);
+
+    expect(
+      ids(second),
+      ids(first),
+      reason: 'a poll that moved nothing keeps the order',
+    );
+    expect(ids(third), ids(first));
+    for (var index = 0; index < rows.length; index++) {
+      expect(
+        identical(third[index], first[index]),
+        isTrue,
+        reason: 'a settled poll answers with the rows it published',
+      );
+    }
+  });
+
+  test('reorders when the connection that led goes quiet', () {
+    final ranker = TrackerSpeedRanker();
+    final leading = _tracker('leading', download: 10000);
+    final trailing = _tracker('trailing', download: 20000);
+
+    final first = ranker.rank([leading, trailing], t0);
+    expect(ids(first), [
+      'trailing',
+      'leading',
+    ], reason: 'neither sends, so the larger total leads');
+
+    final sending = ranker.rank([
+      leading.copyWith(download: 11000),
+      trailing.copyWith(download: 20000),
+    ], at(1));
+    expect(ids(sending), [
+      'leading',
+      'trailing',
+    ], reason: 'the row that gained traffic leads while it sends');
+
+    // It stops. Speed halves with every poll, so a row stays active for a few
+    // before it is idle again, and the order it published while it sent does
+    // not describe the table by then.
+    var readAt = at(1);
+    var quiet = sending;
+    for (var poll = 0; poll < 12; poll++) {
+      readAt = readAt.add(const Duration(seconds: 1));
+      quiet = ranker.rank([
+        leading.copyWith(download: 11000),
+        trailing.copyWith(download: 20000),
+      ], readAt);
+    }
+    expect(
+      ids(quiet),
+      ids(first),
+      reason: 'the quiet leader falls behind the row that always carried more',
+    );
+  });
 }

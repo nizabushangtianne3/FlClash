@@ -78,4 +78,42 @@ void main() {
     );
     expect(perAttempt, lessThan(500));
   });
+
+  // A steady table: the rows, their buckets and the order they were published
+  // in all still stand, which is the poll a dashboard actually repeats.
+  test('answers a settled poll of ten thousand connections', () {
+    const count = 10000;
+    const polls = 20;
+    final start = DateTime.utc(2026);
+    final rows = [
+      for (var index = 0; index < count; index++)
+        TrackerInfo(
+          id: 'connection-$index',
+          upload: index % 20 == 1 ? 2048 : 0,
+          download: index % 20 == 0 ? 4096 : 0,
+          start: start.add(Duration(milliseconds: index)),
+          metadata: const Metadata(),
+          chains: const ['DIRECT'],
+          rule: 'MATCH',
+          rulePayload: '',
+        ),
+    ];
+
+    final ranker = TrackerSpeedRanker();
+    for (var poll = 0; poll < 5; poll++) {
+      ranker.rank(rows, start);
+    }
+
+    final stopwatch = Stopwatch()..start();
+    for (var poll = 0; poll < polls; poll++) {
+      ranker.rank(rows, start);
+    }
+    stopwatch.stop();
+    final perPoll = stopwatch.elapsedMicroseconds ~/ polls;
+    stdout.writeln(
+      'settledPolls count=$count polls=$polls '
+      'totalUs=${stopwatch.elapsedMicroseconds} perPollUs=$perPoll',
+    );
+    expect(perPoll, lessThan(1500));
+  });
 }
