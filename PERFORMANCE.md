@@ -1192,11 +1192,17 @@ feed flush 分解实测（每 300ms 窗口 400 日志 + 120 连接行 + 240 DNS 
 
 ## 5. 后续优化切入点
 
+### 2026-11-12 连接快照预排序轮次（已落地）
+
+假设：仪表盘每次接收连接快照都在读取路径上复制全表并按 start 重排，而这份顺序由 provider 生成行集合时就已知。本轮把排序下沉到 `Connections`：`_merge` 只在行集合变化时把 `rows.values` 排成 start 倒序，快照与 `_orderedRows` 共用同一份列表；`updateTraffic` 的 counter-only 路径不再复制或重排，直接发布同一列表实例。Dart `LinkedHashMap` 的替换值不改变键的插入位置，所以流量更新不会破坏顺序，这一点由 counter-only 顺序护栏钉住。
+
+配对实测（`connections_feed_benchmark_test.dart`，300 行 ×2000 次，JIT）：旧路径（复制 + 排序 + 计数）19.7µs → 新路径（直接计数）3.7µs（**-81.3%**）。tracker ranker、connections 表格、poll cycle 基准测试全绿；`dart format` 0 changed，`dart analyze --fatal-warnings` 剩余 6 条均为与本轮无关的既有 info（干净基线复跑一致）。基准注解在测量后已按仓库惯例还原为 `@Skip`，账本只留数字。
+
 ### 待优化项清单（2026-11-07 全量复核，均在本机实测过基线）
 
 | 位置 | 实测基线（JIT） | 结论 / 下一步 |
 |---|---|---|
-| 实时连接 feed 的 `[...snapshot.connections]..sort(start 倒序)` | 300 行约 11.5µs/更新，`renderThrottleDuration`(300ms) 限制最多约 3.3 次/秒 | **维持不做（2026-11-07 二次测量）**：provider 下沉整表重排已否决（见第 3 节）；换成“缓存排序结果 + 按行 map 查询重组”也要每行一次 map 查询重建输出列表（实测 `FixedList.updateByKey` 52ns/行，300 行约 15µs），与整表排序持平、无净收益。真正的剩余成本已变成每次刷新重建 20 行 ×8 列的 widget（行文字/形状与菜单本轮已优化），要再降只能自绘表格 |
+| 实时连接 feed 的 `[...snapshot.connections]..sort(start 倒序)` | 300 行 19.7µs → 3.7µs（**-81.3%**，2026-11-12 已把排序下沉到 provider） | **已完结**：排序在 `Connections._merge` 重建行集合时做一次，`_orderedRows` 是不可变有序表，`updateTraffic` 只替换行对象、不改 `LinkedHashMap` 插入位，所以复用它仍然保持 start 倒序；仪表盘 `_showConnections` 直接读快照，免复制免排序。顺序护栏在 connections_table 的 counter-only 用例，基准 `connections_feed_benchmark_test.dart` 配对实测。剩余成本是每次刷新重建 20 行 ×8 列的 widget，要再降只能自绘表格 |
 | `RecordFacet.optionsOf`（剩余） | requests 页 500 行 ×3 个 offered facet：单值化 + 有界选取后约 49.5µs/次；rule 全去重场景 52.6µs/次 | 剩余是 map 计数本身（500 个不同字符串的哈希与插入，约 25µs）与选项终排。「同一列表实例跳过重算」不成立（三个调用点都由节流器在新数据到达时驱动，列表必然已变）；top-k 无法再近似，每个值都必须数到 |
 | `RecordSorter.sort` 乱序路径 | 10000 行 ×1000 次同 `record_sorter_benchmark_test.dart`；`Expando` 缓存 sortKey 无效（见第 3 节） | 剩余可省的是 `order`+`sorted` 两个列表，需 in-place 置换且不能改调用方列表；上次尝试写反已回退，先写语义测试再上基准 |
 | 打包 int64 键替代索引排序（`computeSort`） | 设想：把 (priority,delay,group,index) 打成单个 int64 用 `Int64List.sort()` 免比较器排序。scratch 配对实测（1000 节点 ×500 次，顺序与索引排序完全一致）：172.4µs → 169.4µs（-1.7%，噪声内） | JIT 下 `Int64List.sort()` 并未比 `List<int>.sort(comparator)` 快，比较器本身已不是瓶颈；撤销 |

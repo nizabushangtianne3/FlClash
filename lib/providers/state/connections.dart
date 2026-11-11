@@ -66,6 +66,7 @@ class Connections extends _$Connections {
   bool _resync = true;
   DateTime? _lastRead;
   Map<String, TrackerInfo> _rows = {};
+  List<TrackerInfo> _orderedRows = const [];
   Future<ConnectionDelta> Function({bool resync})? _reader;
   int _revision = 0;
   @override
@@ -113,7 +114,7 @@ class Connections extends _$Connections {
     }
     state = ConnectionsSnapshot(
       count: _rows.length,
-      connections: _rows.values.toList(),
+      connections: _orderedRows,
       revision: ++_revision,
     );
   }
@@ -161,11 +162,14 @@ class Connections extends _$Connections {
       return;
     }
     _rows = rows;
+    final orderedRows = rows.values.toList()
+      ..sort((a, b) => b.start.compareTo(a.start));
+    _orderedRows = orderedRows;
     state = ConnectionsSnapshot(
       // The Core's own count leads: the table is what this app holds, and the
       // two disagree only until an answer it missed is asked for again.
       count: delta.count,
-      connections: rows.values.toList(),
+      connections: orderedRows,
       revision: ++_revision,
     );
   }
@@ -175,6 +179,7 @@ class Connections extends _$Connections {
       return;
     }
     _rows = {};
+    _orderedRows = const [];
     _resync = true;
     state = ConnectionsSnapshot(revision: ++_revision);
   }

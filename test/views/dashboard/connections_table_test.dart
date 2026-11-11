@@ -264,6 +264,9 @@ void main() {
     connections.read(connectionsProvider.notifier).updateTraffic(const {
       '0': (upload: 99, download: 99),
     });
+    connections.read(connectionsProvider.notifier).updateTraffic(const {
+      '1': (upload: 10, download: 10),
+    });
     await tester.pump();
 
     expect(
