@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/event.dart';
+import 'package:fl_clash/core/event_json.dart';
 import 'package:fl_clash/core/method.dart';
 import 'package:fl_clash/core/spill.dart';
 import 'package:fl_clash/enum/enum.dart';
@@ -171,6 +172,13 @@ final class CoreRpcClient implements CoreRpcChannel {
 
   void _handleFrame(Uint8List frame) {
     try {
+      // A message batch is the frame this transport sees most of, and it is
+      // read straight off its bytes; anything else takes the decoded path.
+      final batch = messageBatchFromFrame(frame);
+      if (batch != null) {
+        coreEventManager.sendEvents(batch);
+        return;
+      }
       final decoded = _frameDecoder.convert(frame);
       if (decoded is! Map) {
         throw const FormatException('Core transport data is not an object');

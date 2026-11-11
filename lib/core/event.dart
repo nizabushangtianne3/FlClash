@@ -153,39 +153,54 @@ class CoreEventManager {
     _listenerSnapshot = null;
   }
 
+  /// The payload an event carries to its listeners. The decoded path hands
+  /// over the map the frame produced and the model is built here; the reader
+  /// in event_json.dart hands the model over already built, so a payload
+  /// that arrived built is passed through untouched.
   Object? _parseEventPayload(CoreEvent event, DateTime clock) {
+    final data = event.data;
     switch (event.type) {
       case CoreEventType.log:
-        return logFromData(_eventData(event), clock);
+        return data is Log ? data : logFromData(_eventData(event), clock);
       case CoreEventType.delay:
-        return Delay.fromJson(_eventData(event));
+        return data is Delay ? data : Delay.fromJson(_eventData(event));
       case CoreEventType.request:
-        return trackerInfoFromData(_eventData(event));
+        return data is TrackerInfo
+            ? data
+            : trackerInfoFromData(_eventData(event));
       case CoreEventType.requestTraffic:
+        if (data is Map<String, RequestTraffic>) {
+          return data;
+        }
         return {
-          for (final Map item in event.data as List)
+          for (final Map item in data as List)
             item['id'] as String: (
               upload: (item['upload'] as num).toInt(),
               download: (item['download'] as num).toInt(),
             ),
         };
       case CoreEventType.dns:
-        return DnsQuery.fromJson(_eventData(event));
+        return data is DnsQuery ? data : DnsQuery.fromJson(_eventData(event));
       case CoreEventType.loaded:
       case CoreEventType.crash:
-        return '${event.data}';
+        return data is String ? data : '${event.data}';
       case CoreEventType.geoUpdate:
-        final data = _eventData(event);
-        return _GeoUpdatePayload(
-          geoType: data['type'] as String,
-          updating: data['updating'] as bool,
-          skipped: data['skipped'] as bool? ?? false,
-          error: data['error'] as String?,
+        if (data is GeoUpdatePayload) {
+          return data;
+        }
+        final map = _eventData(event);
+        return GeoUpdatePayload(
+          geoType: map['type'] as String,
+          updating: map['updating'] as bool,
+          skipped: map['skipped'] as bool? ?? false,
+          error: map['error'] as String?,
         );
       case CoreEventType.routeChanged:
-        return RouteSnapshot.fromJson(_eventData(event));
+        return data is RouteSnapshot
+            ? data
+            : RouteSnapshot.fromJson(_eventData(event));
       case CoreEventType.dialerLoop:
-        return event.data as String;
+        return data is String ? data : event.data as String;
     }
   }
 
@@ -227,7 +242,7 @@ void _sendToListener(
         listener.onCrash(payload as String);
         break;
       case CoreEventType.geoUpdate:
-        final geoUpdate = payload as _GeoUpdatePayload;
+        final geoUpdate = payload as GeoUpdatePayload;
         listener.onGeoUpdate(
           geoUpdate.geoType,
           geoUpdate.updating,
@@ -250,8 +265,8 @@ void _sendToListener(
   }
 }
 
-class _GeoUpdatePayload {
-  const _GeoUpdatePayload({
+class GeoUpdatePayload {
+  const GeoUpdatePayload({
     required this.geoType,
     required this.updating,
     required this.skipped,
@@ -262,6 +277,19 @@ class _GeoUpdatePayload {
   final bool updating;
   final bool skipped;
   final String? error;
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other is GeoUpdatePayload &&
+            other.geoType == geoType &&
+            other.updating == updating &&
+            other.skipped == skipped &&
+            other.error == error);
+  }
+
+  @override
+  int get hashCode => Object.hash(geoType, updating, skipped, error);
 }
 
 final coreEventManager = CoreEventManager.instance;

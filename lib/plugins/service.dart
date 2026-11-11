@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/event.dart';
+import 'package:fl_clash/core/event_json.dart';
 import 'package:fl_clash/core/method.dart';
 import 'package:fl_clash/core/spill.dart';
 import 'package:fl_clash/enum/enum.dart';
@@ -58,6 +59,11 @@ class Service {
     methodChannel.setMethodCallHandler((call) async {
       switch (call.method) {
         case 'event':
+          final batch = messageBatchFromFrame(call.arguments as Uint8List);
+          if (batch != null) {
+            _dispatchEvents(batch);
+            break;
+          }
           final methodCall = CoreMethodCall.fromJson(
             Map<String, Object?>.from(
               _decodeUtf8Json(call.arguments as Uint8List) as Map,

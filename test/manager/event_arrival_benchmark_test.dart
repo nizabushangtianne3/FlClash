@@ -6,6 +6,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fl_clash/core/event.dart';
+import 'package:fl_clash/core/event_json.dart';
+import 'package:fl_clash/core/method.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -133,46 +135,59 @@ void main() {
     addTearDown(() => coreEventManager.removeListener(listener));
 
     final now = DateTime.now().microsecondsSinceEpoch;
-    final frame = jsonEncode([
-      for (var i = 0; i < 760; i++)
-        switch (i % 8) {
-          0 || 1 || 2 || 3 || 4 => {
-            'type': 'log',
-            'data': {'LogLevel': 'info', 'Payload': 'bench', 'dateTime': now},
-          },
-          5 => {
-            'type': 'request',
-            'data': {
-              'id': 'c-$i',
-              'metadata': const {'network': 'tcp'},
-              'upload': 0,
-              'download': 0,
-              'start': now,
-              'chains': const <String>[],
-              'rule': 'MATCH',
-              'rulePayload': '',
-            },
-          },
-          6 => {
-            'type': 'dns',
-            'data': {'domain': 'example$i.test', 'type': 'A', 'time': now},
-          },
-          _ => {
-            'type': 'requestTraffic',
-            'data': [
-              {
-                'id': '01000000-0000-4000-8000-00000000000$i',
-                'upload': 1024,
-                'download': 4096,
+    final frame = jsonEncode(
+      CoreMethodCall(
+        method: CoreMethod.message,
+        arguments: [
+          for (var i = 0; i < 760; i++)
+            switch (i % 8) {
+              0 || 1 || 2 || 3 || 4 => {
+                'type': 'log',
+                'data': {
+                  'LogLevel': 'info',
+                  'Payload': 'bench',
+                  'dateTime': now,
+                },
               },
-            ],
-          },
-        },
-    ]);
+              5 => {
+                'type': 'request',
+                'data': {
+                  'id': 'c-$i',
+                  'metadata': const {'network': 'tcp'},
+                  'upload': 0,
+                  'download': 0,
+                  'start': now,
+                  'chains': const <String>[],
+                  'rule': 'MATCH',
+                  'rulePayload': '',
+                },
+              },
+              6 => {
+                'type': 'dns',
+                'data': {'domain': 'example$i.test', 'type': 'A', 'time': now},
+              },
+              _ => {
+                'type': 'requestTraffic',
+                'data': [
+                  {
+                    'id': '01000000-0000-4000-8000-00000000000$i',
+                    'upload': 1024,
+                    'download': 4096,
+                  },
+                ],
+              },
+            },
+        ],
+      ).toJson(),
+    );
 
     void arrival() {
-      final events = coreEventsFromData(jsonDecode(frame));
-      coreEventManager.sendEvents(events);
+      final events = messageBatchFromFrame(utf8.encode(frame));
+      if (events != null) {
+        coreEventManager.sendEvents(events);
+        return;
+      }
+      coreEventManager.sendEvents(coreEventsFromData(jsonDecode(frame)));
     }
 
     timed('arrival x760 (decode, parse, dispatch)', arrival);
