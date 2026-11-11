@@ -3,17 +3,13 @@ import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:flutter/foundation.dart';
 
-Map<String, Object?> _typedEventData(Map data) {
-  return data is Map<String, Object?> ? data : Map<String, Object?>.from(data);
-}
-
 List<CoreEvent> coreEventsFromData(Object? data) {
   final items = data is List ? data : [data];
   final events = <CoreEvent>[];
   for (final item in items) {
-    if (item is! Map) continue;
+    if (item is! Map<String, Object?>) continue;
     try {
-      events.add(CoreEvent.fromJson(_typedEventData(item)));
+      events.add(coreEventFrom(item));
     } catch (error) {
       commonPrint.log(
         'Unable to parse Core event: $error',
@@ -55,6 +51,28 @@ abstract mixin class CoreEventListener {
   void onDialerLoop(String proxyName) {}
 }
 
+/// Reads one {"type":...,"data":...} envelope by matching the wire name
+/// directly, ordered by how often the feed carries each one; the enum's
+/// reverse lookup costs more than the strings do at this volume.
+CoreEvent coreEventFrom(Map<String, Object?> json) {
+  return CoreEvent(
+    type: switch (json['type'] as String) {
+      'log' => CoreEventType.log,
+      'dns' => CoreEventType.dns,
+      'request' => CoreEventType.request,
+      'requestTraffic' => CoreEventType.requestTraffic,
+      'delay' => CoreEventType.delay,
+      'loaded' => CoreEventType.loaded,
+      'crash' => CoreEventType.crash,
+      'geoUpdate' => CoreEventType.geoUpdate,
+      'routeChanged' => CoreEventType.routeChanged,
+      'dialerLoop' => CoreEventType.dialerLoop,
+      _ => throw ArgumentError.value(json['type'], 'type', 'unknown event'),
+    },
+    data: json['data'],
+  );
+}
+
 class CoreEventManager {
   CoreEventManager._();
 
@@ -77,6 +95,19 @@ class CoreEventManager {
   /// Dispatches on the calling stack so a disposed listener is not hit by a
   /// late stream microtask after the widget tree is already torn down.
   void sendEvent(CoreEvent event) {
+    _dispatch(event, DateTime.now());
+  }
+
+  /// Dispatches the whole batch one flush carried with a single arrival
+  /// clock: the logs in it reached the host together and share their moment.
+  void sendEvents(List<CoreEvent> events) {
+    final clock = DateTime.now();
+    for (final event in events) {
+      _dispatch(event, clock);
+    }
+  }
+
+  void _dispatch(CoreEvent event, DateTime clock) {
     final listeners = _listenerSnapshot ??= List.unmodifiable(_listeners);
     if (listeners.isEmpty) {
       return;
@@ -87,7 +118,7 @@ class CoreEventManager {
     }
     Object? payload;
     try {
-      payload = _parseEventPayload(event);
+      payload = _parseEventPayload(event, clock);
     } catch (error) {
       commonPrint.log(
         'Unable to parse Core event ${event.type.name}: $error',
@@ -122,10 +153,10 @@ class CoreEventManager {
     _listenerSnapshot = null;
   }
 
-  Object? _parseEventPayload(CoreEvent event) {
+  Object? _parseEventPayload(CoreEvent event, DateTime clock) {
     switch (event.type) {
       case CoreEventType.log:
-        return Log.fromJson(_eventData(event));
+        return logFromData(_eventData(event), clock);
       case CoreEventType.delay:
         return Delay.fromJson(_eventData(event));
       case CoreEventType.request:

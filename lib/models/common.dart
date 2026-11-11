@@ -249,10 +249,32 @@ abstract class Log with _$Log {
   }) = _Log;
 
   factory Log.app(String payload) {
-    return Log(payload: payload, dateTime: _logNow(null));
+    return Log(payload: payload, dateTime: DateTime.now());
   }
 
   factory Log.fromJson(Map<String, Object?> json) => _$LogFromJson(json);
+}
+
+/// Reads a log off the feed with the batch's arrival clock: the logs one flush
+/// carried reached the host together, so one clock read serves them all and
+/// every row still formats its own moment where it shows.
+Log logFromData(Map<String, Object?> data, DateTime now) {
+  return Log(
+    logLevel: logLevelOf(data['LogLevel']) ?? LogLevel.info,
+    payload: data['Payload'] as String? ?? '',
+    dateTime: now,
+  );
+}
+
+LogLevel? logLevelOf(Object? value) {
+  return switch (value) {
+    'debug' => LogLevel.debug,
+    'info' => LogLevel.info,
+    'warning' => LogLevel.warning,
+    'error' => LogLevel.error,
+    'silent' => LogLevel.silent,
+    _ => null,
+  };
 }
 
 final _logPayloads = Expando<LogPayload>();

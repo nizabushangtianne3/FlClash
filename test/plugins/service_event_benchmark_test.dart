@@ -12,11 +12,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _CountingListener with ServiceListener {
-  var events = 0;
+  var received = 0;
 
   @override
-  void onServiceEvent(CoreEvent event) {
-    events++;
+  void onServiceEvents(List<CoreEvent> events) {
+    received += events.length;
   }
 }
 
@@ -80,9 +80,9 @@ void main() {
 
     stdout.writeln(
       'androidServiceEvent batchSize=$batchSize repetitions=$repetitions '
-      'received=${listener.events} '
+      'received=${listener.received} '
       'perBatchUs=${stopwatch.elapsedMicroseconds / repetitions}',
     );
-    expect(listener.events, (repetitions + warmups) * batchSize);
+    expect(listener.received, (repetitions + warmups) * batchSize);
   });
 }

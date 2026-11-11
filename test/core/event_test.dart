@@ -239,4 +239,66 @@ void main() {
 
     expect(events.map((event) => event.data), ['provider-a', 'provider-b']);
   });
+
+  test('reads every event type name the core writes', () {
+    for (final type in CoreEventType.values) {
+      expect(
+        coreEventFrom({'type': type.name, 'data': 'x'}).type,
+        type,
+        reason: type.name,
+      );
+    }
+  });
+
+  test('refuses an event type name the core never writes', () {
+    expect(
+      () => coreEventFrom({'type': 'bogus', 'data': 'x'}),
+      throwsArgumentError,
+    );
+  });
+
+  test('the logs one batch carries share the arrival clock', () {
+    final listener = _RecordingListener();
+    coreEventManager.addListener(listener);
+    addTearDown(() => coreEventManager.removeListener(listener));
+
+    coreEventManager.sendEvents([
+      for (var i = 0; i < 3; i++)
+        CoreEvent(
+          type: CoreEventType.log,
+          data: {'LogLevel': 'info', 'Payload': 'line $i'},
+        ),
+    ]);
+
+    expect(listener.logs.map((log) => log.payload), [
+      'line 0',
+      'line 1',
+      'line 2',
+    ]);
+    expect(
+      listener.logs.map((log) => log.dateTime),
+      everyElement(same(listener.logs.first.dateTime)),
+    );
+  });
+
+  test('a sole event is dispatched with its own clock read', () {
+    final listener = _RecordingListener();
+    coreEventManager.addListener(listener);
+    addTearDown(() => coreEventManager.removeListener(listener));
+
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.log,
+        data: {'LogLevel': 'error', 'Payload': 'alone'},
+      ),
+    );
+
+    final log = listener.logs.single;
+    expect(log.payload, 'alone');
+    expect(log.logLevel, LogLevel.error);
+    expect(
+      log.dateTime.difference(DateTime.now()).inSeconds.abs(),
+      lessThan(5),
+    );
+  });
 }

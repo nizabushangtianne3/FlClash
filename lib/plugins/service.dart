@@ -31,7 +31,7 @@ Future<Map<String, Object?>> _decodeResponse(
 }
 
 abstract mixin class ServiceListener {
-  void onServiceEvent(CoreEvent event) {}
+  void onServiceEvents(List<CoreEvent> events) {}
 
   void onServiceStopped() {}
 }
@@ -63,9 +63,7 @@ class Service {
               _decodeUtf8Json(call.arguments as Uint8List) as Map,
             ),
           );
-          for (final event in coreEventsFromData(methodCall.arguments)) {
-            _dispatchEvent(event);
-          }
+          _dispatchEvents(coreEventsFromData(methodCall.arguments));
           break;
         case 'stopped':
           // A report stamped before the newest command no longer describes it.
@@ -101,17 +99,17 @@ class Service {
   List<ServiceListener> get _listenersSnapshot =>
       _listenerSnapshot ??= List.unmodifiable(_listeners);
 
-  void _dispatchEvent(CoreEvent event) {
+  void _dispatchEvents(List<CoreEvent> events) {
     final listeners = _listenersSnapshot;
     if (listeners.isEmpty) {
       return;
     }
     for (final listener in listeners) {
       try {
-        listener.onServiceEvent(event);
+        listener.onServiceEvents(events);
       } catch (error) {
         commonPrint.log(
-          'Unable to dispatch Android Core event ${event.type.name}: $error',
+          'Unable to dispatch Android Core events: $error',
           logLevel: LogLevel.error,
         );
       }

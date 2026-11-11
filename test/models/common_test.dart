@@ -336,4 +336,33 @@ void main() {
       }
     });
   });
+
+  group('logFromData', () {
+    test('reads the level, payload and the batch clock it is handed', () {
+      final now = DateTime.utc(2026, 11, 11, 7);
+      final log = logFromData({
+        'LogLevel': 'warning',
+        'Payload': '[TCP] dial error',
+      }, now);
+
+      expect(log.logLevel, LogLevel.warning);
+      expect(log.payload, '[TCP] dial error');
+      expect(log.dateTime, same(now));
+    });
+
+    test('defaults an absent payload and an unknown level', () {
+      final log = logFromData({'LogLevel': 'verbose'}, DateTime.utc(2026));
+
+      expect(log.payload, isEmpty);
+      expect(log.logLevel, LogLevel.info);
+    });
+
+    test('names every level the core writes', () {
+      for (final level in LogLevel.values) {
+        expect(logLevelOf(level.name), level, reason: level.name);
+      }
+      expect(logLevelOf(null), isNull);
+      expect(logLevelOf('verbose'), isNull);
+    });
+  });
 }

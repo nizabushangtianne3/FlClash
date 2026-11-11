@@ -73,9 +73,9 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
   }
 
   @override
-  void onServiceEvent(CoreEvent event) {
-    coreEventManager.sendEvent(event);
-    super.onServiceEvent(event);
+  void onServiceEvents(List<CoreEvent> events) {
+    coreEventManager.sendEvents(events);
+    super.onServiceEvents(events);
   }
 
   @override

@@ -197,9 +197,7 @@ final class CoreRpcClient implements CoreRpcChannel {
       );
       return;
     }
-    for (final event in coreEventsFromData(call.arguments)) {
-      coreEventManager.sendEvent(event);
-    }
+    coreEventManager.sendEvents(coreEventsFromData(call.arguments));
   }
 
   void _handleResponse(CoreMethodResponse response) {

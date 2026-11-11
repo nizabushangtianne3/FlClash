@@ -17,7 +17,7 @@ class _RecordingListener with ServiceListener {
   final events = <CoreEvent>[];
 
   @override
-  void onServiceEvent(CoreEvent event) => events.add(event);
+  void onServiceEvents(List<CoreEvent> events) => this.events.addAll(events);
 }
 
 class _RecordingStopListener with ServiceListener {
@@ -31,7 +31,7 @@ class _ThrowingListener with ServiceListener {
   var called = false;
 
   @override
-  void onServiceEvent(CoreEvent event) {
+  void onServiceEvents(List<CoreEvent> events) {
     called = true;
     throw StateError('listener boom');
   }
@@ -48,7 +48,7 @@ class _MutatingListener with ServiceListener {
   _MutatingListener(this.target);
 
   @override
-  void onServiceEvent(CoreEvent event) {
+  void onServiceEvents(List<CoreEvent> events) {
     Service().removeListener(target);
   }
 }
