@@ -1445,6 +1445,16 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 新基建保留：`test/core/event_row_parse_benchmark_test.dart` 是账本里第一个覆盖 connections 快照帧解析的基准（既有 `event_parse_benchmark_test.dart` 只测 log/loaded，完全不碰每行 18 个字段的 metadata），后续衡量帧读取路径的改动都以它为配对基准。
 
 
+### 2026-11-12 仪表盘 feed 快照免整表反转轮次（已落地）
+
+`_ConnectionsTableCardState._takeSnapshot` 对 requests 与 dns 两个 feed 都做 `ref.read(xProvider).list.reversed.toList()`：`reversed` 是惰性迭代器，`toList()` 因此为**整张表**建一个倒序副本。而下游 `_Table` 只看得到 `_maxFeedRows = 100` 行，`maxRequestsLength = 1600`、`maxDnsQueriesLength = 2400`，所以一次快照要复制 16～24 倍于实际用量的引用，每 2 秒一次。这与 2026-11-12 已落地的「connections 表格直接读 provider 快照」是同一类问题，只是 requests/dns 两条 feed 漏了。
+
+改法：`_Table` 增加 `reverse` 标志，snapshot 直接交 provider 的不可变快照（零复制零分配），反转与有界 head 都在 `_Table` 内完成。顺序语义逐条对齐原实现：`_sorter.sort` 仍作用于全表（点表头排序依旧正确），head 仍是排序结果的前 `_maxFeedRows` 条，只有没人点过表头（`_sort == null`）时才把 head 反转为「最新在前」。这两个细节都有用例钉住——`tapping a column head sorts the card table` 在我第一版「取尾 head 再反转」和「无条件反转」两种写法下都会失败，正是它们把正确形状逼出来的。
+
+配对实测（`feed_snapshot_benchmark_test.dart`，1600 行 ×20000 次快照，同进程 JIT）：**全量 `reversed.toList()` 14.64/14.39/14.46µs → 有界 head 0.86/0.82/0.87µs（约 -94%）**。
+
+验证：`test/views test/providers` 1163 例全绿；全量 `test/models test/views test/features test/providers test/core test/common test/widgets` 3813 例通过，仅 5 例失败且**与本轮无关**——`test/common/mitm_trust_test.dart`（4 例）与 `test/common/window_test.dart`（1 例）在把本轮改动 stash 掉后的干净 HEAD 上同样失败，属 Windows 主机跑 Linux/窗口平台探针的既有环境性失败；`dart format` 0 changed，`dart analyze` 0 error / 0 warning。
+
 ## 6. 后续会话推荐流程
 ``powershell
 git pull --ff-only

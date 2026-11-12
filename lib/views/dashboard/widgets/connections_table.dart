@@ -301,9 +301,9 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
   void _takeSnapshot() {
     switch (_feed) {
       case DashboardFeed.requests:
-        _requests = ref.read(requestsProvider).list.reversed.toList();
+        _requests = ref.read(requestsProvider).list;
       case DashboardFeed.dns:
-        _queries = ref.read(dnsQueriesProvider).list.reversed.toList();
+        _queries = ref.read(dnsQueriesProvider).list;
       case DashboardFeed.connections:
         break;
     }
@@ -426,6 +426,7 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
                 key: const ValueKey(DashboardFeed.requests),
                 tableId: 'dashboard.requests',
                 items: _requests,
+                reverse: true,
                 rowHeight: rowHeight,
                 columnsOf: (appLocalizations, _) =>
                     _requestColumns(appLocalizations),
@@ -434,6 +435,7 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
                 key: const ValueKey(DashboardFeed.dns),
                 tableId: 'dashboard.dns',
                 items: _queries,
+                reverse: true,
                 rowHeight: rowHeight,
                 columnsOf: (appLocalizations, _) =>
                     _dnsColumns(appLocalizations),
@@ -510,12 +512,17 @@ class _Table<T> extends ConsumerStatefulWidget {
     super.key,
     required this.tableId,
     required this.items,
+    this.reverse = false,
     required this.rowHeight,
     required this.columnsOf,
   });
 
   final String tableId;
   final List<T> items;
+
+  final bool reverse;
+
+  /// Shows the head from the end, the way a provider list reads oldest first.
   final double rowHeight;
 
   /// Built from the locale and the width, so a card table can hold on to the
@@ -575,9 +582,13 @@ class _TableState<T> extends ConsumerState<_Table<T>>
           constraints.maxWidth,
         );
         final sorted = _sorter.sort(widget.items, columns, _sort);
-        final items = sorted.length > _maxFeedRows
+        final head = sorted.length > _maxFeedRows
             ? sorted.sublist(0, _maxFeedRows)
             : sorted;
+        // A tapped column head decides the order, so only an unsorted feed
+        // runs from the end.
+        final ordered = _sort != null || !widget.reverse ? head : head.reversed;
+        final items = identical(ordered, head) ? head : ordered.toList();
         // Every row of the table reads the same text style.
         final cellStyle = AppTextStyle.footnote.of(context);
         final headerStyle = AppTextStyle.caption1
