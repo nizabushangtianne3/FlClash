@@ -799,7 +799,7 @@ List<RecordColumn<TrackerInfo>> _connectionColumns(
           appLocalizations.protocol,
           width: wide ? 52 : 46,
         ),
-        cell: (_, info) => _Muted(info.metadata.network.toUpperCase()),
+        cell: (_, info) => _Muted(info.protocolLabel),
         sortKey: (info) => info.metadata.network.toLowerCase(),
       ),
     if (wide)

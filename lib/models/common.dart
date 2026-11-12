@@ -252,6 +252,15 @@ DnsMode? dnsModeOf(Object? value) {
 }
 
 extension TrackerInfoExt on TrackerInfo {
+  /// The core marshals the network as one of four fixed spellings, so the
+  /// table can label it without allocating a new string per row.
+  String get protocolLabel => switch (metadata.network) {
+    'udp' => 'UDP',
+    'all' => 'ALL',
+    'invalid' => 'INVALID',
+    _ => 'TCP',
+  };
+
   String get title {
     final host = metadata.host;
     if (host.isNotEmpty) {

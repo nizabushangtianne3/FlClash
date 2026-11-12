@@ -147,6 +147,20 @@ void main() {
       expect(other.ruleText, 'DOMAIN-SUFFIX(example.com)');
       expect(trackerInfo.ruleText, 'MATCH');
     });
+
+    for (final network in ['tcp', 'udp', 'all', 'invalid']) {
+      test('labels $network the way toUpperCase spells it', () {
+        final trackerInfo = TrackerInfo(
+          id: '1',
+          start: DateTime(2026),
+          metadata: Metadata(network: network, process: 'Browser'),
+          chains: const ['Proxy'],
+          rule: 'MATCH',
+          rulePayload: '',
+        );
+        expect(trackerInfo.protocolLabel, network.toUpperCase());
+      });
+    }
   });
 
   group('TrafficExt', () {
