@@ -1368,7 +1368,22 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 | 连接轮询 churn 路径改「增量事件日志」（子模块 Manager 记 join/leave 环形缓冲，wrapper 只取上次序号之后的事件） | 已落地「稳态免扫描」后，churn 轮询（每轮 leave+join 两个预建 tracker）500 连接 2.15us / 13 allocs；busy 用户 2000 连接约 130us/2s = 0.006% CPU | **不做**：剩余成本是 O(活跃连接) 遍历，换成 O(变更) 需要子模块新增加速结构 + wrapper 侧行缓存失效语义，绝对收益 0.006% CPU，风险收益不相称 |
 | proxies 答案帧的 Dart 侧解码迁 isolate（`Isolate.exit` 零拷回报文） | 账本 2026-11-05 实测 132KB 帧 JIT 解码 874-1282us；AOT 估 ~400us；每次 answers（点选/刷新/测速完成），非每帧 | **不做**：AOT 下 UI 线程成本 ~0.4ms（8ms 预算的 5%），迁 isolate 只省消息开销之后的一小部分，还要改 RPC 消费契约；等 profile build 实测 AOT 数字再议 |
 | Dart 侧大表键入搜索的增量收窄（缓存上一次关键词与命中集，新关键词若是旧词的延伸就只过滤命中集） | 1 万行键入实测基数：DNS 查询页（Expando 缓存后）约 1.46ms/键击（JIT），连接/代理页同形状；方案只在底层列表**同一实例**期间有效，而轮询每 2s 就换一次列表、输入法每分钟数次按键，命中窗口小 | **不做**：命中窗口窄 + 需要 (列表身份, 词序, 命中集) 三元缓存与严格的作废语义，复杂度高于 1ms 级收益；现状「词法缓存 + terms.every(contains)」已在账本 2026-11-09 定为最小形状 |
-| 连接表 `RecordColumn.sortKey` 的 `toLowerCase()` 三案（守卫降格 / rule 列两段式键 / metadata 锚定缓存） | 见第 3 节本轮三条记录：守卫版在 `progress`/`title`/`network` 快 13-18% 但在 `exit`/`rule` 持平或慢 12%，方向不一致；两段式键快了 5.8 倍但穷举 28900 组有 34 组排序 `sign` 不一致（payload 含空格且大小写混合时分叉），是用户可见行为回归；metadata 锚定缓存绕不过 Expando 查找本身 | **全部否决**：`sortKey` 这条路以「不改变排序语义」为前提已无可动的部分，键构建成本是 `Comparable` 契约的必要形状，勿重做 |
+| 连接表 `RecordColumn.sortKey` 的 `toLowerCase()` 三案（守卫降格 / rule 列两段式键 / metadata 锚定缓存） | 三条的完整数据见第 3 节 2026-11-12 三条否决记录：守卫版在 `progress`/`title`/`network` 快 13-18% 但在 `exit`/`rule` 持平或慢 12%，方向不一致；两段式键快了 5.8 倍但穷举 28900 组有 34 组排序 `sign` 不一致（payload 含空格且大小写混合时分叉），是用户可见行为回归；metadata 锚定缓存绕不过 Expando 查找本身 | **全部否决**：`sortKey` 这条路以「不改变排序语义」为前提已无可动的部分，键构建成本是 `Comparable` 契约的必要形状，勿重做 |
+### 2026-11-12 表格行单元格实测修正轮次（实测，无代码改动）
+
+第 5 节的「表格行单元格构建」一行写着「约 1.40µs/行，其中约一半是字符串格式化，约一半是单元格 widget」。用同形状基准重测（`RecordTable.cellsOf`，500 行，counter-only 刷新 `copyWith(upload:, download:)`，同进程 5 轮交替取中位）：**单行全 8 列 850ns/行**（旧估值 1.40µs 已因槽位闭环与 `copyWith` 原样保留 metadata 而过时），构成几乎全是字符串格式化。
+
+| 片段（500 行 ×300 次） | µs | 占格式化总量 |
+|---|---|---|
+| `trackerDurationText` | 27406 | 32% |
+| `dashboardTraffic(upload)` + `dashboardTraffic(download)` | 29029 + 28152 | 68% |
+| `metadata.network.toUpperCase()` | 5773 | 7% |
+| `title`/`progressText`/`ruleText` 三个惰性 getter | 9949 | — |
+
+再拆 `dashboardTraffic`：全链 28547µs 中 `fixed(decimals: 1)` 占 24018（84%），纯 `toStringAsFixed(1)` 占 18682，1024 单位换算循环只占 1709（6%）。`toStringAsFixed` 是 VM 内部的 double→string，Dart 侧绕不过去；账本已记录把它换成整数路径在 200k 随机值对拍下有 3 处取值不一致（`0.15` → `0.1` vs `0.2`、`-0.0` → `-0` vs `0`），**语义不等价，撤销**。
+
+结论：单元格路径剩余成本全在 VM 的 double 格式化里，与 2026-11-09 对 `fixed(decimals: 1)` 的结论一致；本轮不改代码，只修正「一半是 widget」这个过时判断，避免后续再把时间花在 widget 侧。
+
 ## 6. 后续会话推荐流程
 ``powershell
 git pull --ff-only
