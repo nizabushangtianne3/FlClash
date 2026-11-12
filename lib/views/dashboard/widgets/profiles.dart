@@ -261,10 +261,7 @@ class _ConfigStatsState extends ConsumerState<_ConfigStats>
       final counts? => profileStatsOf(counts, providers),
       null => null,
     };
-    final figure = DashboardText.figure(
-      context,
-      widget.figure,
-    ).copyWith(letterSpacing: 0);
+    final figure = DashboardText.flatFigure(context, widget.figure);
     final label = DashboardText.label(context);
     Widget item(int? value, String name) => Column(
       mainAxisSize: MainAxisSize.min,
@@ -320,10 +317,7 @@ class _UsageMeter extends StatelessWidget {
       children: [
         LayoutBuilder(
           builder: (context, constraints) {
-            final percent = DashboardText.figure(
-              context,
-              figure,
-            ).copyWith(letterSpacing: 0);
+            final percent = DashboardText.flatFigure(context, figure);
             final unit = DashboardText.unit(context, AppTextStyle.footnote);
             final used = ' ${context.appLocalizations.usedShort}';
             final traffic =

@@ -62,10 +62,7 @@ class IntranetIpCard extends ConsumerWidget {
             radius: 20,
             icon: 38,
           );
-    final style = DashboardText.figure(
-      context,
-      figure.style,
-    ).copyWith(letterSpacing: 0);
+    final style = DashboardText.flatFigure(context, figure.style);
     final address = localIp == null || localIp.isEmpty
         ? null
         : allowLan

@@ -163,6 +163,14 @@ abstract final class DashboardText {
       .toTabular
       .copyWith(color: color, letterSpacing: -0.02 * style.size);
 
+  /// The figure of a slot that lets the digits own their width, tracking
+  /// included: the two [copyWith]s an open tracker "flattens" back to zero go.
+  static TextStyle flatFigure(
+    BuildContext context,
+    AppTextStyle style, {
+    Color? color,
+  }) => style.of(context, emphasized: true).toTabular.copyWith(color: color);
+
   static TextStyle unit(
     BuildContext context, [
     AppTextStyle style = AppTextStyle.subheadline,

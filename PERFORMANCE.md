@@ -1478,6 +1478,29 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 验证：`test/views/dashboard` 175 例全绿；`test/models test/views test/features test/providers test/widgets` 2639 例全绿；`test/core test/common` 1158 过 / 5 失败，失败集与 2026-11-12 上一轮逐字相同（4 个 Linux-only `mitm_trust` + 1 个 `window` 探针），stash 掉本轮改动的干净 HEAD 上同样失败。`dart format` 0 changed，`dart analyze lib` 0 error / 0 warning。新基建：`test/views/dashboard/dashboard_colors_benchmark_test.dart`（`@Skip` 惯例）、`test/views/dashboard/rebuild_card_benchmark_test.dart`（未采用，仪表盘整卡 pump 依赖过多全局状态，形状不成立）、`test/models/record_offer_benchmark_test.dart`（否决方向的证据）。
 
 ## 6. 后续会话推荐流程
+### 2026-11-12 仪表盘 figure 免二次 flatten 轮次（已落地，含一次 CI 假阳性归因）
+
+**否决方向**：`dashboardCount` 每次 **615.29ns**（`dashboard_count_benchmark_test.dart`，9 个数值 x20000 次，同进程 JIT），即 `NumberFormat.decimalPattern('en').format` 的成本。它只有 3 个调用点，全在卡片数字上（`connection_stats.dart:81`、`connections_table.dart:459`、`profiles.dart:274`），更新频率 1Hz 上下，合计约 1.8us/s。按 15% 门槛判定为不值得改，**不改**；手写 `< 100000` 分组或按值缓存都会引入第二套格式规则（字距这类细节由 intl 负责），收益量级不配一次正确性风险。基准连同否认结论一并留在仓库内（`@Skip`）。
+
+**落地方向**：五处调用方拿到 `DashboardText.figure(...)` 后立刻 `.copyWith(letterSpacing: 0)`。而 `AppTextStyle.of()` 自己就把 `letterSpacing` 赋成 0（`plugins/prism_ui/lib/typography.dart` 的 `_apply`），也就是说那五处各自多付了两整步 `TextStyle.copyWith`（一次来自 `figure` 内部的 `toTabular`，一次来自外层的 flatten），只为撤销一次从来没生效的写入。这是纯粹的无效代码，既不是兼容也不是历史包袱。
+
+改法：`DashboardText` 增加 `flatFigure(context, style, {color})`——同一个 `style.of(context, emphasized: true).toTabular` 的产物，只是不再填那次无人认领的负字距。五个调用点（`connection_stats.dart:83`、`intranet_ip.dart:65`、`current_outbound.dart:318`、`profiles.dart:264` 与 `profiles.dart:323`）全部换成新签名；`DashboardText.figure` 保留给需要负字距的调用方（`traffic.dart`、`proxy_groups.dart`、`memory_info.dart`）。
+
+配对实测（`test/views/dashboard/dashboard_text_benchmark_test.dart`，200000 次，同进程 JIT，三轮）：
+
+| 读法 | ns/次 |
+|---|---|
+| `figure`（含内部负字距） | 430-517 |
+| `figure(...).copyWith(letterSpacing: 0)`（改前五处的形状） | 329-403 |
+| `flatFigure`（改后） | **292-308** |
+
+即五处各免约 35-95ns 与一次 `copyWith` 分配。金额虽小，但它是无效代码，清掉不付任何正确性代价。
+
+**CI 假阳性归因**：用户报"go core 又失败了"。查 run `43154924662` / `43153765911`（main 上最近两次失败）：`Go core` job 六个步骤全 success，失败的是 **`Dart` job 的 "Check format"**，`Analyze` 与 `Run tests` 全部 skip。失败时工作区里有一个未加 `@Skip` 的探针文件 `dashboard_count_benchmark_test.dart`，`dart format` 把它判为需重排（它是 LF 行尾，与仓库其余文件不同）。本机 `dart format --set-exit-if-changed` 改前同样复现、修后归零。**模式**：本机新写的探针若不立即按仓库惯例打上文件顶部 `@Skip('Manual performance benchmark')`，push 后 CI 的 Dart job 必红，Go core 并无问题。账本此前的既有 Go 侧失败（2026-11-11 的 gofmt / int64 漂移）已由 `05f5e29e` 修掉，本轮无关。
+
+验证：`test/views/dashboard` 176 例全绿（两个 `@Skip` 探针运行期为 skip）；`test/models test/views test/features test/providers test/widgets` **2640 例全绿**；`dart format` 0 changed，`dart analyze lib` 0 error / 0 warning。新基建：`test/views/dashboard/dashboard_text_benchmark_test.dart`（`@Skip` 惯例，三段数字）、`test/views/dashboard/dashboard_count_benchmark_test.dart`（`@Skip` 惯例，否决方向证据）。
+
+## 6. 后续会话推荐流程
 ### 2026-11-12 代理列表行高一次性化轮次（已落地，含两轮 Go 侧否决）
 
 **否决方向一**：`RecordFilterController.offer()` 的 `selected` 列表（详见上一节，占 `offer` 总量 2.2%）。

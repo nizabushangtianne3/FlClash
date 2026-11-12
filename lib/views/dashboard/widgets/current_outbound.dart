@@ -315,11 +315,11 @@ class _ExitRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = context.colorScheme;
-    final style = DashboardText.figure(
+    final style = DashboardText.flatFigure(
       context,
       metrics.ip,
       color: active ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
-    ).copyWith(letterSpacing: 0);
+    );
     final info = this.info;
     final appLocalizations = context.appLocalizations;
     final Widget ip = info != null
