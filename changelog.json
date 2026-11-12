@@ -2,6 +2,39 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "1.0.7",
+      "tag": "v1.0.7",
+      "date": "2026-11-12",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "6e83280",
+              "scope": "build",
+              "text": "Pin core Go files to LF so gofmt passes in CI"
+            }
+          ]
+        },
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "7d328ac",
+              "scope": "dart",
+              "text": "Close the traffic update loop"
+            },
+            {
+              "id": "d2b19f9",
+              "scope": "dart",
+              "text": "Keep the connection table ordered by its start"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.6",
       "tag": "v1.0.6",
       "date": "2026-11-12",

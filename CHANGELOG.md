@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.0.7 (2026-11-12)
+
+**Bug Fixes**
+
+- **build** Pin core Go files to LF so gofmt passes in CI (6e83280)
+
+**Performance**
+
+- **dart** Close the traffic update loop (7d328ac)
+- **dart** Keep the connection table ordered by its start (d2b19f9)
+
 ## v1.0.6 (2026-11-12)
 
 **Bug Fixes**
