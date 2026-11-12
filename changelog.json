@@ -2,6 +2,64 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "1.0.9",
+      "tag": "v1.0.9",
+      "date": "2026-11-12",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "fc42bc1",
+              "scope": "prefs",
+              "text": "Bound the delay map by what it serializes to"
+            }
+          ]
+        },
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "b051474",
+              "scope": "proxies",
+              "text": "Memoize the emoji scan a row rebuild pays for"
+            },
+            {
+              "id": "75f497f",
+              "scope": "dashboard",
+              "text": "Read the dashboard colors off a held scheme"
+            },
+            {
+              "id": "d0870f2",
+              "scope": "dashboard",
+              "text": "Stop flattening a figure that is already flat"
+            },
+            {
+              "id": "97dfa64",
+              "scope": "proxies",
+              "text": "Read a group's row height once per build"
+            },
+            {
+              "id": "fcb604b",
+              "scope": "dashboard",
+              "text": "Hold the color roles on the scheme they came from"
+            },
+            {
+              "id": "569086f",
+              "scope": "dashboard",
+              "text": "Let the card table read a feed from its end"
+            },
+            {
+              "id": "b5b2c38",
+              "scope": "connections",
+              "text": "Copy the ordered table only when a sample moves it"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.8",
       "tag": "v1.0.8",
       "date": "2026-11-12",
