@@ -1496,45 +1496,47 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 
 **实测**：`of(context)` 单次约 251ns、`Theme.of` 单次查找约 427ns（均已由 `fcb604bd` 那轮钉住）。本轮 15 处中 11 个 build 每次只调一次（省的就是那次 `Theme.of` 查找，约 427ns），4 处同 build 内两次（`profiles.dart` 的 warn+tone2、`proxy_groups.dart` 的 card+tone、`outbound_mode.dart`、`traffic.dart`）。仪表盘整页重放的收益是每 build 数百纳秒量级——金额小，但这批位置本来就该持有一个 scheme，属于把 `fcb604bd` 的结论收口。
 ## 6. 后续会话推荐流程
-### 2026-11-13 delay map persistence bounded (bug fix, with crash attribution)
+### 2026-11-13 延迟表持久化有界化（bug 修复，含崩溃归因）
 
-Symptom: FlClash on Windows exits by itself about three minutes after opening. Event log evidence:
+**症状**：用户报告 Windows 上 FlClash 打开约 3 分钟后自行退出。事件日志实证：
 
+```text
 11/13/2026 05:01:58  FlClash.exe 1.0.8.226
-  faulting module: flutter_windows.dll
-  exception code: 0xc0000409 (STATUS_STACK_BUFFER_OVERRUN)
-11/13/2026 05:02:03  Windows Error Reporting  BEX64
+  错误模块: flutter_windows.dll
+  异常代码: 0xc0000409 (STATUS_STACK_BUFFER_OVERRUN)
+11/13/2026 05:02:03  Windows Error Reporting  事件名称: BEX64
+```
 
-Attribution chain, all from git rather than inference:
+**归因链**（全部 git 实证，非推测）：
 
-1. 31b2063a (11-04) started persisting the delay map into shared_preferences. Upstream chen08209/FlClash never has: its preferences.dart has no delay read or write at all.
-2. bbb2958b (10-16) had two cleanups: invalidateDelayTests() in core_manager.dart on provider reload, and value = {} at the head of setup.dart fullSetup().
-3. 6c411bc5 (11-07, merge upstream v0.9.3) removed the first; 2e88bad4 (11-07) removed the second, and its comment states the reason, that delay results persist across profile switches. That is a deliberate product decision and setup_action_test.dart guards it.
-4. Both cleanups hang off lifecycle events only, and never fire when a batch of new node delays is written into the map. The import at 04:53 brought in fifty thousand nodes; setDelays appended them and no cleanup point was hit.
-5. Measured fault data: shared_preferences.json totals 2,588,257 bytes, of which flutter.delay_map holds 51,757 proxy names under one testUrl, about 2.2MB. _delayPersistInterval then json-encodes the whole table every two seconds and AtomicFilePreferencesStore replaces the whole preferences file atomically.
-6. Two seconds before the crash, at 05:01:56, that 2.5MB write is exactly the last activity before the process died.
+1. `31b2063a`(11-04) 把 delay map 落进 shared_preferences，这是本 fork 自加功能；上游 `chen08209/FlClash` 从未持久化该表，其 `preferences.dart` 无任何 delay 读写。
+2. `bbb2958b`(10-16) 原本有两处清理：`core_manager.dart` 的 `invalidateDelayTests()`（provider 重载时）、`setup.dart` `fullSetup()` 开头的 `value = {}`。
+3. `6c411bc5`(11-07, merge upstream v0.9.3) 使前者消失；`2e88bad4`(11-07) 使后者消失，注释写明理由是「delay results persist across profile switches」——这是有意的产品决策，且 `setup_action_test.dart` 有测试保护。
+4. 两处清理都只挂生命周期事件，从不在「一批新节点延迟写进 map」时触发。用户 04:53 导入 5 万节点订阅，`setDelays` 直接追加，没有任何清理点命中。
+5. 故障数据实测：`shared_preferences.json` 共 2,588,257 字节，其中 `flutter.delay_map` 单个 testUrl 下 **51,757** 条代理名，约 2.2MB。`_delayPersistInterval` 每 2 秒将整表 `json.encode` 后经 `AtomicFilePreferencesStore` 原子替换整个偏好文件。
+6. 崩溃前 2 秒（05:01:56）正是那次 2.5MB 写盘，随后进程死亡。
 
-Fix: bound the delay map by what it serializes to, with the same function on both the read and the write path.
+**修复**：按序列化字节数给 delay map 设界，读写两侧同一函数。
 
-- lib/common/preferences.dart gains _delayMapMaxBytes = 512 << 10 and _delayMapMaxUrls = 32. _boundedDelayMap trims from the oldest end to fit the serialized budget. It is bounded by bytes rather than rows because measured names run 5 to 48 characters and average 43 bytes, so a row cap varies sixfold across subscriptions.
-- getDelayMap now rewrites the oversized store in place. Before it only shrank the copy in memory, so 35MB of stale data stayed on disk until the next save, and decoding that payload is what the read path paid for.
-- saveDelayMap passes through the same bound, so any path that grows the map converges on the next persist.
+- `lib/common/preferences.dart` 新增 `_delayMapMaxBytes = 512 << 10`、`_delayMapMaxUrls = 32`，`_boundedDelayMap` 从最旧端裁剪到序列化预算内。按字节而非条数定界，因为实测条目名长 5–48 字符、平均 43 字节，条数上限在不同订阅间差 6 倍。
+- `getDelayMap` 现在读到超限数据时就地重写盘上内容：原先只收缩内存，35MB 坏数据会一直躺在盘上等下次保存才缩，而解码该载荷正是读路径的开销。
+- `saveDelayMap` 同样过 `_boundedDelayMap`，任何路径长肥都会在下次持久化时收敛。
 
-Measured with test/common/delay_map_bound_benchmark_test.dart, a skipped manual probe in the same process:
+**实测**（`test/common/delay_map_bound_benchmark_test.dart`，`@Skip` 手工探针，同进程 JIT）：
 
-| case | unbounded | bounded | ratio |
+| 场景 | 无界序列化 | 有界后落盘 | 收敛比 |
 |---|---|---|---|
-| 1,000 names | 29,602 B | 29,602 B | 100.0%, untouched inside budget |
-| 51,757 names, this crash's payload | 1,731,180 B | 213,838 B | 12.4% |
-| 200,000 names | 6,953,292 B | 213,838 B | 3.1% |
+| 1,000 名 | 29,602 B | 29,602 B | 100.0%（预算内不动） |
+| 51,757 名（本次崩溃载荷） | 1,731,180 B | 213,838 B | **12.4%** |
+| 200,000 名 | 6,953,292 B | 213,838 B | **3.1%** |
 
-So this incident's write payload drops from 2.5MB to 213KB, and the two-second persist cost falls by an order of magnitude.
+即本次事故的写盘载荷从 2.5MB 降到 213KB，每 2 秒的持久化成本随之降一个数量级。
 
-Scope rejected this round: pruning by the current config. ConfigCounts holds counts only, not proxy names, so a real list needs a change to when reads happen on the groups provider, and it would change which delay numbers the user sees, a visible semantic. The bound already removes 87.6% of the crash payload, so the risk is not worth the remainder. If the remaining 213KB of history is ever to go, the direction is a whitelist against group.all inside setDelays, not a change to the providers.
+**一处分层否决**：一度考虑进一步「按当前配置裁剪」——`ConfigCounts` 只存数量不存代理名，要拿真实名单必须改 groups provider 的读取时机，且会改变「哪些延迟数字该显示」这一用户可见语义。有界层已能将崩溃载荷压掉 87.6%，语义改动风险不抵剩余收益，**本轮不做**；若后续要消除 213KB 的历史垃圾，方向是在 `setDelays` 时按 `group.all` 的现存名单做白名单，而非动 providers 链路。
 
-Tests: test/common/preferences_test.dart gains 5 cases (bounded on save, oversized store shrinks on read, untouched inside budget, oldest names dropped past the byte budget, oldest urls dropped past the url cap) and keeps the earlier 3, 26 green in total.
+**测试**：`test/common/preferences_test.dart` 新增 5 例（超限收敛、盘上超限读时即缩、预算内不重写、按字节丢最旧名、按上限丢最旧 url）+ 保留原有 3 例，共 26 例全绿。
 
-Verification: test/common 957 pass / 5 fail, the same failure set as a clean HEAD, 4 Linux-only mitm_trust plus 1 window probe; test/providers and test/models 900 green; the full run over models, views, features, providers, widgets, common, ui, database, enum and manager reaches 3,869 with only those 5 environment-bound failures. dart format 0 changed, dart analyze lib 0 error / 0 warning.
+**验证**：`test/common` 957 过 / 5 失败，失败集与干净 HEAD 逐字相同（4 个 Linux-only `mitm_trust` + 1 个 `window` 探针）；`test/providers test/models` 900 例全绿；`test/models test/views test/features test/providers test/widgets test/common test/ui test/database test/enum test/manager` 3869 例，仅上述 5 例环境相关失败。`dart format` 0 changed，`dart analyze lib` 0 error / 0 warning。
 
 ### 2026-11-13 代理名单 emoji 扫描记忆化轮次（已落地，含一次语义实测归因）
 
