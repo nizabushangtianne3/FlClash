@@ -67,7 +67,7 @@ class _GroupIcon extends StatelessWidget {
       padding: EdgeInsets.all(inset),
       clipBehavior: Clip.antiAlias,
       decoration: ShapeDecoration(
-        color: DashboardColors.of(context).tone2,
+        color: DashboardColors.ofScheme(colorScheme).tone2,
         shape: AppShape.all(radius).copyWith(
           side: ring == null
               ? BorderSide.none
@@ -173,7 +173,7 @@ class _GroupsEmpty extends ConsumerWidget {
         children: [
           ShapeBadge(
             shape: MaterialShapes.cookie9Sided,
-            color: DashboardColors.of(context).tone,
+            color: DashboardColors.ofScheme(colorScheme).tone,
             size: 64,
             child: GlyphIcon(
               AppGlyphs.layers,

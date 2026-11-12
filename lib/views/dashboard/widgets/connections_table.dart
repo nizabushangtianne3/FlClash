@@ -600,7 +600,7 @@ class _TableState<T> extends ConsumerState<_Table<T>>
             items.length * rowHeight + 2 > constraints.maxHeight - headerHeight;
         final shape = AppShape.all(DashboardCorner.tableHeader);
         final fill = ShapeDecoration(
-          color: DashboardColors.of(context).tone,
+          color: DashboardColors.ofScheme(colorScheme).tone,
           shape: shape,
         );
         final body = PrismListView(
@@ -963,7 +963,7 @@ class _DnsResult extends StatelessWidget {
         query.rcode,
         style: AppTextStyle.footnote
             .of(context, emphasized: true)
-            .copyWith(color: DashboardColors.of(context).warn),
+            .copyWith(color: DashboardColors.ofScheme(colorScheme).warn),
       );
     }
     final answer = query.answers.firstOrNull ?? '—';
@@ -975,7 +975,7 @@ class _DnsResult extends StatelessWidget {
             margin: const EdgeInsetsDirectional.only(end: 6),
             padding: const EdgeInsets.symmetric(horizontal: 6),
             decoration: ShapeDecoration(
-              color: DashboardColors.of(context).tone,
+              color: DashboardColors.ofScheme(colorScheme).tone,
               shape: AppShape.full,
             ),
             child: Center(

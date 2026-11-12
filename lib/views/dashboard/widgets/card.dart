@@ -62,12 +62,14 @@ class DashboardCard extends StatelessWidget {
       child: child,
     );
     final onTap = this.onTap;
+    // One theme lookup answers both roles below.
+    final scheme = Theme.of(context).colorScheme;
     final card = Container(
       clipBehavior: clipBehavior,
       decoration: ShapeDecoration(
-        color: DashboardColors.of(context).card,
+        color: DashboardColors.ofScheme(scheme).card,
         shape: shape,
-        shadows: DashboardShadows.e1(context),
+        shadows: DashboardShadows.e1Of(scheme),
       ),
       foregroundDecoration: side == BorderSide.none
           ? null
@@ -450,7 +452,7 @@ class DashboardChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = context.colorScheme;
-    final colors = DashboardColors.of(context);
+    final colors = DashboardColors.ofScheme(colorScheme);
     final (background, foreground) = switch (tone) {
       DashboardChipTone.idle => (colors.tone, colorScheme.onSurfaceVariant),
       DashboardChipTone.ok => (colors.okContainer, colors.onOkContainer),
@@ -713,7 +715,7 @@ class DashboardSwitchRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = context.colorScheme;
-    final colors = DashboardColors.of(context);
+    final colors = DashboardColors.ofScheme(colorScheme);
     final glyphSize = iconSize * 0.5;
     return DashboardBlock(
       radius: radius,

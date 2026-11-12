@@ -539,7 +539,7 @@ class _AddRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = context.colorScheme;
-    final colors = DashboardColors.of(context);
+    final colors = DashboardColors.ofScheme(colorScheme);
     final label = item.label(context);
     final description = item.description(context);
     return Container(

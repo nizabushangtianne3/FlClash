@@ -227,7 +227,7 @@ class _MemorySummary extends StatelessWidget {
       (
         label: appLocalizations.core,
         bytes: memory.coreTotal,
-        color: DashboardColors.of(context).series2,
+        color: DashboardColors.ofScheme(colorScheme).series2,
       ),
     ];
     return Column(
@@ -552,7 +552,7 @@ class _MemoryOverview extends StatelessWidget {
               (bytes: snapshot.app, color: colorScheme.primary),
               (
                 bytes: snapshot.coreTotal,
-                color: DashboardColors.of(context).series2,
+                color: DashboardColors.ofScheme(colorScheme).series2,
               ),
             ],
           ),

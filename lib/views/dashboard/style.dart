@@ -20,10 +20,18 @@ class DashboardColors {
     required this.onWarnContainer,
   });
 
-  factory DashboardColors.of(BuildContext context) {
-    final colorScheme = context.colorScheme;
+  factory DashboardColors.of(BuildContext context) =>
+      DashboardColors.ofScheme(context.colorScheme);
+
+  /// The roles are a pure function of the scheme and every card asks for them
+  /// once a build, so the answer hangs on the scheme it was built from.
+  factory DashboardColors.ofScheme(ColorScheme colorScheme) {
+    final cached = _cachedColors[colorScheme];
+    if (cached != null) {
+      return cached;
+    }
     final card = SurfaceLevel.card.colorOf(colorScheme);
-    return DashboardColors._(
+    return _cachedColors[colorScheme] = DashboardColors._(
       page: SurfaceLevel.page.colorOf(colorScheme),
       card: card,
       tone: SurfaceLevel.block.colorOf(colorScheme),
@@ -43,6 +51,7 @@ class DashboardColors {
     );
   }
 
+  static final _cachedColors = Expando<DashboardColors>();
   final Color page;
   final Color card;
 
@@ -64,11 +73,15 @@ class DashboardColors {
 /// Flutter turns a blur radius r into a sigma of 0.577 r + 0.5, so each one
 /// goes through [_blur] or it renders a third heavier.
 abstract final class DashboardShadows {
-  static List<BoxShadow> e1(BuildContext context) =>
-      context.colorScheme.brightness == Brightness.dark ? _e1Dark : _e1Light;
+  static List<BoxShadow> e1Of(ColorScheme colorScheme) =>
+      colorScheme.brightness == Brightness.dark ? _e1Dark : _e1Light;
 
-  static List<BoxShadow> e2(BuildContext context) =>
-      context.colorScheme.brightness == Brightness.dark ? _e2Dark : _e2Light;
+  static List<BoxShadow> e1(BuildContext context) => e1Of(context.colorScheme);
+
+  static List<BoxShadow> e2(BuildContext context) => e2Of(context.colorScheme);
+
+  static List<BoxShadow> e2Of(ColorScheme colorScheme) =>
+      colorScheme.brightness == Brightness.dark ? _e2Dark : _e2Light;
 
   static BoxShadow _shadow(
     int alpha,

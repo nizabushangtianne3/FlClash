@@ -238,7 +238,7 @@ class VpnCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final appLocalizations = context.appLocalizations;
     final colorScheme = context.colorScheme;
-    final colors = DashboardColors.of(context);
+    final colors = DashboardColors.ofScheme(colorScheme);
     final enabled = ref.watch(
       vpnSettingProvider.select((state) => state.enable),
     );

@@ -90,7 +90,7 @@ class _CurrentOutboundCardState extends ConsumerState<CurrentOutboundCard>
     final metrics = _OutboundMetrics.of(density);
     final appLocalizations = context.appLocalizations;
     final colorScheme = context.colorScheme;
-    final colors = DashboardColors.of(context);
+    final colors = DashboardColors.ofScheme(colorScheme);
     final (chipLabel, chipTone) = suspended
         ? (appLocalizations.suspended, DashboardChipTone.warn)
         : isStart
@@ -539,7 +539,7 @@ class _CountryBadgeState extends State<_CountryBadge>
     final tooltip = context.appLocalizations.retry;
     final color = Color.alphaBlend(
       foreground.withValues(alpha: enabled && _hovered ? 0.08 : 0),
-      DashboardColors.of(context).tone2,
+      DashboardColors.ofScheme(colorScheme).tone2,
     );
     return Tooltip(
       message: tooltip,
@@ -774,7 +774,7 @@ class _StartToggleState extends ConsumerState<_StartToggle>
     final enabled = widget.enabled;
     final fill = enabled
         ? colorScheme.primary
-        : DashboardColors.of(context).tone2;
+        : DashboardColors.ofScheme(colorScheme).tone2;
     final ink = enabled ? colorScheme.onPrimary : colorScheme.onSurfaceVariant;
     final tooltip = widget.suspended
         ? appLocalizations.suspended

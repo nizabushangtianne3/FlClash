@@ -1455,6 +1455,28 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 
 验证：`test/views test/providers` 1163 例全绿；全量 `test/models test/views test/features test/providers test/core test/common test/widgets` 3813 例通过，仅 5 例失败且**与本轮无关**——`test/common/mitm_trust_test.dart`（4 例）与 `test/common/window_test.dart`（1 例）在把本轮改动 stash 掉后的干净 HEAD 上同样失败，属 Windows 主机跑 Linux/窗口平台探针的既有环境性失败；`dart format` 0 changed，`dart analyze` 0 error / 0 warning。
 
+### 2026-11-12 仪表盘颜色持有者按 scheme 缓存轮次（已落地，含一轮否决）
+
+**否决方向**：`RecordFilterController.offer()` 每轮为每个 offered facet 构造 `selected` 列表（`[for (final filter in filters) if (filter.kind == facet.kind) filter.value]`）。实测（`test/models/record_offer_benchmark_test.dart`，500 行 ×2000 次，同进程 JIT）：整个 `offer` 43.05µs（logs 表 29.08µs），而逐 facet 构造 `selected` 列表只占 **0.95µs（requests 表的 2.2%）**。离 15% 判定门槛太远，**不改**；方向本身成立（filters 为空时可免），但收益量级不配一次签名变更。
+
+**落地方向**：`DashboardColors.of(context)` 每卡每次 build 都重算，而 30 个调用点全在 build 里。配对实测（`test/views/dashboard/dashboard_colors_benchmark_test.dart`，200000 次，同进程 JIT）：
+
+| 读法 | ns/次 |
+|---|---|
+| `DashboardColors.of(context)`（改前） | 396–411 |
+| `Theme.of(context).colorScheme` 单次查找 | 427 |
+| 三次读 theme，每次都查 | **1112–1140** |
+| 三次读 theme，本地持有 scheme | 144–152 |
+| 按 scheme 缓存后的 holder 读取 | **24** |
+
+两条结论：（1）颜色构造不是瓶颈，`Theme.of` 的继承查找才是；（2）真正的浪费是同一 build 里重复查 theme——三次读 1112ns vs 持有 scheme 155ns，**7.7 倍**。
+
+改法两段。其一：`DashboardColors.ofScheme(ColorScheme)` 新增，结果按 scheme 挂在 `Expando` 上（颜色角色是 scheme 的纯函数，主题切换即换 key），`of(context)` 保留签名转调，30 个调用点零改动受益——**396 → 251ns**。其二：把已持有 `colorScheme` 的 build 里的 `of(context)` 换成 `ofScheme(colorScheme)`，消掉重复查找，涉及 `card.dart`（`DashboardCard`/`DashboardChip`/`DashboardSwitchRow`）、`connections_table.dart`、`proxy_groups.dart`、`memory_info.dart`、`current_outbound.dart`、`network_takeover.dart`、`edit.dart` 七文件 12 处。`DashboardShadows.e1/e2` 同步加 `Of(scheme)` 变体（它本就返回静态常量，只是别再查一次 theme）。
+
+**教训**：用 PowerShell 全文替换 `DashboardColors.of(context)` 时误伤了 `connections_table.dart:741` 的 `_Source`（那个 build 没有 scheme 局部变量），由编译期报错抓住，回退该行。逐点改时必须核对每处所属的 build 是否真的持有 scheme。
+
+验证：`test/views/dashboard` 175 例全绿；`test/models test/views test/features test/providers test/widgets` 2639 例全绿；`test/core test/common` 1158 过 / 5 失败，失败集与 2026-11-12 上一轮逐字相同（4 个 Linux-only `mitm_trust` + 1 个 `window` 探针），stash 掉本轮改动的干净 HEAD 上同样失败。`dart format` 0 changed，`dart analyze lib` 0 error / 0 warning。新基建：`test/views/dashboard/dashboard_colors_benchmark_test.dart`（`@Skip` 惯例）、`test/views/dashboard/rebuild_card_benchmark_test.dart`（未采用，仪表盘整卡 pump 依赖过多全局状态，形状不成立）、`test/models/record_offer_benchmark_test.dart`（否决方向的证据）。
+
 ## 6. 后续会话推荐流程
 ``powershell
 git pull --ff-only
