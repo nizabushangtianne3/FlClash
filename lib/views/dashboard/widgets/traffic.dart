@@ -108,17 +108,6 @@ class SpeedCard extends ConsumerWidget {
     final compact = density.isCompact;
     final scale = DashboardDensityScope.scaleOf(context);
     final padding = dashboardCardPadding(density);
-    final appLocalizations = context.appLocalizations;
-    final traffics = ref.watch(trafficsProvider);
-    final total = ref.watch(
-      totalTrafficProvider.select((state) => direction.of(state)),
-    );
-    final current = direction.of(traffics.list.safeLast(const Traffic()));
-    final peak = traffics.list.fold<num>(
-      0,
-      (peak, traffic) => math.max(peak, direction.of(traffic)),
-    );
-    final speed = current.traffic;
     return DashboardCard(
       padding: EdgeInsets.zero,
       semanticLabel: direction.labelOf(context),
@@ -131,7 +120,12 @@ class SpeedCard extends ConsumerWidget {
             bottom: -_chartBleed,
             height: compact ? 62 : 88,
             child: RepaintBoundary(
-              child: _SpeedChart(direction: direction, traffics: traffics),
+              child: Consumer(
+                builder: (context, ref, _) => _SpeedChart(
+                  direction: direction,
+                  traffics: ref.watch(trafficsProvider),
+                ),
+              ),
             ),
           ),
           Padding(
@@ -155,39 +149,96 @@ class SpeedCard extends ConsumerWidget {
                         style: DashboardText.cardTitle(context),
                       ),
                       Expanded(
-                        child: Text(
-                          appLocalizations.trafficPeak(
-                            '${dashboardTraffic(peak)}/s',
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.end,
-                          style: DashboardText.label(context),
-                        ),
+                        child: _SpeedPeak(direction: direction),
                       ),
                     ],
                   ),
                 ),
                 SizedBox(height: compact ? 6 : 10),
-                _Figure(
-                  show: speed,
-                  unit: _speedUnit(speed),
-                  style: compact
-                      ? AppTextStyle.largeTitle
-                      : AppTextStyle.display,
+                _SpeedFigure(
+                  direction: direction,
+                  style: compact ? AppTextStyle.largeTitle : AppTextStyle.display,
                   unitStyle: AppTextStyle.subheadline,
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  appLocalizations.trafficTotal(dashboardTraffic(total)),
-                  maxLines: 1,
-                  style: DashboardText.label(context),
-                ),
+                _SpeedTotal(direction: direction),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The peak over the charted window. Only the label rebuilds when it moves.
+class _SpeedPeak extends ConsumerWidget {
+  const _SpeedPeak({required this.direction});
+
+  final TrafficDirection direction;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final peak = ref.watch(
+      trafficsProvider.select(
+        (state) => state.list.fold<num>(
+          0,
+          (peak, traffic) => math.max(peak, direction.of(traffic)),
+        ),
+      ),
+    );
+    return Text(
+      context.appLocalizations.trafficPeak('${dashboardTraffic(peak)}/s'),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.end,
+      style: DashboardText.label(context),
+    );
+  }
+}
+
+class _SpeedFigure extends ConsumerWidget {
+  const _SpeedFigure({
+    required this.direction,
+    required this.style,
+    required this.unitStyle,
+  });
+
+  final TrafficDirection direction;
+  final AppTextStyle style;
+  final AppTextStyle unitStyle;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(
+      trafficsProvider.select(
+        (state) => direction.of(state.list.safeLast(const Traffic())),
+      ),
+    );
+    final speed = current.traffic;
+    return _Figure(
+      show: speed,
+      unit: _speedUnit(speed),
+      style: style,
+      unitStyle: unitStyle,
+    );
+  }
+}
+
+class _SpeedTotal extends ConsumerWidget {
+  const _SpeedTotal({required this.direction});
+
+  final TrafficDirection direction;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final total = ref.watch(
+      totalTrafficProvider.select((state) => direction.of(state)),
+    );
+    return Text(
+      context.appLocalizations.trafficTotal(dashboardTraffic(total)),
+      maxLines: 1,
+      style: DashboardText.label(context),
     );
   }
 }
