@@ -1418,15 +1418,15 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 
 ### 2026-11-12 DNS 查询页筛选 facet 单值化轮次（已落地）
 
-```dnsQueryFacets``` 的 initiator/cache/rcode 三个 facet 原来共用一段 ```for (final kind in ...)``` 循环，每个 facet 的 ```valuesOf``` 都要跑一遍 ```query.resultFilters```——那是一个为每行新建 ```List<RecordFilter>```（最多 3 个 ```RecordFilter``` 对象）的 getter，然后再为每个 facet 包一层 ```[for (final filter in ...)]``` 列表。DNS 查询页每 300ms 对全表 500 行 offer 一次，「筛选项」这个纯展示开销因此被付了整表建表的价钱。
+`dnsQueryFacets` 的 initiator/cache/rcode 三个 facet 原来共用一段 `for (final kind in ...)` 循环，每个 facet 的 `valuesOf` 都要跑一遍 `query.resultFilters`——那是一个为每行新建 `List<RecordFilter>`（最多 3 个 `RecordFilter` 对象）的 getter，然后再为每个 facet 包一层 `[for (final filter in ...)]` 列表。DNS 查询页每 300ms 对全表 500 行 offer 一次，「筛选项」这个纯展示开销因此被付了整表建表的价钱。
 
-改法：三个 facet 各自 ```RecordFacet.single```，直接读行上的字段（```query.initiator?.label ?? ''```、```query.cached ? l10n.cache : ''```、```query.hasFailureRcode ? query.rcode : ''```），语义逐条对齐 ```resultFilters``` 里的三条构造。计数与过滤两条路径都因此走单值快路，都不再分配。
+改法：三个 facet 各自 `RecordFacet.single`，直接读行上的字段（`query.initiator?.label ?? ''`、`query.cached ? l10n.cache : ''`、`query.hasFailureRcode ? query.rcode : ''`），语义逐条对齐 `resultFilters` 里的三条构造。计数与过滤两条路径都因此走单值快路，都不再分配。
 
 配对实测（500 行 ×4 个 offered facet，2000 次/轮，同进程 7 轮交替取中位）：**588.4µs → 186.2µs（-68.4%）**，复跑一轮 192.1µs。这是账本 Dart 侧记录里最大的单笔剩余成本（requests 页同形状只有 47µs，本项是它的 12 倍）。
 
-守护：```test/models/record_filter_test.dart``` 新增「a dns facet names exactly the value the result column renders」，把三个 facet 的 optionsOf 输出与行自身 ```resultFilters``` 的值集合对拍，钉住「筛选 chip 命名的值必须是结果列真的渲染的那个」，防止将来 facet 与渲染分叉。验证：```test/models test/views test/features``` 1019 例全绿，```dart format``` 0 changed，```dart analyze``` 0 error / 0 warning。
+守护：`test/models/record_filter_test.dart` 新增「a dns facet names exactly the value the result column renders」，把三个 facet 的 optionsOf 输出与行自身 `resultFilters` 的值集合对拍，钉住「筛选 chip 命名的值必须是结果列真的渲染的那个」，防止将来 facet 与渲染分叉。验证：`test/models test/views test/features` 1019 例全绿，`dart format` 0 changed，`dart analyze` 0 error / 0 warning。
 
-顺带修正：本轮实测暴露 ```resultFilters``` 在未加载 l10n 时会断言失败（```currentAppLocalizations``` 的 ```AppLocalizations.current``` 为 null），原 ```record_filter_test.dart``` 用的是裸 ```package:test``` 因此无法覆盖 DNS facet；已在测试侧加载 en delegate。
+顺带修正：本轮实测暴露 `resultFilters` 在未加载 l10n 时会断言失败（`currentAppLocalizations` 的 `AppLocalizations.current` 为 null），原 `record_filter_test.dart` 用的是裸 `package:test` 因此无法覆盖 DNS facet；已在测试侧加载 en delegate。
 
 
 ## 6. 后续会话推荐流程
