@@ -98,9 +98,9 @@ class Connections extends _$Connections {
     }
     // Both views of the table have to move together: [_rows] is what a keyed
     // lookup replaces, [_orderedRows] is what the app reads, and a map write
-    // does not reach the list the snapshot publishes.
-    final orderedRows = List<TrackerInfo>.of(_orderedRows);
-    var changed = false;
+    // does not reach the list the snapshot publishes. The list is copied only
+    // once a sample really moves a slot, so a table holding still is free.
+    List<TrackerInfo>? orderedRows;
     for (final entry in traffic.entries) {
       final row = _rows[entry.key];
       if (row == null) {
@@ -115,11 +115,10 @@ class Connections extends _$Connections {
       _rows[entry.key] = next;
       final slot = _slots[entry.key];
       if (slot != null) {
-        orderedRows[slot] = next;
+        (orderedRows ??= List<TrackerInfo>.of(_orderedRows))[slot] = next;
       }
-      changed = true;
     }
-    if (!changed) {
+    if (orderedRows == null) {
       return;
     }
     _orderedRows = orderedRows;

@@ -280,6 +280,23 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
   });
 
+  testWidgets('a sample that moves nothing publishes nothing', (tester) async {
+    final connections = await pumpLiveCard(tester, const Locale('en'));
+    final notifier = connections.read(connectionsProvider.notifier);
+    final before = notifier.state;
+    final row = before.connections.first;
+
+    notifier.updateTraffic(const {'not-a-row': (upload: 1, download: 1)});
+    notifier.updateTraffic({
+      row.id: (upload: row.upload, download: row.download),
+    });
+    notifier.updateTraffic(const {'not-a-row': (upload: 1, download: 1)});
+
+    expect(notifier.state, same(before));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 2));
+  });
+
   testWidgets('the card table takes its columns from the locale', (
     tester,
   ) async {

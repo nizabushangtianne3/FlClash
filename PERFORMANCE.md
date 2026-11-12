@@ -1428,6 +1428,22 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 
 顺带修正：本轮实测暴露 `resultFilters` 在未加载 l10n 时会断言失败（`currentAppLocalizations` 的 `AppLocalizations.current` 为 null），原 `record_filter_test.dart` 用的是裸 `package:test` 因此无法覆盖 DNS facet；已在测试侧加载 en delegate。
 
+### 2026-11-12 连接流量折叠免整表复制轮次（已落地）
+
+`Connections.updateTraffic` 每次调用都先 `List<TrackerInfo>.of(_orderedRows)` 把整张有序表复制一份，再遍历 traffic 样本找变化槽位；样本一个槽位都没推动时，这份复制纯属浪费（500 行表 = 500 个引用的 memmove）。真实场景里 Core 每秒上报的样本只有少数几行在动，多数轮次几乎是空转。本轮改成「只在第一次真正推动某个槽位时才复制」，无变化的样本直接返回，不分配也不发布新快照。
+
+配对实测（`connections_update_benchmark_test.dart`，500 行表 + 每轮 8 行变化 + 40 个查表未命中，5000 次/轮，同进程 JIT）：**3.46/3.54/3.74µs → 2.93/2.57/2.71µs（约 -21%）**。收益来自两处：省掉同一轮里对同一列表的重复复制，以及变化的槽位数少于全表时不再付全表代价。
+
+守护：`test/views/dashboard/connections_table_test.dart` 新增「a sample that moves nothing publishes nothing」，钉住「未命中任何行的样本与值未变的样本都不发布新快照」（`notifier.state` 保持同一实例）。这个用例在改动前必然失败——原实现无条件复制并发布。
+
+### 2026-11-12 帧读取器键分发改字面量比对轮次（实测否决，勿重做）
+
+曾假设 `_readRow`/`_readMetadata` 的字段分发里 `final key = _readString()` 会为每个键名物化一个 String，而文件里的 `_skipKeyIs(literal)` 正好免掉这次分配，于是把两处最热的行/metadata 读取器改成 18+10 段的 `_skipKeyIs` 链（含逃生分支 `_readString()` 保留非字面量键的语义，`event_json_test.dart` 的「an escaped spelling of a key keeps reaching its field」正是为此而存在）。
+
+配对实测（`event_row_parse_benchmark_test.dart`，500 行 connections 快照帧 ×500 次，同进程 7 轮交替取中位）：**1795/1767/1826µs → 1828/1860/1876/1877/1841/1858/1906µs（+4~5%，方向在 7 轮里完全一致）**。结论：Dart 的 `switch (String)` 是一次跳表/哈希查表，代价与键字符串的物化无关；而 18 个分支的 `_skipKeyIs` 链平均要做约 9 次 `startsWith` 逐字面量比较，反而更贵。这正好复核了 `event_json.dart` 顶部 2026-11-11 留下的既有结论（「a field name goes through one string switch: the table lookups it used to walk cost more than the comparisons they avoided」），本轮把它从 log 读取器扩展证实到最热的行/metadata 路径。**改动已撤销**，`lib/core/event_json.dart` 回到 HEAD 版本。
+
+新基建保留：`test/core/event_row_parse_benchmark_test.dart` 是账本里第一个覆盖 connections 快照帧解析的基准（既有 `event_parse_benchmark_test.dart` 只测 log/loaded，完全不碰每行 18 个字段的 metadata），后续衡量帧读取路径的改动都以它为配对基准。
+
 
 ## 6. 后续会话推荐流程
 ``powershell
