@@ -1,2 +1,9 @@
 # freezed emits lines of trailing spaces, and generated code is never edited by hand.
 lib/**/generated/** -whitespace
+
+# gofmt rejects CRLF, and core.autocrlf=true would rewrite every core file on
+# Windows checkouts, so the CI Go core check failed on a clean Linux checkout.
+core/**/*.go text eol=lf
+core/Clash.Meta/**/*.go text eol=lf
+core/**/*.go text eol=lf
+core/Clash.Meta/**/*.go text eol=lf
