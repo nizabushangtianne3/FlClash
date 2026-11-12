@@ -1220,7 +1220,7 @@ feed flush 分解实测（每 300ms 窗口 400 日志 + 120 连接行 + 240 DNS 
 | `computeSort` 延迟排序（剩余） | 1000 节点：叶子直取后约 280µs/次（此前 424µs，见第 2 节本轮落地行）；`order` 列表 + `List.sort` + 结果列表是余量 | 「已有序免排序」快路已存在；`order`+结果双列表要省需 in-place 置换且不能改调用方列表（上次尝试写反已回退），先写语义测试再上基准 |
 | `fixed(decimals: 1)` 改整数路径（`traffic` 显示） | scratch 配对实测：141ns → 53ns（**-63%**），`dashboardTraffic` 176ns → ~88ns | **语义不等价，撤销**：200k 随机值 + 边界值对拍发现 3 处不一致——`0.15` 走 `toStringAsFixed(1)` 得 `0.1`，整数路径因 `0.15*10` 浮点向上进位得 `0.2`；`-0.0` 一边出 `-0` 一边出 `0`。显示的字节数不能为性能改变取值；若只在 `size == size.truncateToDouble()`（整除）时走整数路径则安全，但流量值多非整除、收益有限，未做 |
 | 表格行单元格构建（`toUpperCase`、时长文本、`dashboardTraffic` 格式化与单元格 widget） | `test/widgets/row_cells_benchmark_test.dart` JIT n=5（500 行 ×500 次 `RecordTable.cellsOf`）：约 1.40µs/行，其中约一半是 `traffic`/`trackerDurationText` 的字符串格式化，约一半是单元格 widget；20 行可见表格每次刷新约 28µs | 单项拆分已到地板（样式缓存方案见第 3 节，已否决）。再降只剩两条路：按列声明「单元格读什么」做 per-column memo（counter-only 刷新跳过描述性列，约省 40%），或自绘表格 render object（无逐单元格 widget 树）；两者都要动 `RecordColumn`/`TableCells` 的公共 API，风险高于收益，先留基准 |
-| `SpeedCard` 每帧对全部 speed 样本 fold 求 peak | 约 60 样本/帧 | 收益过小，记账备查 |
+| `SpeedCard`/`_SpeedTile` 每帧对全部 speed 样本 fold 求 peak | `trafficSampleLength` = 24（`lib/common/constant.dart:190`），即每帧 24 次比较 + 一次 `list` 快照访问，量级为几十 ns | 收益过小，记账备查：`FixedList` 每次 `append` 都 bump revision 生成新实例（共享 `_list`），peak 无法递推到实例上；递推论只能在写入侧按方向维护，那会把两个方向的 UI 选择变成 provider 的固定负担 |
 | core/Clash.Meta 侧 P1/P2/P4 | 见下文各小节 | DNS 负回复、本地 DNS serve 全链、UDP 首包均已实测否决或维持不做 |
 
 ### 待优化项清单（2026-11-08 核心轮次复核，均在本机实测过）
