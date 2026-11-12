@@ -1424,7 +1424,7 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 
 配对实测（500 行 ×4 个 offered facet，2000 次/轮，同进程 7 轮交替取中位）：**588.4µs → 186.2µs（-68.4%）**，复跑一轮 192.1µs。这是账本 Dart 侧记录里最大的单笔剩余成本（requests 页同形状只有 47µs，本项是它的 12 倍）。
 
-守护：`test/models/record_filter_test.dart` 新增「a dns facet names exactly the value the result column renders」，把三个 facet 的 optionsOf 输出与行自身 `resultFilters` 的值集合对拍，钉住「筛选 chip 命名的值必须是结果列真的渲染的那个」，防止将来 facet 与渲染分叉。验证：`test/models test/views test/features` 1019 例全绿，`dart format` 0 changed，`dart analyze` 0 error / 0 warning。
+守护：`test/models/record_filter_test.dart` 新增「the dns facets offer the value resultFilters names」，把三个 facet 的 optionsOf 输出与行自身 `resultFilters` 的值集合对拍，钉住「筛选 chip 命名的值必须是结果列真的渲染的那个」，防止将来 facet 与渲染分叉。注意 `RecordFacetKind.type` 不在 `resultFilters` 里（是行的独立列），所以对拍范围只含本轮改动的三个 facet。验证：`test/models test/views test/features` 1019 例全绿，`dart format` 0 changed，`dart analyze` 0 error / 0 warning。
 
 顺带修正：本轮实测暴露 `resultFilters` 在未加载 l10n 时会断言失败（`currentAppLocalizations` 的 `AppLocalizations.current` 为 null），原 `record_filter_test.dart` 用的是裸 `package:test` 因此无法覆盖 DNS facet；已在测试侧加载 en delegate。
 
