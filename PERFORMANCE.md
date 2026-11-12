@@ -1477,6 +1477,15 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 
 验证：`test/views/dashboard` 175 例全绿；`test/models test/views test/features test/providers test/widgets` 2639 例全绿；`test/core test/common` 1158 过 / 5 失败，失败集与 2026-11-12 上一轮逐字相同（4 个 Linux-only `mitm_trust` + 1 个 `window` 探针），stash 掉本轮改动的干净 HEAD 上同样失败。`dart format` 0 changed，`dart analyze lib` 0 error / 0 warning。新基建：`test/views/dashboard/dashboard_colors_benchmark_test.dart`（`@Skip` 惯例）、`test/views/dashboard/rebuild_card_benchmark_test.dart`（未采用，仪表盘整卡 pump 依赖过多全局状态，形状不成立）、`test/models/record_offer_benchmark_test.dart`（否决方向的证据）。
 
+### 2026-11-12 仪表盘连接 split 与 surface 层级轮次（实测否决两项，无代码改动）
+
+**否决方向一**：`liveProtocolSplit`（`lib/views/dashboard/widgets/connections_table.dart:176`）每行走一次 `equalsIgnoreCase('tcp')`，设想加长度+首字符短路。配对实测（`test/views/dashboard/connections_feed_benchmark_test.dart`，300 行 x2000 次，同进程 JIT，两轮）：**`_replacedSplit`（`toLowerCase()` + `==` 的旧形态）20.13/21.35µs，`_landedSplit`（现在形态）13.26/13.43µs**。注意这个基准把 `sort` 也计进了两个函数，`liveProtocolSplit` 只是其中一段；即便整段比较都省掉也落在个位数 µs 以下。而 `equalsIgnoreCase`（`lib/common/string.dart:166`）本身已做长度短路、零分配。不改。
+
+**否决方向二**：`context.raisedSurfaceLevel` 共 34 处、`context.surfaceLevel` 4 处，设想批量换成持有 scheme 的写法。`SurfaceScope.of(context)` 是一次 `dependOnInheritedWidgetOfExactType`，与 `Theme.of` 同类但更浅（`SurfaceScope` 挂在更近的层级，多数 build 本来就依赖了某个 InheritedWidget），`surfaceLevel.next` 只是枚举 switch。它和 `fcb604bd`/上一轮解决的"同一 build 里查 3 次 `Theme.of`"不是同一性质：这里每处只查一次、返回值是枚举本身，没有任何重复可省。不改，理由记账，免得后续会话按"和 theme 查找一样"的直觉重做。
+
+验证：两轮只跑既有基准（`connections_feed_benchmark_test.dart` 跑后已还原为 `@Skip` 状态，`git diff` 零输出），仓库代码零改动。
+
+
 ### 2026-11-12 仪表盘颜色收口轮次（已落地，15 处 of(context) 转 ofScheme，含一处死代码清理）
 
 `fcb604bd` 把 `DashboardColors` 按 scheme 缓存（`of(context)` 转调 `ofScheme`，读一次约 251ns），但仓库里还剩 15 处 `DashboardColors.of(context)`。它们不是"忘了改"：`of(context)` 内部就是 `context.colorScheme` 的一次继承查找再命中 `Expando`，而 `_SpeedChart`、`_ServiceCell`、`DashboardBlock`、`_Source`、`_MemoryBar`、`_UsageMeter`、`_GroupsFigure`、`_IconStack` 这批 build 自己没有持有 scheme，每次调用都要重新走一遍 `Theme.of`。本轮把这 15 处统一提到 build 顶部做一次 `context.colorScheme`，之后所有颜色读都从局部变量来，与 `fcb604bd` 已改的 12 处同一形状。
