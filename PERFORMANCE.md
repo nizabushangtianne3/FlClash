@@ -1192,6 +1192,20 @@ feed flush 分解实测（每 300ms 窗口 400 日志 + 120 连接行 + 240 DNS 
 
 过程中顺带确认：`_isOrdered` 提取成方法与原内联循环等价（7 个 RecordSorter 用例全过），也没有可测差异，已还原。该路径的键构建成本要再降，只能从 `RecordColumn.sortKey` 的调用侧（列定义）想办法，不属于本轮。
 
+### 2026-11-12 Go core CI gofmt 假阳性修复轮次（构建，非性能）
+
+现象：CI `Go core` job 反复失败（run 43095104093，HEAD `4bf53ce`），本地 `go build`/`go test` 却全绿。逐条复现 CI 步骤后定位：`gofmt -l ./*.go ./cmd ./mobile ./platform ./timezone ./tun` 列出 14 个文件，CI 的 `test -z "$(...)"` 因此判失败。
+
+取证：`git cat-file blob HEAD:core/lib.go` 里 CR 字节数为 0，工作区同文件 CR 字节数 399（`node` 逐个 count）；`git ls-files core` 全量核对，94 个已提交文件 CR 数全部为 0。即仓库存的是 LF，工作区是 CRLF，注入者是本机全局 `core.autocrlf=true`。上一轮 `05f5e29e` 试图绕开但没根治，因为没锁属性。
+
+| 修复 | 提交 | 结果 |
+|---|---|---|
+| `.gitattributes` 增加 `core/**/*.go text eol=lf` 与 `core/Clash.Meta/**/*.go text eol=lf`，锁死行尾 | `6e83280b` | `git check-attr` 返回 `attr/text eol=lf`，`git ls-files --eol` 显示 `i/lf w/lf`；14 个 core 文件重建为 LF 后字节与 blob 逐字节相同（`Buffer.compare` 返回 0），因此无内容 diff 需要提交 |
+
+CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空、`go test -count=1 .` ok（15.2s）、`go vet . ./cmd/...` exit 0、`GOOS=linux go vet ./platform` exit 0、`GOOS=android GOARCH=arm64 go vet -tags=with_gvisor . ./mobile ./tun ./platform` exit 0 且无输出。
+
+**踩坑（后续复用）**：① 判 CRLF 别用 `git show ... | Out-String` 数 `\r`——PowerShell 管道会给每行补 CR，结果是假阳性（第一版探针曾得出「blob 也带 CR」的错误结论），要 `git cat-file blob` 重定向到文件后按字节数。② `gofmt -l` 的 glob 在 PowerShell 下不展开（报 `CreateFile ./*.go`），必须显式列文件名或走 `cmd /c`。③ Windows 上跑 `GOOS=linux go vet` 必须显式设 `$env:GOOS`，否则报「build constraints exclude all Go files」的假失败。④ `go mod download all` 会给 `core/go.sum` 补 51 行测试依赖哈希，但不影响 `go build`，提交前用 `git checkout -- core/go.sum` 还原，别混进业务提交。
+
 ## 5. 后续优化切入点
 
 ### 2026-11-12 连接快照预排序轮次（已落地）
