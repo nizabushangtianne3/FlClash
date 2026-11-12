@@ -483,6 +483,9 @@
 | 代理解表组文档键改「组选中代数」 | 剖析确认 `groupDocKeyOf` 仍是答案路径最大单项（URLTest 场景约 25%），但把键换成子模块导出的选择代数量，任何漏记的变更点都会让 UI 显示过期选中态；需先枚举 URLTest/Fallback/LoadBalance 的全部选中变更点并逐点补计数，本轮未做，留在待优化项 |
 | `isJSONSafeASCII` 改 8 字节一组的字长扫描（高位/控制位/五个转义字节全用位运算） | paired n=7：`AppendStringSafeASCII32` 16.61n → 19.79n（**+19.15%**）、`SafeASCII256` +9.27%、`Escaped32` +2.94%，geomean +3.53%，**纯时间回退**。原因：128 字节的表常驻 L1，逐字节「一次比较 + 一次表查」本来就是缓存友好且可预测的形态；字长版要为五个转义字节各做一次 xor+haszero（带循环级依赖），短字符串上反而更贵。已撤销，勿重做 |
 | 信封契约改造：`frame` 改带 `id string`、`size()`/`bytes()`/`writeFrame`/`spill` 在现场物化信封（省每答案 1 次分配 + 1 次 copy） | paired n=7：小文档路径（<32KB）allocs 1→**0**、sec/op -1.74%；**大文档路径 +22.31%~+24.61%**（141n→175n），geomean +19.48%。剖析定位到 `writeFrame` 里 `answer.head = appendEnvelope(nil, id)` cum 1.70s/12.4s：`envelopeLen` 与 `appendEnvelope` 各扫一遍 id，加上 `size()` 被 spill/handleMethodCall/writeFrame 调三次又各扫一遍，而旧代码只在 `envelope()` 里扫一次；分配档也从 `len(id)+20` 的 32B 变 48B。结论：**净负，撤销**——省下的那次分配换不回大答案路径的 22%。这也给第 5 节挂了很久的"信封契约改造"结了案 |
+| `RecordColumn.sortKey` 的 `toLowerCase()` 改「扫描到大写才降格」的守卫版（省掉对小写 ASCII 的无谓分配） | 5 轮交替配对（同进程、500 行 × 300 次/轮）：`progress` 7093 → 5792µs（-18%，更快）、`title` 3727 → 3044（-18%）、`network` 1755 → 1520（-13%），但 `rule` 13524 → 13522（持平）与 `exit` 4199 → 4719（**+12% 更慢**）。方向不一致：`progressText`/`title` 是长串（20+ 字符）且以大写进程名开头，守卫提前命中；`exit` 只 5 字符、`rule` 是字符串插值产物，守卫的逐字符 scan 跑完全部字符仍要再走一遍 `toLowerCase`，白白多扫一次。混合大小写数据集上（`Example-N.COM` 类 payload）两个方向都只有个位数百分比。结论：**否决**，收益取决于列的数据形状，不值得为其中三列引入手写 ASCII 判断 |
+| `RecordColumn.sortKey` 的 rule 列改用「两段式 `Comparable`」替掉 `'$rule $rulePayload'.toLowerCase()`（同时干掉插值新建与降格） | 5 轮交替配对：key 构建 12404 → 1625µs（**7.6 倍更快**），含 499 次相邻比较的整轮 27805 → 4832µs（**5.8 倍更快**）。倍数成立，但**语义不等价**：`'$rule $payload'` 是单串比较，等价于「先比 rule、rule 相等时比 ` payload`」；两段式是「先比 rule、再比 payload」。穷举 17 种 rule（来自 `RuleType.String()` 的全部返回值）× 10 种真实 payload 共 28900 组，`sign` 不一致 34 组，全部形如 `payloadA='a b'` vs `payloadB='C:\Program Files\App\app.exe'`：单串比较在空格处分叉先比 `' '` 与 `'\\'`，两段式直接比 `'a'` 与 `'C'`。14 种 rule 名本身无空格（已核 `core/Clash.Meta/constant/rule.go` 的 `RuleType.String()` 共 39 个固定返回值，全部单字，且 `tracker.go:202/305` 只以该枚举或空串赋值），但 payload 会带空格（Windows 进程路径），排序结果在这些行上会变。结论：**否决**——速度收益确凿，代价是用户可见的规则列排序行为回归 |
+| 「按 metadata 对象锚定的 lower key 缓存」缓解 counter-only 刷新导致的行级 Expando 失效 | 500 行 × 300 次配对：同一批行对象下 `metadata.network.toLowerCase()` 1755µs，每行先 `copyWith(upload:, download:)` 再取则是 8292µs（55.3ns/行），即行对象一换 JIT 内联缓存与 `Expando` 查找同时失效。按 metadata 锚定可绕过前者，但 `Expando` 查找本身在 JIT 下已被账本两次证明不足 15% 收益的下限，且需为 5 个 sortKey 各建一张表。本轮未实现，记为**否决**：不引入第二套缓存层去换一个未证实的个位数百分比 |
 
 ### 2026-11-09 handler 分发测试轮次（覆盖，不是性能）
 
@@ -1351,9 +1354,9 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 | GC 策略（`debug.SetGCPercent`/`SetMemoryLimit` 或 `GOGC` 环境变量） | `GOGC=400` vs 默认，`BenchmarkRelayStream` n=3：247us / 16.4-17.4GB/s -> 257us / 16.0-16.6GB/s（略差，噪声内）；`BenchmarkRelayPacketConn*` 全部 0 alloc 无差别 | **否决**：数据平面稳态 0 分配，GC 不在路径上；唯一 GC 敏感路径（resync 答案、profile 解析）都是低频一次性成本。改 GC 策略只涨 RSS 不涨吞吐，勿重做 |
 | 连接轮询 churn 路径改「增量事件日志」（子模块 Manager 记 join/leave 环形缓冲，wrapper 只取上次序号之后的事件） | 已落地「稳态免扫描」后，churn 轮询（每轮 leave+join 两个预建 tracker）500 连接 2.15us / 13 allocs；busy 用户 2000 连接约 130us/2s = 0.006% CPU | **不做**：剩余成本是 O(活跃连接) 遍历，换成 O(变更) 需要子模块新增加速结构 + wrapper 侧行缓存失效语义，绝对收益 0.006% CPU，风险收益不相称 |
 | proxies 答案帧的 Dart 侧解码迁 isolate（`Isolate.exit` 零拷回报文） | 账本 2026-11-05 实测 132KB 帧 JIT 解码 874-1282us；AOT 估 ~400us；每次 answers（点选/刷新/测速完成），非每帧 | **不做**：AOT 下 UI 线程成本 ~0.4ms（8ms 预算的 5%），迁 isolate 只省消息开销之后的一小部分，还要改 RPC 消费契约；等 profile build 实测 AOT 数字再议 |
-## 6. 后续会话推荐流程
-
 | Dart 侧大表键入搜索的增量收窄（缓存上一次关键词与命中集，新关键词若是旧词的延伸就只过滤命中集） | 1 万行键入实测基数：DNS 查询页（Expando 缓存后）约 1.46ms/键击（JIT），连接/代理页同形状；方案只在底层列表**同一实例**期间有效，而轮询每 2s 就换一次列表、输入法每分钟数次按键，命中窗口小 | **不做**：命中窗口窄 + 需要 (列表身份, 词序, 命中集) 三元缓存与严格的作废语义，复杂度高于 1ms 级收益；现状「词法缓存 + terms.every(contains)」已在账本 2026-11-09 定为最小形状 |
+| 连接表 `RecordColumn.sortKey` 的 `toLowerCase()` 三案（守卫降格 / rule 列两段式键 / metadata 锚定缓存） | 见第 3 节本轮三条记录：守卫版在 `progress`/`title`/`network` 快 13-18% 但在 `exit`/`rule` 持平或慢 12%，方向不一致；两段式键快了 5.8 倍但穷举 28900 组有 34 组排序 `sign` 不一致（payload 含空格且大小写混合时分叉），是用户可见行为回归；metadata 锚定缓存绕不过 Expando 查找本身 | **全部否决**：`sortKey` 这条路以「不改变排序语义」为前提已无可动的部分，键构建成本是 `Comparable` 契约的必要形状，勿重做 |
+## 6. 后续会话推荐流程
 ``powershell
 git pull --ff-only
 git -C core/Clash.Meta switch main
