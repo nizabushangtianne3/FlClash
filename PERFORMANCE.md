@@ -1313,6 +1313,19 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 | Dart 接收路径（`lib/core/desktop/rpc_client.dart` 等） | - | 曾怀疑 `_handleFrame` 的 `Map<String, Object?>.from(decoded)` 每帧整表拷贝——**证伪**：它只拷顶层 2 个条目（id/result），庞大的 result 是引用传递。Dart 侧真正的大头是 `json` 解码本身（160KB 帧实测 874–1282µs），2026-11-05 已定案「融合进构建 isolate 最多省 ~0.5ms 却要改 RPC 契约」，维持不动 |
 
 **结论**：核心（Go 侧）的优化空间已按实测挖到饱和；平台层无独立热点；剩余唯一有实质收益的方向（主动失效钩子）已于 2026-11-10 落地，答案路径命中路径累计 -74.68%；其余方向均按实测否决，见第 5 节「当前剩余方向」。
+### 全代码复核覆盖面（2026-11-12 补充轮，Dart UI 侧 + Android 壳层逐文件）
+
+上一节 2026-11-09 覆盖的是 Go 与平台层；本轮把 Dart 的 UI 主路径与 Android 壳层也逐文件过了一遍，证据如下。
+
+| 范围 | 规模（实测） | 本轮复核结论 |
+|---|---|---|
+| `lib/views/dashboard` + `lib/features/connection` | 两个目录共约 4.4K 行 | 找出并落地三项：`SpeedCard` 整卡 watch 拆三处 select（配对 -17%）、协议列 `toUpperCase()` 改常量 switch（-50~52%）、以及本次否决的 cell 级样式冗余与 `NetworkSpeedCard` 同形状拆分（后者 -2.7% 在噪声内）。第三条把 2026-11-09 的「单元格约一半是 widget」修正为「81% 是字符串格式化，其中 `dashboardTraffic` 占 68%」，并进一步定位到 `toStringAsFixed` 是 VM 内部、Dart 侧绕不过去 |
+| `lib/widgets/record_table.dart` | 545 行 | 逐函数过。`RecordSorter.sort` 的 `order`+`sorted` 双列表是为「不改写调用方列表」的必要形状（两个调用方的 `widget.items` 可能是 provider 的不可变列表），已配对否决 in-place 置换。`RecordTable` 的 `rowTextStyle`/`rowShape` memo 机制已存在且正确——曾试图给它加 `mutedTextStyle` 让 cell 复用，但 `RecordColumn.cell` 的签名只有 `(BuildContext, T)`，拿不到 `RecordTable`，方案不成立，已撤销 |
+| `lib/common/fixed.dart` | 250 行 | 逐函数过。`update`/`updateByKey` 确实要遍历或按键查表，但都被调用方的 generation+size 短路挡在稳态之外（500 连接 371ns），不是每帧热点；`retainTrimmedHead` 有三个生产调用点，非死代码 |
+| `android/app/src/main/kotlin` | 19 文件 / 2436 行 | 逐个搜同步阻塞：`runBlocking` 0 处、`Thread.sleep` 0 处；仅 `SystemCaStore.kt:126` 一处 `readText()`，那是 `su` 的同步执行结果（root/CA 安装路径，必须等），且由用户操作触发、非每帧。`ServiceStateMachine.kt` 是并发状态机，正确性优先，性能上无每帧路径 |
+| `windows/runner` | 8 文件 / 533 行 | Flutter 标准样板，无业务逻辑 |
+
+**本轮结论**：`dart analyze` 在 `lib/` 下 0 error / 0 warning（仅 6 条既有 info 全在测试文件），没有 unused/dead code 告警——lib 侧的无效代码已在往轮次清干净。Dart 表格路径的剩余成本全在 VM 的 double 格式化里，`RecordColumn.sortKey` 以「不改变排序语义」为前提已无可动部分；继续挖应等上游出现新的数据形状再议。
 
 
 ### P1：DNS UDP response parsing
@@ -1402,6 +1415,19 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 再拆 `dashboardTraffic`：全链 28547µs 中 `fixed(decimals: 1)` 占 24018（84%），纯 `toStringAsFixed(1)` 占 18682，1024 单位换算循环只占 1709（6%）。`toStringAsFixed` 是 VM 内部的 double→string，Dart 侧绕不过去；账本已记录把它换成整数路径在 200k 随机值对拍下有 3 处取值不一致（`0.15` → `0.1` vs `0.2`、`-0.0` → `-0` vs `0`），**语义不等价，撤销**。
 
 结论：单元格路径剩余成本全在 VM 的 double 格式化里，与 2026-11-09 对 `fixed(decimals: 1)` 的结论一致；本轮不改代码，只修正「一半是 widget」这个过时判断，避免后续再把时间花在 widget 侧。
+
+### 2026-11-12 DNS 查询页筛选 facet 单值化轮次（已落地）
+
+```dnsQueryFacets``` 的 initiator/cache/rcode 三个 facet 原来共用一段 ```for (final kind in ...)``` 循环，每个 facet 的 ```valuesOf``` 都要跑一遍 ```query.resultFilters```——那是一个为每行新建 ```List<RecordFilter>```（最多 3 个 ```RecordFilter``` 对象）的 getter，然后再为每个 facet 包一层 ```[for (final filter in ...)]``` 列表。DNS 查询页每 300ms 对全表 500 行 offer 一次，「筛选项」这个纯展示开销因此被付了整表建表的价钱。
+
+改法：三个 facet 各自 ```RecordFacet.single```，直接读行上的字段（```query.initiator?.label ?? ''```、```query.cached ? l10n.cache : ''```、```query.hasFailureRcode ? query.rcode : ''```），语义逐条对齐 ```resultFilters``` 里的三条构造。计数与过滤两条路径都因此走单值快路，都不再分配。
+
+配对实测（500 行 ×4 个 offered facet，2000 次/轮，同进程 7 轮交替取中位）：**588.4µs → 186.2µs（-68.4%）**，复跑一轮 192.1µs。这是账本 Dart 侧记录里最大的单笔剩余成本（requests 页同形状只有 47µs，本项是它的 12 倍）。
+
+守护：```test/models/record_filter_test.dart``` 新增「a dns facet names exactly the value the result column renders」，把三个 facet 的 optionsOf 输出与行自身 ```resultFilters``` 的值集合对拍，钉住「筛选 chip 命名的值必须是结果列真的渲染的那个」，防止将来 facet 与渲染分叉。验证：```test/models test/views test/features``` 1019 例全绿，```dart format``` 0 changed，```dart analyze``` 0 error / 0 warning。
+
+顺带修正：本轮实测暴露 ```resultFilters``` 在未加载 l10n 时会断言失败（```currentAppLocalizations``` 的 ```AppLocalizations.current``` 为 null），原 ```record_filter_test.dart``` 用的是裸 ```package:test``` 因此无法覆盖 DNS facet；已在测试侧加载 en delegate。
+
 
 ## 6. 后续会话推荐流程
 ``powershell

@@ -1,5 +1,7 @@
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:fl_clash/l10n/l10n.dart';
+import 'package:flutter/widgets.dart';
 import 'package:test/test.dart';
 
 typedef _Item = ({String id, String network, String app, List<String> tags});
@@ -29,6 +31,8 @@ List<String> _layout(List<RecordGroup<_Item>> groups) => [
 ];
 
 void main() {
+  setUpAll(() => AppLocalizations.load(const Locale('en')));
+
   group('whereFilters', () {
     final items = [
       _item('a'),
@@ -166,6 +170,54 @@ void main() {
         ),
         ['a'],
       );
+    });
+
+    // These three read the row directly instead of the list resultFilters
+    // builds; both have to name the same value.
+    test('the dns facets offer the value resultFilters names', () {
+      final items = [
+        DnsQuery(
+          domain: 'a.test',
+          type: 'A',
+          initiator: DnsQueryInitiator.app,
+          cached: true,
+          answers: const ['1.1.1.1'],
+          rcode: 'NOERROR',
+          time: DateTime.utc(2026),
+        ),
+        DnsQuery(
+          domain: 'b.test',
+          type: 'AAAA',
+          rcode: 'SERVFAIL',
+          answers: const [],
+          time: DateTime.utc(2026),
+        ),
+        DnsQuery(
+          domain: 'c.test',
+          type: 'A',
+          answers: const ['2.2.2.2'],
+          time: DateTime.utc(2026),
+        ),
+      ];
+      final direct = dnsQueryFacets.where(
+        (facet) => const {
+          RecordFacetKind.initiator,
+          RecordFacetKind.cache,
+          RecordFacetKind.rcode,
+        }.contains(facet.kind),
+      );
+      for (final facet in direct) {
+        final rendered = <String>{
+          for (final item in items)
+            for (final filter in item.resultFilters)
+              if (filter.kind == facet.kind) filter.value,
+        };
+        expect(
+          facet.optionsOf(items),
+          unorderedEquals(rendered),
+          reason: '${facet.kind} offers a value the row does not render',
+        );
+      }
     });
   });
 }

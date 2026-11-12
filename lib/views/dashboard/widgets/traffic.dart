@@ -148,16 +148,16 @@ class SpeedCard extends ConsumerWidget {
                         maxLines: 1,
                         style: DashboardText.cardTitle(context),
                       ),
-                      Expanded(
-                        child: _SpeedPeak(direction: direction),
-                      ),
+                      Expanded(child: _SpeedPeak(direction: direction)),
                     ],
                   ),
                 ),
                 SizedBox(height: compact ? 6 : 10),
                 _SpeedFigure(
                   direction: direction,
-                  style: compact ? AppTextStyle.largeTitle : AppTextStyle.display,
+                  style: compact
+                      ? AppTextStyle.largeTitle
+                      : AppTextStyle.display,
                   unitStyle: AppTextStyle.subheadline,
                 ),
                 const SizedBox(height: 2),

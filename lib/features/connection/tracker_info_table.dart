@@ -46,8 +46,7 @@ List<RecordColumn<TrackerInfo>> trackerInfoColumns(
           appLocalizations.protocol,
           width: max(56, recordHeaderWidth(context, appLocalizations.protocol)),
         ),
-        cell: (_, info) =>
-            RecordCellText(info.protocolLabel, muted: true),
+        cell: (_, info) => RecordCellText(info.protocolLabel, muted: true),
         sortKey: (info) => info.metadata.network.toLowerCase(),
       ),
     if (wide || !isLive)

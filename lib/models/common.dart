@@ -534,19 +534,21 @@ final dnsQueryFacets = <RecordFacet<DnsQuery>>[
     (query) => query.type,
     offered: true,
   ),
-  for (final kind in const [
+  RecordFacet.single(
     RecordFacetKind.initiator,
+    (query) => query.initiator?.label ?? '',
+    offered: true,
+  ),
+  RecordFacet.single(
     RecordFacetKind.cache,
+    (query) => query.cached ? currentAppLocalizations.cache : '',
+    offered: true,
+  ),
+  RecordFacet.single(
     RecordFacetKind.rcode,
-  ])
-    RecordFacet(
-      kind,
-      (query) => [
-        for (final filter in query.resultFilters)
-          if (filter.kind == kind) filter.value,
-      ],
-      offered: true,
-    ),
+    (query) => query.hasFailureRcode ? query.rcode : '',
+    offered: true,
+  ),
 ];
 
 final _dnsQueryFilteredLists = Expando<List<DnsQuery>>();
