@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.0.8 (2026-11-12)
+
+**Performance**
+
+- **filters** Read a dns row directly instead of its filter list (02dc1ec)
+- **dart** Label a row's protocol without casing it per row (9c64c9e)
+- **dart** Rebuild only what a speed sample changes (54cf96f)
+
 ## v1.0.7 (2026-11-12)
 
 **Bug Fixes**

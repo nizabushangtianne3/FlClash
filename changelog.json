@@ -2,6 +2,34 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "1.0.8",
+      "tag": "v1.0.8",
+      "date": "2026-11-12",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "02dc1ec",
+              "scope": "filters",
+              "text": "Read a dns row directly instead of its filter list"
+            },
+            {
+              "id": "9c64c9e",
+              "scope": "dart",
+              "text": "Label a row's protocol without casing it per row"
+            },
+            {
+              "id": "54cf96f",
+              "scope": "dart",
+              "text": "Rebuild only what a speed sample changes"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.7",
       "tag": "v1.0.7",
       "date": "2026-11-12",
