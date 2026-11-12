@@ -949,6 +949,21 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 
 **踩坑（后续复用，四个都会再犯）**：一、**客户端与服务端必须共享同一对 X25519 与同一个 ML-KEM 种子**——第一次写测试时我分别调 `GenX25519` 生成公私各一份，服务端立刻报 `unexpected hash32: [...]`。二、握手的 fragmented padding 写与随后服务端的读必须跑在**内核有缓冲的 socket** 上：`net.Pipe` 全同步无缓冲，两边都在写后等读，第一片 padding 就死锁；换成 `127.0.0.1:0` 的 TCP loopback 即通。三、`handshakePair` 里 `defer conn.Close()` 会在函数返回时拆掉刚握完的连接，后续帧传输全报 `use of closed network connection`；关闭责任交给 `t.Cleanup`。四、padding 字符串的约束是**首段 >=100 且第二三字段 >=35**（`100-0-0` 会被 `ParsePadding` 拒），而尾随 `.` 会产生空段同样被拒；0-RTT 的 `clientHello` 不在握手时落盘，要等第一次 `CommonConn.Write` 才连同 `PreWrite` 一起冲刷（客户端握手本身不读服务端任何字节）。
 
+### 2026-11-12 listener/sudoku 覆盖轮次（测试，2.3% -> 12.6%）
+
+「测试必须覆盖全部核心代码」的下一站：`listener/sudoku`（Sudoku 入站监听器，326 行）。该包此前**只有 UoT wrapper 被覆盖**，`New`、`handleConn`、`handleUoTSession`、`relayToFallback` 与三个访问器全是 0%。入站层 `listener/inbound/sudoku_test.go` 已用真实出站打通 basic/entropy/padding/packed-downlink/custom-table/http-mask-mode 九种组合，但它到不了帧边界：改坏 fallback 重放或 deadline 包装它照样绿。
+
+| 覆盖 | core 提交 | 结果 |
+|---|---|---|
+| `wrapSessionConn` 两条分支：pipe 原样短路（pipe 自带的 deadline 实现已正确，再包一层会让握手超时失效）、裸 socket 由 wrapper 提供真实 deadline 并用一次读超时钉住 | 本轮 | `wrapSessionConn` 100% |
+| `Listener.RawAddress`/`Address`/`Close`：无 listener 时地址回落空串、关闭置 flag、对已关闭 socket 二次关闭返回错误而非 panic | 本轮 | 三个访问器与 `Close` 100% |
+| `relayToFallback`：把失败握手前已读走的字节原样重放给 fallback 再交给 `N.Relay`；无缓冲记录时不阻塞 | 本轮 | `relayToFallback` 72.7% |
+| `uotPacket.Data`：交出 reader 产出的 payload 且不随 `Drop` 失效 | 本轮 | `Data` 100% |
+
+**结构性未覆盖（记账，硬要盖就得把入站测试的整套 tunnel 基建搬进本包）**：`New`（需要 `C.InboundListenConfig` + 可监听 socket + `sing.ListenerHandler`）、`handleConn`（需要一次成功的 sudoku 握手）、`handleUoTSession`（需要 UoT 会话）。这三段的真实链路已由入站层九种组合覆盖，本包内再盖一遍等于把 `TestTunnel`/`NewHttpTestTunnel` 从 `inbound_test` 复制过来，收益是数字而非守护；`TestTunnel` 属 `inbound_test` 包内部设施，跨包不可引用。
+
+**踩坑（后续复用）**：`relayToFallback` 的测试不能用同一个 `net.Pipe` 同时充当 wrapper、rawConn 与 fallback——`N.Relay(rawConn, fallback)` 是双向对接，自接自会让两边互等至超时；且 `t.Cleanup` 关管道的时机要晚于 relay goroutine 退出，否则 goroutine 里的断言在 cleanup 后触发 panic。正确形状是给 fallback 与 raw 各配一对独立 pipe，用 `io.ReadFull` 盯住重放字节，再主动关 raw 让 relay 返回。
+
 ### 2026-11-11 UDP 数据报主路径覆盖轮次（测试）
 
 账本「覆盖侧剩余缺口」表里写着子模块 `tunnel` 剩 `processUDP`/`startUDPSender`/`dialUDPSender`——用 coverprofile 逐函数核了一遍：这三个函数分别 50%/0%/0%，`handleUDPConn` 58.1%。它们合起来就是「一个数据报从进来到被代理应答」的完整路径，产品每时每刻都在走，却一行覆盖都没有。此前没测是因为它们需要真 UDP 往返 + 一个能 `ListenPacketContext` 的代理。
