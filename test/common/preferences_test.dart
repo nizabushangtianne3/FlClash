@@ -146,6 +146,98 @@ void main() {
       await store.setString(delayMapKey, '[]');
       expect(await preferences.getDelayMap(), isNull);
     });
+
+    test('bounds a map that outgrew what a profile is worth', () async {
+      // The shape a large import leaves behind: tens of thousands of names
+      // under one url, most of them for nodes that no longer exist.
+      final oversized = {
+        'https://far.test': {for (var i = 0; i < 60000; i++) 'n$i': i},
+        'https://near.test': {for (var i = 0; i < 60000; i++) 'n$i': i},
+      };
+      await preferences.saveDelayMap(oversized);
+
+      expect(
+        store.getString(delayMapKey)!.length,
+        lessThanOrEqualTo(512 << 10),
+      );
+
+      final bounded = await preferences.getDelayMap();
+      expect(bounded, isNotNull);
+      expect(bounded!.length, 2);
+      final near = bounded['https://near.test']!;
+      expect(near.length, lessThan(60000));
+      expect(near['n0'], 0);
+      expect(near['n1'], 1);
+      expect(near.containsKey('n59999'), isFalse);
+    });
+
+    test('bounds a stored map that grew on disk', () async {
+      // A store already holding an oversized map shrinks on the read that
+      // found it: decoding that payload is what cost the frame it was read on,
+      // and the next persist would trim it anyway.
+      final stored = {
+        for (var u = 0; u < 40; u++)
+          'https://u$u.test': {for (var i = 0; i < 60000; i++) 'n$i': i},
+      };
+      await store.setString(delayMapKey, json.encode(stored));
+      expect(store.getString(delayMapKey)!.length, greaterThan(512 << 10));
+
+      final read = await preferences.getDelayMap();
+      expect(read, isNotNull);
+      // The serialized bound fills before the url bound does: the newest urls
+      // hold the last names, so an oversized store keeps the leading ones.
+      expect(read!.length, lessThanOrEqualTo(32));
+      expect(
+        store.getString(delayMapKey)!.length,
+        lessThanOrEqualTo(512 << 10),
+      );
+    });
+
+    test('leaves a store already inside the bound untouched', () async {
+      final small = {
+        'https://a.test': {'hk': 12, 'us': 40},
+        'https://b.test': {'jp': 88},
+      };
+      await preferences.saveDelayMap(small);
+      final before = store.getString(delayMapKey)!;
+
+      expect(await preferences.getDelayMap(), small);
+      expect(store.getString(delayMapKey), before);
+    });
+
+    test('drops the oldest names past the serialized bound', () async {
+      await preferences.saveDelayMap({
+        'https://a.test': {for (var i = 0; i < 40000; i++) 'n$i': i},
+      });
+
+      final names = (await preferences.getDelayMap())!['https://a.test']!;
+      expect(names.length, lessThan(40000));
+      expect(names['n0'], 0);
+      expect(names.containsKey('n39999'), isFalse);
+    });
+
+    test('drops the oldest urls past the url bound', () async {
+      await preferences.saveDelayMap({
+        for (var u = 0; u < 100; u++) 'https://u$u.test': {'a': u, 'b': u},
+      });
+
+      final bounded = (await preferences.getDelayMap())!;
+      expect(bounded.length, lessThanOrEqualTo(32));
+      expect(bounded['https://u0.test']!['a'], 0);
+      expect(bounded['https://u1.test']!['b'], 1);
+      expect(bounded.containsKey('https://u99.test'), isFalse);
+    });
+
+    test('drops values that are neither null nor an int', () async {
+      await store.setString(
+        delayMapKey,
+        '{"https://a.test":{"ok":42,"bad":"x","none":null}}',
+      );
+
+      expect(await preferences.getDelayMap(), {
+        'https://a.test': {'ok': 42, 'none': null},
+      });
+    });
   });
 
   test('clearPreferences empties every stored key', () async {

@@ -176,6 +176,15 @@ class Preferences {
     await sharedPreferencesIns?.remove(systemDnsRecordKey);
   }
 
+  /// A persisted delay map is a refresh badge, not a database: a subscription
+  /// that once imported tens of thousands of nodes filled one url with answers
+  /// for nodes that no longer exist, and every persist then rewrote that whole
+  /// history into the preferences store. Bounded by what it serializes to
+  /// rather than by a row count, since a name is anywhere from a few to a few
+  /// dozen bytes; a large map is trimmed from its oldest end until it fits.
+  static const _delayMapMaxBytes = 512 << 10;
+  static const _delayMapMaxUrls = 32;
+
   Future<DelayMap?> getDelayMap() async {
     try {
       final preferences = await _store.value;
@@ -183,18 +192,25 @@ class Preferences {
       if (raw == null) return null;
       final decoded = json.decode(raw);
       if (decoded is! Map) return null;
-      final restored = <String, Map<String, int?>>{};
+      final urls = <String, Map<String, int?>>{};
       for (final entry in decoded.entries) {
-        final url = entry.key;
         final values = entry.value;
-        if (values is! Map) continue;
-        restored[url] = {
-          for (final item in values.entries)
-            if (item.value == null || item.value is int)
-              item.key: item.value as int?,
-        };
+        if (values is Map) {
+          urls['${entry.key}'] = {
+            for (final item in values.entries)
+              if (item.value == null || item.value is int)
+                '${item.key}': item.value as int?,
+          };
+        }
       }
-      return restored;
+      final bounded = _boundedDelayMap(urls);
+      // A store that outgrew the bound is rewritten on the way in: the next
+      // persist would trim it anyway, and this is the one read that pays for
+      // decoding the whole oversized payload.
+      if (_delayMapSize(urls) > _delayMapMaxBytes) {
+        await _overwriteDelayMap(bounded);
+      }
+      return bounded;
     } catch (error) {
       commonPrint.log(
         'getDelayMap error ${error.toString()}',
@@ -206,7 +222,54 @@ class Preferences {
 
   Future<void> saveDelayMap(DelayMap delayMap) async {
     final preferences = await _store.value;
+    await preferences?.setString(
+      delayMapKey,
+      json.encode(_boundedDelayMap(delayMap)),
+    );
+  }
+
+  Future<void> _overwriteDelayMap(DelayMap delayMap) async {
+    final preferences = await _store.value;
     await preferences?.setString(delayMapKey, json.encode(delayMap));
+  }
+
+  /// Drops the oldest urls past [_delayMapMaxUrls] and, inside each url, the
+  /// oldest names until the whole map serializes within
+  /// [_delayMapMaxBytes]. Applied on both the read and the write path so a map
+  /// that outgrew the bound shrinks back the next time it is saved rather than
+  /// waiting for the next boot.
+  DelayMap _boundedDelayMap(Map<String, Map<String, int?>> delayMap) {
+    final bounded = <String, Map<String, int?>>{};
+    var size = 2;
+    for (final url in delayMap.keys.take(_delayMapMaxUrls)) {
+      var entrySize = url.length + 6;
+      final names = <String, int?>{};
+      for (final entry in delayMap[url]!.entries) {
+        final nameSize = entry.key.length + 14;
+        if (size + entrySize + nameSize > _delayMapMaxBytes) {
+          break;
+        }
+        size += nameSize;
+        entrySize += nameSize;
+        names[entry.key] = entry.value;
+      }
+      if (names.isNotEmpty) {
+        bounded[url] = names;
+      }
+    }
+    return bounded;
+  }
+
+  /// What [_boundedDelayMap] accounts for, on the map as it stands.
+  int _delayMapSize(Map<String, Map<String, int?>> delayMap) {
+    var size = 2;
+    for (final url in delayMap.keys) {
+      size += url.length + 6;
+      for (final name in delayMap[url]!.keys) {
+        size += name.length + 14;
+      }
+    }
+    return size;
   }
 
   Future<BootRecord?> getBootRecord() async {

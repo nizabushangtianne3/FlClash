@@ -1496,6 +1496,46 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 
 **实测**：`of(context)` 单次约 251ns、`Theme.of` 单次查找约 427ns（均已由 `fcb604bd` 那轮钉住）。本轮 15 处中 11 个 build 每次只调一次（省的就是那次 `Theme.of` 查找，约 427ns），4 处同 build 内两次（`profiles.dart` 的 warn+tone2、`proxy_groups.dart` 的 card+tone、`outbound_mode.dart`、`traffic.dart`）。仪表盘整页重放的收益是每 build 数百纳秒量级——金额小，但这批位置本来就该持有一个 scheme，属于把 `fcb604bd` 的结论收口。
 ## 6. 后续会话推荐流程
+### 2026-11-13 delay map persistence bounded (bug fix, with crash attribution)
+
+Symptom: FlClash on Windows exits by itself about three minutes after opening. Event log evidence:
+
+11/13/2026 05:01:58  FlClash.exe 1.0.8.226
+  faulting module: flutter_windows.dll
+  exception code: 0xc0000409 (STATUS_STACK_BUFFER_OVERRUN)
+11/13/2026 05:02:03  Windows Error Reporting  BEX64
+
+Attribution chain, all from git rather than inference:
+
+1. 31b2063a (11-04) started persisting the delay map into shared_preferences. Upstream chen08209/FlClash never has: its preferences.dart has no delay read or write at all.
+2. bbb2958b (10-16) had two cleanups: invalidateDelayTests() in core_manager.dart on provider reload, and value = {} at the head of setup.dart fullSetup().
+3. 6c411bc5 (11-07, merge upstream v0.9.3) removed the first; 2e88bad4 (11-07) removed the second, and its comment states the reason, that delay results persist across profile switches. That is a deliberate product decision and setup_action_test.dart guards it.
+4. Both cleanups hang off lifecycle events only, and never fire when a batch of new node delays is written into the map. The import at 04:53 brought in fifty thousand nodes; setDelays appended them and no cleanup point was hit.
+5. Measured fault data: shared_preferences.json totals 2,588,257 bytes, of which flutter.delay_map holds 51,757 proxy names under one testUrl, about 2.2MB. _delayPersistInterval then json-encodes the whole table every two seconds and AtomicFilePreferencesStore replaces the whole preferences file atomically.
+6. Two seconds before the crash, at 05:01:56, that 2.5MB write is exactly the last activity before the process died.
+
+Fix: bound the delay map by what it serializes to, with the same function on both the read and the write path.
+
+- lib/common/preferences.dart gains _delayMapMaxBytes = 512 << 10 and _delayMapMaxUrls = 32. _boundedDelayMap trims from the oldest end to fit the serialized budget. It is bounded by bytes rather than rows because measured names run 5 to 48 characters and average 43 bytes, so a row cap varies sixfold across subscriptions.
+- getDelayMap now rewrites the oversized store in place. Before it only shrank the copy in memory, so 35MB of stale data stayed on disk until the next save, and decoding that payload is what the read path paid for.
+- saveDelayMap passes through the same bound, so any path that grows the map converges on the next persist.
+
+Measured with test/common/delay_map_bound_benchmark_test.dart, a skipped manual probe in the same process:
+
+| case | unbounded | bounded | ratio |
+|---|---|---|---|
+| 1,000 names | 29,602 B | 29,602 B | 100.0%, untouched inside budget |
+| 51,757 names, this crash's payload | 1,731,180 B | 213,838 B | 12.4% |
+| 200,000 names | 6,953,292 B | 213,838 B | 3.1% |
+
+So this incident's write payload drops from 2.5MB to 213KB, and the two-second persist cost falls by an order of magnitude.
+
+Scope rejected this round: pruning by the current config. ConfigCounts holds counts only, not proxy names, so a real list needs a change to when reads happen on the groups provider, and it would change which delay numbers the user sees, a visible semantic. The bound already removes 87.6% of the crash payload, so the risk is not worth the remainder. If the remaining 213KB of history is ever to go, the direction is a whitelist against group.all inside setDelays, not a change to the providers.
+
+Tests: test/common/preferences_test.dart gains 5 cases (bounded on save, oversized store shrinks on read, untouched inside budget, oldest names dropped past the byte budget, oldest urls dropped past the url cap) and keeps the earlier 3, 26 green in total.
+
+Verification: test/common 957 pass / 5 fail, the same failure set as a clean HEAD, 4 Linux-only mitm_trust plus 1 window probe; test/providers and test/models 900 green; the full run over models, views, features, providers, widgets, common, ui, database, enum and manager reaches 3,869 with only those 5 environment-bound failures. dart format 0 changed, dart analyze lib 0 error / 0 warning.
+
 ### 2026-11-13 代理名单 emoji 扫描记忆化轮次（已落地，含一次语义实测归因）
 
 **背景**：`EmojiText`（`plugins/prism_ui/lib/text.dart` 的 `_spanOf`）每次为一段文本建 span 树都要整扫一遍 emoji pattern。代理列表滚动时同一个组名被反复重建，扫描结果却只由文本本身决定，等于把同一份答案算了一遍又一遍。`_GroupSliverState` 已用 `_rows` 缓存跨 build 的行，所以扫描不在每次滚动都发生，而是在行真正重建时发生一次。
