@@ -936,6 +936,19 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 
 `core/connection.go` 的 18 个函数现已 **100% 覆盖**（此前 `appendDocument` 68.8%、`documentSize` 71.4%、`rowAnswerSize` 81.8%、`handleResetNetwork` 0%）。补齐的四条都是仪表盘真实会走到的路径：带 GeoIP 的行（答案缓冲按 `rowAnswerSize` 预分配，两个字符串切片若不计入，每次 resync 都会扩容）、nil 行、一次轮询里离开多行的分隔符、按 id 关闭存活行。另外钉住一条不变量：`rowAnswerSize` 永不低于编码后长度（预分配就靠它）。父仓库 `b8bd4801`，包覆盖率 82.9% → 83.3%。
 
+### 2026-11-12 vless encryption 覆盖轮次（测试，`transport/vless/encryption` 0% -> 80.5%）
+
+「测试必须覆盖全部核心代码」的下一站：`transport/vless/encryption`（VLESS `mlkem768x25519plus` 的整套握手与帧层，1183 行）此前整包 **0% 覆盖**——只有一条打印 CPU 特性的用例跑过，而客户端握手、服务端握手、AEAD、XOR 伪装层一天都没被直接测试走过。listener 层的 `TestInboundVless_Encryption` 走的是完整的 TCP 入站/出站，路径虽长但断言不到帧边界，改坏了 XOR 掩码或 nonce 进位它照样绿。
+
+| 覆盖 | core 提交 | 结果 |
+|---|---|---|
+| `XorConn` 读写状态机：跳过区、跨写边界的半截 header、跳过长度回填、空写、读端 mask 后交还原样、写失败上抛（8 例） | 本轮 | `xor.go` `Write`/`Read`/`NewXorConn` 全部 100% |
+| 帧契约：`EncodeHeader`/`DecodeHeader` 的全部拒绝形状、`EncodeLength`/`DecodeLength` 往返、`IncreaseNonce` 逐字节进位与满格回绕、`AEAD` nonce 自增与重放拒绝、附加数据认证、上下文分流、`MaxNonce` 触发的 AEAD 轮换、chacha20poly1305 分支（13 例） | 本轮 | `common.go` 编解码与 AEAD 全部 100%，`ParsePadding` 87% |
+| 配置入口：`NewClient`/`NewServer` 的 scheme/mode/rtt/base64/密钥长度拒绝、空串与 `none` 返回 nil、`Init` 重复初始化与空密钥集拒绝、`Close` 落 flag、未初始化 `Handshake` 拒绝（16 例） | 本轮 | `factory.go` 各 86.7%/86.5%，`key.go` 71% |
+| 真实握手：三种 xor 模式（native/xorpub/random）经 TCP loopback 完成握手并双向传帧、32000 字节写切分为多条记录、读缓冲小于记录时剩余部分由内部缓冲续传、0-RTT 票据路径发整车并惰性由首个记录冲刷、服务端对无法解析的招呼直接失败（12 例） | 本轮 | `client.Handshake` 89.2%、`server.Handshake` 67.4%；**整包 0% -> 80.5%** |
+
+**踩坑（后续复用，四个都会再犯）**：一、**客户端与服务端必须共享同一对 X25519 与同一个 ML-KEM 种子**——第一次写测试时我分别调 `GenX25519` 生成公私各一份，服务端立刻报 `unexpected hash32: [...]`。二、握手的 fragmented padding 写与随后服务端的读必须跑在**内核有缓冲的 socket** 上：`net.Pipe` 全同步无缓冲，两边都在写后等读，第一片 padding 就死锁；换成 `127.0.0.1:0` 的 TCP loopback 即通。三、`handshakePair` 里 `defer conn.Close()` 会在函数返回时拆掉刚握完的连接，后续帧传输全报 `use of closed network connection`；关闭责任交给 `t.Cleanup`。四、padding 字符串的约束是**首段 >=100 且第二三字段 >=35**（`100-0-0` 会被 `ParsePadding` 拒），而尾随 `.` 会产生空段同样被拒；0-RTT 的 `clientHello` 不在握手时落盘，要等第一次 `CommonConn.Write` 才连同 `PreWrite` 一起冲刷（客户端握手本身不读服务端任何字节）。
+
 ### 2026-11-11 UDP 数据报主路径覆盖轮次（测试）
 
 账本「覆盖侧剩余缺口」表里写着子模块 `tunnel` 剩 `processUDP`/`startUDPSender`/`dialUDPSender`——用 coverprofile 逐函数核了一遍：这三个函数分别 50%/0%/0%，`handleUDPConn` 58.1%。它们合起来就是「一个数据报从进来到被代理应答」的完整路径，产品每时每刻都在走，却一行覆盖都没有。此前没测是因为它们需要真 UDP 往返 + 一个能 `ListenPacketContext` 的代理。
