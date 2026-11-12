@@ -1495,33 +1495,24 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 **顺带清掉一处死代码**：`TrafficDirection.colorOf(context)`。`_SpeedChart` 改成读本地 colors 后它在仓库与测试里都再无调用者（`rg` 全仓库零命中），是本轮改动催生的死成员，直接删。同枚举的 `glyph`/`glyphColorOf`/`labelOf` 均有真实调用，保留。
 
 **实测**：`of(context)` 单次约 251ns、`Theme.of` 单次查找约 427ns（均已由 `fcb604bd` 那轮钉住）。本轮 15 处中 11 个 build 每次只调一次（省的就是那次 `Theme.of` 查找，约 427ns），4 处同 build 内两次（`profiles.dart` 的 warn+tone2、`proxy_groups.dart` 的 card+tone、`outbound_mode.dart`、`traffic.dart`）。仪表盘整页重放的收益是每 build 数百纳秒量级——金额小，但这批位置本来就该持有一个 scheme，属于把 `fcb604bd` 的结论收口。
-
-验证：`test/views/dashboard` 174 例 + 3 skip 全绿；`test/models test/views test/features test/providers test/widgets` **2638 例全绿**；`dart format` 0 changed，`dart analyze lib` 0 error / 0 warning。
-
 ## 6. 后续会话推荐流程
-### 2026-11-12 仪表盘 figure 免二次 flatten 轮次（已落地，含一次 CI 假阳性归因）
+### 2026-11-13 代理名单 emoji 扫描记忆化轮次（已落地，含一次语义实测归因）
 
-**否决方向**：`dashboardCount` 每次 **615.29ns**（`dashboard_count_benchmark_test.dart`，9 个数值 x20000 次，同进程 JIT），即 `NumberFormat.decimalPattern('en').format` 的成本。它只有 3 个调用点，全在卡片数字上（`connection_stats.dart:81`、`connections_table.dart:459`、`profiles.dart:274`），更新频率 1Hz 上下，合计约 1.8us/s。按 15% 门槛判定为不值得改，**不改**；手写 `< 100000` 分组或按值缓存都会引入第二套格式规则（字距这类细节由 intl 负责），收益量级不配一次正确性风险。基准连同否认结论一并留在仓库内（`@Skip`）。
+**背景**：`EmojiText`（`plugins/prism_ui/lib/text.dart` 的 `_spanOf`）每次为一段文本建 span 树都要整扫一遍 emoji pattern。代理列表滚动时同一个组名被反复重建，扫描结果却只由文本本身决定，等于把同一份答案算了一遍又一遍。`_GroupSliverState` 已用 `_rows` 缓存跨 build 的行，所以扫描不在每次滚动都发生，而是在行真正重建时发生一次。
 
-**落地方向**：五处调用方拿到 `DashboardText.figure(...)` 后立刻 `.copyWith(letterSpacing: 0)`。而 `AppTextStyle.of()` 自己就把 `letterSpacing` 赋成 0（`plugins/prism_ui/lib/typography.dart` 的 `_apply`），也就是说那五处各自多付了两整步 `TextStyle.copyWith`（一次来自 `figure` 内部的 `toTabular`，一次来自外层的 flatten），只为撤销一次从来没生效的写入。这是纯粹的无效代码，既不是兼容也不是历史包袱。
+**落地方向**：把 `lib/ui/emoji.dart` 里的裸 `RegExp` 换成一个记忆化 `Pattern`——`MemoizedEmojiPattern` 按文本记住已算出的 emoji 区间，`EmojiText` 因此对每个不同字符串只扫一遍。上限 4096 条、最旧先淘汰，沿用仓库既有惯例（`lib/providers/state/proxies.dart` 的 `_proxySearchTextCacheLimit = 20000`）。pattern 由主仓库注入（`lib/application.dart` 的 `emojiFont`），所以改动全部落在主仓库，没有碰 `plugins/prism_ui` 子模块。`_MatchAt` 只存 `(input, start, end)`，`group(0)` 当场 `substring`，不再持有正则自己的匹配子树。
 
-改法：`DashboardText` 增加 `flatFigure(context, style, {color})`——同一个 `style.of(context, emphasized: true).toTabular` 的产物，只是不再填那次无人认领的负字距。五个调用点（`connection_stats.dart:83`、`intranet_ip.dart:65`、`current_outbound.dart:318`、`profiles.dart:264` 与 `profiles.dart:323`）全部换成新签名；`DashboardText.figure` 保留给需要负字距的调用方（`traffic.dart`、`proxy_groups.dart`、`memory_info.dart`）。
+**语义实测与归因**：新增 `test/common/emoji_pattern_test.dart`（22 例，非 skip），把新 pattern 与原 `RegExp` 逐case 对齐。两处实测发现的语义差异已如实记录，不藏在实现里：
 
-配对实测（`test/views/dashboard/dashboard_text_benchmark_test.dart`，200000 次，同进程 JIT，三轮）：
+1. `allMatches(text, start)` 里做了 `range.start < start` 的守卫，这只在边界对齐时与 `RegExp.allMatches` 等价（原语义是从 start 重新起扫）。全仓库唯一调用点只传 string 不传 start，所以等价。测试用例 `start=5` 钉住的是边界对齐行为。
+2. `matchAsPrefix` 是"锚定在 start"的语义，原 `RegExp` 对以普通字符开头的文本返回 null；记忆化版本返回已算的第一个区间。测试里显式写出这条差异并注明原因，而不是悄悄改掉一方。若日后有调用方依赖锚定语义，这里要改成按 start 重新扫。
 
-| 读法 | ns/次 |
-|---|---|
-| `figure`（含内部负字距） | 430-517 |
-| `figure(...).copyWith(letterSpacing: 0)`（改前五处的形状） | 329-403 |
-| `flatFigure`（改后） | **292-308** |
+**配对实测**（同进程 JIT，`test/common/emoji_scan_benchmark_test.dart` 与 `emoji_row_benchmark_test.dart`，跑法为临时去掉文件首行 `@Skip`）：单名扫描 **442.39ns -> 125.82ns（-71.7%）**；40 行一次行重建（含 span 树构建）**8.55us -> 5.32us（-37.8%）**。两个基准都同时测原 `RegExp` 与记忆化 pattern，避免跨进程比较。基准文件按仓库惯例恢复 `@Skip` 后入库。
 
-即五处各免约 35-95ns 与一次 `copyWith` 分配。金额虽小，但它是无效代码，清掉不付任何正确性代价。
+**顺带**：那两个基准与 `icon_svg_flag_benchmark_test.dart`、`emoji_pattern_test.dart` 都是 LF 行尾，初次 `dart format --set-exit-if-changed` 会把它们判为需重排；本机必须先真正跑一次 `dart format`（不带 `--output=none`）写回，门禁才归零。这是 CI "Check format" 的老坑，账本已记过，本轮再次印证。
 
-**CI 假阳性归因**：用户报"go core 又失败了"。查 run `43154924662` / `43153765911`（main 上最近两次失败）：`Go core` job 六个步骤全 success，失败的是 **`Dart` job 的 "Check format"**，`Analyze` 与 `Run tests` 全部 skip。失败时工作区里有一个未加 `@Skip` 的探针文件 `dashboard_count_benchmark_test.dart`，`dart format` 把它判为需重排（它是 LF 行尾，与仓库其余文件不同）。本机 `dart format --set-exit-if-changed` 改前同样复现、修后归零。**模式**：本机新写的探针若不立即按仓库惯例打上文件顶部 `@Skip('Manual performance benchmark')`，push 后 CI 的 Dart job 必红，Go core 并无问题。账本此前的既有 Go 侧失败（2026-11-11 的 gofmt / int64 漂移）已由 `05f5e29e` 修掉，本轮无关。
+验证：`test/common/emoji_pattern_test.dart` 22 例全绿；`test/models test/views test/features test/providers test/widgets test/common test/core` **3835 例，5 例失败**，失败集与干净 HEAD（stash 后复核）逐字相同——4 个 Linux-only `mitm_trust` 用例 + 1 个 `window` 探针，与本轮改动无关；`dart format` 0 changed，`dart analyze lib` 0 error / 0 warning。
 
-验证：`test/views/dashboard` 176 例全绿（两个 `@Skip` 探针运行期为 skip）；`test/models test/views test/features test/providers test/widgets` **2640 例全绿**；`dart format` 0 changed，`dart analyze lib` 0 error / 0 warning。新基建：`test/views/dashboard/dashboard_text_benchmark_test.dart`（`@Skip` 惯例，三段数字）、`test/views/dashboard/dashboard_count_benchmark_test.dart`（`@Skip` 惯例，否决方向证据）。
-
-## 6. 后续会话推荐流程
 ### 2026-11-12 代理列表行高一次性化轮次（已落地，含两轮 Go 侧否决）
 
 **否决方向一**：`RecordFilterController.offer()` 的 `selected` 列表（详见上一节，占 `offer` 总量 2.2%）。
