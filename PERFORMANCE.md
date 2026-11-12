@@ -1478,6 +1478,20 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 验证：`test/views/dashboard` 175 例全绿；`test/models test/views test/features test/providers test/widgets` 2639 例全绿；`test/core test/common` 1158 过 / 5 失败，失败集与 2026-11-12 上一轮逐字相同（4 个 Linux-only `mitm_trust` + 1 个 `window` 探针），stash 掉本轮改动的干净 HEAD 上同样失败。`dart format` 0 changed，`dart analyze lib` 0 error / 0 warning。新基建：`test/views/dashboard/dashboard_colors_benchmark_test.dart`（`@Skip` 惯例）、`test/views/dashboard/rebuild_card_benchmark_test.dart`（未采用，仪表盘整卡 pump 依赖过多全局状态，形状不成立）、`test/models/record_offer_benchmark_test.dart`（否决方向的证据）。
 
 ## 6. 后续会话推荐流程
+### 2026-11-12 代理列表行高一次性化轮次（已落地，含两轮 Go 侧否决）
+
+**否决方向一**：`RecordFilterController.offer()` 的 `selected` 列表（详见上一节，占 `offer` 总量 2.2%）。
+
+**否决方向二**：`classOfMessage` 每事件一次的字符串 switch（5 个 case）。实测（`core/message_class_bench_test.go`，8 种事件类型各分一次类，同进程 5 轮）：**13.2–13.4ns/次、0 B/op、0 allocs**。即便每秒万事件也只占 130µs（0.013% CPU）。改成 int 枚举或 map 都要动 `Message.Type` 的 wire 契约（`MessageType` 就是一串序列化名），收益不抵风险，**不改**。
+
+**否决方向三**：`_SpeedChart` 每次 build 为 `FixedList<Traffic>` 新建一个 `List<double>`（`trafficSampleLength = 24`）。`LineChart` 内部已按 `revision` 维护 series 与缓存，输入列表只是它的一次性读；24 个 double（约 300B）在 1Hz 采样下的分配可忽略，**不改**。
+
+**落地方向**：`lib/views/proxies/list.dart` 的 `_GroupSliverState` 每个组的 build 里，`getRowExtent(widget.cardType)` 被算两次——一次在 `_rowsExtent(rowCount, ...)` 算 group 高度，一次在 `getItemHeight`。而行高只取决于 cardType。`getItemHeight` 内部跑 3–4 次 `measure.textHeight`（要读度量缓存）。
+
+改法：把 `extent` 提到 `build` 顶部算一次，作为参数传进 `_buildPinnedHeader`（它此前自己又算了一遍同样的 `getRowExtent(widget.cardType)`）。同时把 `_rowExtent` 那个「初值 0 的行高缓存」去掉：它是一个在展开动画期间会算出错误 `rowsExtent` 的无效状态，而 `extent` 每次 build 都能直接算出，缓存本身没有意义——这条是用户「精简代码逻辑、不写无效代码」要求下的清理。
+
+验证：`test/views` 553 例全绿（`proxies_list`/`proxies_group_offsets` 5 例单独绿）；`test/models test/features test/providers test/widgets test/core` 2303 例全绿；`test/common` 957 过 / 5 失败，失败集与上一轮逐字相同（4 个 Linux-only `mitm_trust` + 1 个 `window` 探针）。`dart format` 0 changed，`dart analyze lib` 0 error / 0 warning。新基建：`core/message_class_bench_test.go`（Go 侧基准不走 Dart runner，跑法是 `go test -run '^$' -bench BenchmarkClassOfMessage`）。
+
 ``powershell
 git pull --ff-only
 git -C core/Clash.Meta switch main

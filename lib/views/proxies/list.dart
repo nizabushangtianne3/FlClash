@@ -307,7 +307,7 @@ class _GroupSliver extends ConsumerStatefulWidget {
 class _GroupSliverState extends ConsumerState<_GroupSliver>
     with SingleTickerProviderStateMixin {
   Widget? _rows;
-  double _rowExtent = 0;
+  late double _builtExtent;
   late final _controller = AnimationController(
     vsync: this,
     value: ref.read(unfoldSetProvider).contains(widget.group.name) ? 1 : 0,
@@ -317,6 +317,7 @@ class _GroupSliverState extends ConsumerState<_GroupSliver>
   @override
   void initState() {
     super.initState();
+    _builtExtent = getRowExtent(widget.cardType);
     _controller.addStatusListener((_) => setState(() {}));
     ref.listenManual(
       unfoldSetProvider.select((state) => state.contains(widget.group.name)),
@@ -445,8 +446,10 @@ class _GroupSliverState extends ConsumerState<_GroupSliver>
     );
     final unfolded = _controller.isCompleted;
     Widget? rows;
+    // One height answer per build: a row does not move while the card type
+    // stands, and the pinned header below asks for the same number.
+    final extent = getRowExtent(widget.cardType);
     if (!_controller.isDismissed && widget.group.all.isNotEmpty) {
-      final extent = getRowExtent(widget.cardType);
       final decoration = ShapeDecoration(
         color: context.raisedSurfaceLevel.colorOf(context.colorScheme),
         shape: AppShape.vertical(
@@ -460,9 +463,9 @@ class _GroupSliverState extends ConsumerState<_GroupSliver>
           child: _buildUnfoldingRows(extent, decoration),
         );
       } else {
-        if (_rows == null || _rowExtent != extent) {
+        if (_rows == null || _builtExtent != extent) {
           _rows = _buildRows(extent);
-          _rowExtent = extent;
+          _builtExtent = extent;
         }
         rows = DecoratedSliver(
           decoration: decoration,
@@ -494,7 +497,7 @@ class _GroupSliverState extends ConsumerState<_GroupSliver>
     return SliverPadding(
       padding: EdgeInsets.only(bottom: widget.gap),
       sliver: SliverMainAxisGroup(
-        slivers: [_buildPinnedHeader(isExpand, buildHeader), ?rows],
+        slivers: [_buildPinnedHeader(isExpand, buildHeader, extent), ?rows],
       ),
     );
   }
@@ -507,15 +510,14 @@ class _GroupSliverState extends ConsumerState<_GroupSliver>
   Widget _buildPinnedHeader(
     bool isExpand,
     Widget Function({double floating, double lift}) buildHeader,
+    double extent,
   ) {
     final columns = widget.columns;
     final rowCount = (widget.group.all.length + columns - 1) ~/ columns;
-    final rowsExtent = isExpand ? _rowsExtent(rowCount, _rowExtent) : 0.0;
+    final rowsExtent = isExpand ? _rowsExtent(rowCount, extent) : 0.0;
     final groupExtent =
         listHeaderHeight +
-        (_controller.isDismissed
-            ? 0.0
-            : _rowsExtent(rowCount, getRowExtent(widget.cardType)));
+        (_controller.isDismissed ? 0.0 : _rowsExtent(rowCount, extent));
     (double, double, double, Color)? headerState;
     Widget? header;
     return SliverLayoutBuilder(
