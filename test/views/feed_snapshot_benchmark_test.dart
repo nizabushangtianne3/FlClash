@@ -1,4 +1,6 @@
 @Skip('Manual performance benchmark')
+library;
+
 import 'dart:io';
 
 import 'package:fl_clash/models/models.dart';

@@ -81,7 +81,6 @@ void main() {
   test('building the selected list one offered facet pays for', () {
     const count = 500;
     const attempts = 2000;
-    final items = [for (var index = 0; index < count; index++) _request(index)];
     final controller = RecordFilterController<TrackerInfo>(
       facets: trackerInfoFacets,
     )..add(const RecordFilter(RecordFacetKind.rule, 'DOMAIN-SUFFIX'));
