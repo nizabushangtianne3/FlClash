@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.0.9 (2026-11-12)
+
+**Bug Fixes**
+
+- **prefs** Bound the delay map by what it serializes to (fc42bc1)
+
+**Performance**
+
+- **proxies** Memoize the emoji scan a row rebuild pays for (b051474)
+- **dashboard** Read the dashboard colors off a held scheme (75f497f)
+- **dashboard** Stop flattening a figure that is already flat (d0870f2)
+- **proxies** Read a group's row height once per build (97dfa64)
+- **dashboard** Hold the color roles on the scheme they came from (fcb604b)
+- **dashboard** Let the card table read a feed from its end (569086f)
+- **connections** Copy the ordered table only when a sample moves it (b5b2c38)
+
 ## v1.0.8 (2026-11-12)
 
 **Performance**
