@@ -1250,7 +1250,7 @@ feed flush 分解实测（每 300ms 窗口 400 日志 + 120 连接行 + 240 DNS 
 
 **原方向「主动失效钩子」已于 2026-11-10 落地**：子模块 `adapter/outboundgroup.AnswerGeneration()` 在 pin 与自行改选两条写入口上递增，wrapper 快照记住「上一次全量校验前读到的代号」，稳定态答案只做两次原子读——wrapper 每答案的逐组 provider/选中遍历随之消掉，命中路径 geomean -74.68%（见第 2 节「稳定态答案两次读轮次」）。设计上要求的两件事都已具备：一张覆盖矩阵（写入点只有 `announceAnswer`/`bumpAnswer`/`Selector.setSelected` 三处，全部计入）与对应测试（子模块 `TestAnswerGenerationMovesWhenAGroupsAnswerDoes` + wrapper 既有 `TestGroupDocsAnswerWhatTheirGroupsChange` 钉住选中变更与订阅刷新两条路径）。
 
-**当前剩余方向（均已实测，按收益排序）**：① 信封契约改造（**2026-11-10 已实测否决并撤销**）：把信封改成写入处物化，小文档路径 allocs 1→0 且时间 -1.74%，但大文档路径 +22%~+24.6%（id 被 `size()` 与 `appendEnvelope` 重复扫描、分配档 32B→48B），geomean +19.48%。结论见第 3 节该行，勿重做；② `config.GetProxyNameList` 每答案一次 RWMutex 读锁（约 1.4%），要省得把子模块的名单表换成原子指针，收益不抵改动面；③ 连接轮询的 `connectionRows.rows[tracker]` 接口 map 查询（该基准约 8.5%），轮询周期 2s，绝对量 5µs；④ 子模块 `xsync.Map.Size()` 已是 O(bucket) 而非 O(entry)，`GetConnectionCount` 单次 6.6ns，无进一步空间。
+**当前剩余方向（均已实测，按收益排序）**：① 信封契约改造（**2026-11-10 已实测否决并撤销**）：把信封改成写入处物化，小文档路径 allocs 1→0 且时间 -1.74%，但大文档路径 +22%~+24.6%（id 被 `size()` 与 `appendEnvelope` 重复扫描、分配档 32B→48B），geomean +19.48%。结论见第 3 节该行，勿重做；② `config.GetProxyNameList` 已在原子指针上（子模块 `config/patch.go`，`atomic.Pointer[[]string]` 整表替换），无读锁可省，该条已不适用；③ 连接轮询的 `connectionRows.rows[tracker]` 接口 map 查询（`BenchmarkHandleGetConnectionsDelta` 表变动路径约 8.5%），稳态轮询已被 generation+size 短路（500 连接 371ns），只在有新连接或关闭时付，绝对量约 5µs/2s；④ 子模块 `xsync.Map.Size()` 已是 O(bucket) 而非 O(entry)，`GetConnectionCount` 单次 6.6ns，无进一步空间。Go 侧剩余项均已到地板或收益不抵风险，继续挖应转到 Dart 侧（见 2026-11-12 两轮：连接 feed 与表格单元格）。
 
 
 ### 全代码复核覆盖面（2026-11-09，含平台层）
