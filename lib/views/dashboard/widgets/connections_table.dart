@@ -160,8 +160,7 @@ mixin ConnectionsPolling<T extends ConsumerStatefulWidget>
     if (!pollsConnections) {
       return;
     }
-    final next = [...snapshot.connections]
-      ..sort((a, b) => b.start.compareTo(a.start));
+    final next = snapshot.connections;
     final (:tcp, :udp) = liveProtocolSplit(next);
     updateWhenRouteSettled(
       () => setState(() {

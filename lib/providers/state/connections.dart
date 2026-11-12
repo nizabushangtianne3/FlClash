@@ -67,6 +67,7 @@ class Connections extends _$Connections {
   DateTime? _lastRead;
   Map<String, TrackerInfo> _rows = {};
   List<TrackerInfo> _orderedRows = const [];
+  Map<String, int> _slots = const {};
   Future<ConnectionDelta> Function({bool resync})? _reader;
   int _revision = 0;
   @override
@@ -95,6 +96,10 @@ class Connections extends _$Connections {
     if (traffic.isEmpty || !ref.mounted) {
       return;
     }
+    // Both views of the table have to move together: [_rows] is what a keyed
+    // lookup replaces, [_orderedRows] is what the app reads, and a map write
+    // does not reach the list the snapshot publishes.
+    final orderedRows = List<TrackerInfo>.of(_orderedRows);
     var changed = false;
     for (final entry in traffic.entries) {
       final row = _rows[entry.key];
@@ -106,15 +111,21 @@ class Connections extends _$Connections {
       if (row.upload == upload && row.download == download) {
         continue;
       }
-      _rows[entry.key] = row.copyWith(upload: upload, download: download);
+      final next = row.copyWith(upload: upload, download: download);
+      _rows[entry.key] = next;
+      final slot = _slots[entry.key];
+      if (slot != null) {
+        orderedRows[slot] = next;
+      }
       changed = true;
     }
     if (!changed) {
       return;
     }
+    _orderedRows = orderedRows;
     state = ConnectionsSnapshot(
       count: _rows.length,
-      connections: _orderedRows,
+      connections: orderedRows,
       revision: ++_revision,
     );
   }
@@ -165,6 +176,10 @@ class Connections extends _$Connections {
     final orderedRows = rows.values.toList()
       ..sort((a, b) => b.start.compareTo(a.start));
     _orderedRows = orderedRows;
+    _slots = {
+      for (var index = 0; index < orderedRows.length; index++)
+        orderedRows[index].id: index,
+    };
     state = ConnectionsSnapshot(
       // The Core's own count leads: the table is what this app holds, and the
       // two disagree only until an answer it missed is asked for again.
@@ -180,6 +195,7 @@ class Connections extends _$Connections {
     }
     _rows = {};
     _orderedRows = const [];
+    _slots = const {};
     _resync = true;
     state = ConnectionsSnapshot(revision: ++_revision);
   }

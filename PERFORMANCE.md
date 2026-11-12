@@ -1199,11 +1199,20 @@ feed flush 分解实测（每 300ms 窗口 400 日志 + 120 连接行 + 240 DNS 
 
 配对实测（`connections_feed_benchmark_test.dart`，300 行 ×2000 次，JIT）：旧路径（复制 + 排序 + 计数）19.7µs → 新路径（直接计数）3.7µs（**-81.3%**）。tracker ranker、connections 表格、poll cycle 基准测试全绿；`dart format` 0 changed，`dart analyze --fatal-warnings` 剩余 6 条均为与本轮无关的既有 info（干净基线复跑一致）。基准注解在测量后已按仓库惯例还原为 `@Skip`，账本只留数字。
 
+### 2026-11-12 连接流量槽位闭环轮次（正确性修复，已落地）
+
+假设：上一轮把排序下沉到 provider 后，`updateTraffic` 只替换 `_rows` 里的行对象而不同步 `_orderedRows`，快照发布的是旧行对象；仪表盘 UI 侧也在重复排序一份 provider 已排好的列表。本轮修复两处：
+
+1. `updateTraffic` 现在同步替换有序列表对应槽位的行（`_rows` 与 `_orderedRows` 由 id→槽位索引对齐），counter-only 刷新不再读旧计数器。索引随 `_merge`/`_clear` 重建，单次 traffic 更新是 O(受影响行数) 而非 O(全表)。
+2. `connections_table.dart` 的 `_showConnections` 直接读 `snapshot.connections`，删掉 `[...snapshot.connections]..sort(...)` 的复制与重排；provider 已保证 start 倒序。
+
+验证：`test/views/dashboard/connections_table_test.dart` 与 `test/providers/app_test.dart` 54 例全绿；`test/models test/views test/features` 1014 例（13 例手工基准跳过）全绿；`flutter analyze --no-fatal-infos` 0 error / 0 warning（852 条既有 info，全部位于生成 l10n、plugins 与测试文件，与本轮无关）。Go core 侧 `go test .`、`go vet . ./cmd/...`、`GOOS=linux go vet ./platform`、`GOOS=android GOARCH=arm64 go vet -tags=with_gvisor . ./mobile ./tun ./platform` 全部通过。
+
 ### 待优化项清单（2026-11-07 全量复核，均在本机实测过基线）
 
 | 位置 | 实测基线（JIT） | 结论 / 下一步 |
 |---|---|---|
-| 实时连接 feed 的 `[...snapshot.connections]..sort(start 倒序)` | 300 行 19.7µs → 3.7µs（**-81.3%**，2026-11-12 已把排序下沉到 provider） | **已完结**：排序在 `Connections._merge` 重建行集合时做一次，`_orderedRows` 是不可变有序表，`updateTraffic` 只替换行对象、不改 `LinkedHashMap` 插入位，所以复用它仍然保持 start 倒序；仪表盘 `_showConnections` 直接读快照，免复制免排序。顺序护栏在 connections_table 的 counter-only 用例，基准 `connections_feed_benchmark_test.dart` 配对实测。剩余成本是每次刷新重建 20 行 ×8 列的 widget，要再降只能自绘表格 |
+| 实时连接 feed 的 `[...snapshot.connections]..sort(start 倒序)` | 300 行 19.7µs → 3.7µs（**-81.3%**，2026-11-12 已把排序下沉到 provider） | **已完结**：排序在 `Connections._merge` 重建行集合时做一次，`_orderedRows` 是不可变有序表；2026-11-12 补齐 `updateTraffic` 同步替换有序列表槽位与 id→槽位索引，counter-only 刷新不再发布旧行对象。仪表盘 `_showConnections` 直接读快照，免复制免排序。顺序护栏在 connections_table 的 counter-only 用例，基准 `connections_feed_benchmark_test.dart` 配对实测。剩余成本是每次刷新重建 20 行 ×8 列的 widget，要再降只能自绘表格 |
 | `RecordFacet.optionsOf`（剩余） | requests 页 500 行 ×3 个 offered facet：单值化 + 有界选取后约 46.0µs/组；rule 全去重场景 50.7µs/次 | 剩余是 map 计数本身（500 个不同字符串的哈希与插入，约 25µs）与选项终排。「同一列表实例跳过重算」不成立（三个调用点都由节流器在新数据到达时驱动，列表必然已变）；top-k 无法再近似，每个值都必须数到 |
 | `RecordSorter.sort` 乱序路径 | 10000 行 ×1000 次同 `record_sorter_benchmark_test.dart`；`Expando` 缓存 sortKey 无效（见第 3 节） | 剩余可省的是 `order`+`sorted` 两个列表，需 in-place 置换且不能改调用方列表；上次尝试写反已回退，先写语义测试再上基准 |
 | 打包 int64 键替代索引排序（`computeSort`） | 设想：把 (priority,delay,group,index) 打成单个 int64 用 `Int64List.sort()` 免比较器排序。scratch 配对实测（1000 节点 ×500 次，顺序与索引排序完全一致）：172.4µs → 169.4µs（-1.7%，噪声内） | JIT 下 `Int64List.sort()` 并未比 `List<int>.sort(comparator)` 快，比较器本身已不是瓶颈；撤销 |
