@@ -83,6 +83,7 @@ class ProfilesCard extends ConsumerWidget {
     final expiry = _expiryOf(profile);
     final updatedAt = profile?.lastUpdateDate;
     final label = DashboardText.label(context);
+    final colors = DashboardColors.ofScheme(context.colorScheme);
     final figure = mobile
         ? AppTextStyle.title3
         : (compact ? AppTextStyle.callout : AppTextStyle.headline);
@@ -101,7 +102,7 @@ class ProfilesCard extends ConsumerWidget {
           text,
           maxLines: 1,
           style: _daysLeft(expiry) <= _soonDays
-              ? label.copyWith(color: DashboardColors.of(context).warn)
+              ? label.copyWith(color: colors.warn)
               : label,
         ),
       ),
@@ -311,6 +312,7 @@ class _UsageMeter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = DashboardColors.ofScheme(context.colorScheme);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -365,9 +367,9 @@ class _UsageMeter extends StatelessWidget {
             painter: _WavyProgressPainter(
               value: usage.share,
               active: usage.share >= _nearlyUsedShare
-                  ? DashboardColors.of(context).warn
+                  ? colors.warn
                   : context.colorScheme.primary,
-              track: DashboardColors.of(context).tone2,
+              track: colors.tone2,
             ),
           ),
         ),

@@ -315,6 +315,7 @@ class _GroupsFigure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = DashboardColors.ofScheme(context.colorScheme);
     final count = Text.rich(
       TextSpan(
         children: [
@@ -332,11 +333,7 @@ class _GroupsFigure extends StatelessWidget {
     );
     return DashboardCappedRow(
       start: count,
-      end: _IconStack(
-        groups: groups,
-        size: metrics.icon,
-        ring: DashboardColors.of(context).card,
-      ),
+      end: _IconStack(groups: groups, size: metrics.icon, ring: colors.card),
     );
   }
 }
@@ -356,6 +353,7 @@ class _IconStack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = DashboardColors.ofScheme(context.colorScheme);
     final shown = groups.take(_stackedIcons).toList();
     final rest = groups.length - shown.length;
     final count = shown.length + (rest > 0 ? 1 : 0);
@@ -382,7 +380,7 @@ class _IconStack extends StatelessWidget {
                 width: size,
                 height: size,
                 decoration: ShapeDecoration(
-                  color: DashboardColors.of(context).tone,
+                  color: colors.tone,
                   shape: AppShape.all(DashboardCorner.badge).copyWith(
                     side: BorderSide(
                       color: ring,

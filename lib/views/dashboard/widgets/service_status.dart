@@ -335,6 +335,7 @@ class _ServiceCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = DashboardColors.ofScheme(context.colorScheme);
     final (label, color) = service.statusOf(context);
     final status = AppTextStyle.caption1
         .of(context, emphasized: true)
@@ -344,7 +345,7 @@ class _ServiceCell extends StatelessWidget {
       target: service.target,
       size: height - _inset * 2,
       radius: DashboardCorner.tab - _inset,
-      color: DashboardColors.of(context).card,
+      color: colors.card,
       ink: context.colorScheme.onSurfaceVariant,
       dot: service.dotOf(context),
     );

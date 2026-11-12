@@ -328,6 +328,7 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
   Widget build(BuildContext context) {
     final density = DashboardDensityScope.of(context);
     final scale = DashboardDensityScope.scaleOf(context);
+    final colors = DashboardColors.ofScheme(context.colorScheme);
     final rowHeight = _rowHeightOf(density) * scale;
     final appLocalizations = context.appLocalizations;
     final headerHeight = _tabHeightOf(density) * scale;
@@ -340,7 +341,7 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
           last: feed == DashboardFeed.values.last,
           outer: headerHeight / 2,
           inner: 8,
-          background: DashboardColors.of(context).tone,
+          background: colors.tone,
           semanticLabel: feed.label,
           onTap: () => _select(feed),
           builder: (foreground) => _FeedSegment(
@@ -730,6 +731,7 @@ class _Source extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = DashboardColors.ofScheme(context.colorScheme);
     final letter = name.characters.firstOrNull ?? '?';
     return Row(
       spacing: 8,
@@ -738,7 +740,7 @@ class _Source extends StatelessWidget {
           width: 22,
           height: 22,
           decoration: ShapeDecoration(
-            color: DashboardColors.of(context).tone2,
+            color: colors.tone2,
             shape: AppShape.all(7),
           ),
           child: Center(

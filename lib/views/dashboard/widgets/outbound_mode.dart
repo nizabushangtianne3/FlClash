@@ -31,7 +31,7 @@ class OutboundModeCard extends ConsumerWidget {
     final mode = ref.watch(
       patchClashConfigProvider.select((state) => state.mode),
     );
-    final tone = DashboardColors.of(context).tone;
+    final tone = DashboardColors.ofScheme(context.colorScheme).tone;
     final style = AppTextStyle.footnote.of(context, emphasized: true);
     return DashboardCard(
       semanticLabel: context.appLocalizations.outboundMode,
@@ -101,6 +101,7 @@ class OutboundModeBar extends ConsumerWidget {
     final appLocalizations = context.appLocalizations;
     final outer = dashboardCardRadius(density) - _inset;
     final style = AppTextStyle.subheadline.of(context, emphasized: true);
+    final colors = DashboardColors.ofScheme(context.colorScheme);
     return DashboardCard(
       semanticLabel: appLocalizations.outboundMode,
       padding: EdgeInsetsDirectional.fromSTEB(
@@ -139,7 +140,7 @@ class OutboundModeBar extends ConsumerWidget {
                         last: index == Mode.values.length - 1,
                         outer: outer,
                         inner: 10,
-                        background: DashboardColors.of(context).tone,
+                        background: colors.tone,
                         semanticLabel: item.label,
                         onTap: () => _changeMode(ref, item),
                         builder: (foreground) => Row(

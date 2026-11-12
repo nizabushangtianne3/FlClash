@@ -509,9 +509,10 @@ class DashboardBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = DashboardColors.ofScheme(context.colorScheme);
     final shape = AppShape.all(radius);
     final content = Padding(padding: padding, child: child);
-    final fill = color ?? DashboardColors.of(context).tone;
+    final fill = color ?? colors.tone;
     final onTap = this.onTap;
     if (onTap == null) {
       return DecoratedBox(

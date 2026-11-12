@@ -1477,6 +1477,18 @@ CLI `Go core` job 的四个步骤本地全部复跑通过：`gofmt` 输出为空
 
 验证：`test/views/dashboard` 175 例全绿；`test/models test/views test/features test/providers test/widgets` 2639 例全绿；`test/core test/common` 1158 过 / 5 失败，失败集与 2026-11-12 上一轮逐字相同（4 个 Linux-only `mitm_trust` + 1 个 `window` 探针），stash 掉本轮改动的干净 HEAD 上同样失败。`dart format` 0 changed，`dart analyze lib` 0 error / 0 warning。新基建：`test/views/dashboard/dashboard_colors_benchmark_test.dart`（`@Skip` 惯例）、`test/views/dashboard/rebuild_card_benchmark_test.dart`（未采用，仪表盘整卡 pump 依赖过多全局状态，形状不成立）、`test/models/record_offer_benchmark_test.dart`（否决方向的证据）。
 
+### 2026-11-12 仪表盘颜色收口轮次（已落地，15 处 of(context) 转 ofScheme，含一处死代码清理）
+
+`fcb604bd` 把 `DashboardColors` 按 scheme 缓存（`of(context)` 转调 `ofScheme`，读一次约 251ns），但仓库里还剩 15 处 `DashboardColors.of(context)`。它们不是"忘了改"：`of(context)` 内部就是 `context.colorScheme` 的一次继承查找再命中 `Expando`，而 `_SpeedChart`、`_ServiceCell`、`DashboardBlock`、`_Source`、`_MemoryBar`、`_UsageMeter`、`_GroupsFigure`、`_IconStack` 这批 build 自己没有持有 scheme，每次调用都要重新走一遍 `Theme.of`。本轮把这 15 处统一提到 build 顶部做一次 `context.colorScheme`，之后所有颜色读都从局部变量来，与 `fcb604bd` 已改的 12 处同一形状。
+
+覆盖的 build：`dashboard.dart`（Scaffold 背景）、`card.dart`（`DashboardBlock`）、`connections_table.dart`（`ConnectionsTableCard` 的分段按钮底与 `_Source` 字母块）、`memory_info.dart`（`_MemoryBar` 空态）、`outbound_mode.dart`（两处）、`profiles.dart`（`ProfilesCard` 的临期 warn 与 `_UsageMeter` 的 warn+tone2）、`proxy_groups.dart`（`_GroupsFigure` 的环与 `_IconStack` 的 +N 块）、`service_status.dart`（`_ServiceCell` 的徽章底）、`traffic.dart`（`_SpeedChart` 的上行配色）。
+
+**顺带清掉一处死代码**：`TrafficDirection.colorOf(context)`。`_SpeedChart` 改成读本地 colors 后它在仓库与测试里都再无调用者（`rg` 全仓库零命中），是本轮改动催生的死成员，直接删。同枚举的 `glyph`/`glyphColorOf`/`labelOf` 均有真实调用，保留。
+
+**实测**：`of(context)` 单次约 251ns、`Theme.of` 单次查找约 427ns（均已由 `fcb604bd` 那轮钉住）。本轮 15 处中 11 个 build 每次只调一次（省的就是那次 `Theme.of` 查找，约 427ns），4 处同 build 内两次（`profiles.dart` 的 warn+tone2、`proxy_groups.dart` 的 card+tone、`outbound_mode.dart`、`traffic.dart`）。仪表盘整页重放的收益是每 build 数百纳秒量级——金额小，但这批位置本来就该持有一个 scheme，属于把 `fcb604bd` 的结论收口。
+
+验证：`test/views/dashboard` 174 例 + 3 skip 全绿；`test/models test/views test/features test/providers test/widgets` **2638 例全绿**；`dart format` 0 changed，`dart analyze lib` 0 error / 0 warning。
+
 ## 6. 后续会话推荐流程
 ### 2026-11-12 仪表盘 figure 免二次 flatten 轮次（已落地，含一次 CI 假阳性归因）
 

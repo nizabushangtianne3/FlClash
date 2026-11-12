@@ -24,10 +24,6 @@ enum TrafficDirection {
 
   Glyph get glyph => this == upload ? AppGlyphs.arrowUp : AppGlyphs.arrowDown;
 
-  Color colorOf(BuildContext context) => this == upload
-      ? DashboardColors.of(context).series2
-      : context.colorScheme.primary;
-
   Color glyphColorOf(BuildContext context) => this == upload
       ? context.colorScheme.onSurfaceVariant
       : context.colorScheme.primary;
@@ -83,6 +79,7 @@ class _SpeedChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = DashboardColors.ofScheme(context.colorScheme);
     return LineChart(
       values: [
         for (final traffic in traffics.list) direction.of(traffic).toDouble(),
@@ -91,7 +88,9 @@ class _SpeedChart extends StatelessWidget {
       capacity: traffics.maxLength,
       minScale: _minSpeedScale,
       baselineRatio: 1,
-      color: direction.colorOf(context),
+      color: direction == TrafficDirection.upload
+          ? colors.series2
+          : context.colorScheme.primary,
     );
   }
 }
@@ -306,6 +305,7 @@ class _SpeedTile extends StatelessWidget {
     final color = direction.glyphColorOf(context);
     final show = speed.traffic;
     final scale = DashboardDensityScope.scaleOf(context);
+    final colors = DashboardColors.ofScheme(context.colorScheme);
     final chartTop =
         _padding.top + _titleGap + AppTextStyle.footnote.leading * scale;
     return LayoutBuilder(
@@ -316,7 +316,7 @@ class _SpeedTile extends StatelessWidget {
           ),
           clipBehavior: Clip.antiAlias,
           decoration: ShapeDecoration(
-            color: DashboardColors.of(context).tone,
+            color: colors.tone,
             shape: AppShape.all(DashboardCorner.mobileBlock),
           ),
           child: Stack(

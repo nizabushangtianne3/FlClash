@@ -581,6 +581,7 @@ class _MemoryBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final duration = context.motionDuration(commonDuration);
+    final colors = DashboardColors.ofScheme(context.colorScheme);
     final total = segments.fold(
       0,
       (sum, segment) => sum + max(0, segment.bytes),
@@ -590,7 +591,7 @@ class _MemoryBar extends StatelessWidget {
       child: SizedBox(
         height: 8,
         child: total == 0
-            ? ColoredBox(color: DashboardColors.of(context).tone2)
+            ? ColoredBox(color: colors.tone2)
             : Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
