@@ -1667,6 +1667,32 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 
 因此此前两个「用整数路径绕开 `toStringAsFixed`」的实验（`§2` 第 1268 行记录：141ns → 53ns）照样**已因语义不等价被撤销**，这里不复述；只更正开销量级本身。新增的配对基准留在仓库里（`@Skip` 手工项），防止这个错误数字再次被引用。
 
+### 2026-11-13 请求流量探测与死代码扫描轮次（两次实测否决，无代码改动）
+
+本轮沿「账本没量过的路径」扫了两处，两次都被证据否决，如实记账，不留无效代码。
+
+**否决方向一：`request_traffic.collect` 里那条每秒全表 `Range`**
+
+现状：`core/request_traffic.go:69` 每秒走一次 `statistic.DefaultManager.Range`，遍历**全部活跃连接**，只为把 watch 里的请求标记为 alive。账本此前只记录了连接轮询的 generation 短路（`connection.go:135` 同模式），从没记过这条同形的每秒 O(活跃连接) 扫描。
+
+第一版设想（照抄 `connection.go` 的 `Generation()` 短路）：记下上次见到的 generation，未变就跳过 Range。**实测证伪**——`TestRequestTrafficKeepsARequestTheManagerHasNotStoredYet` 立即失败。原因不是快慢而是语义：`alive` 表达的是「本轮是否在表里」，跳过 Range 后改成「上一轮的结论仍然成立」，而该用例的构造（`DefaultManager.Leave(tracker)` 后再 `add`）恰好在第二轮 generation 未变时**要求重新判定为 closing**。这条关闭语义由 5 个既有测试钉死，不值得为一次 Range 改动它。
+
+第二版设想（反转扫描方向）：改用 `Manager.Get(id)` 逐个探问 watch 里的 tracker，把 O(活跃连接) 换成 O(watch 大小)。**未实施即否决**：`Get` 按 id 字符串查（`uuid.FromString(id)` 解析），而 watch 手上只有 `statistic.Tracker`，取 id 要额外调 `tracker.ID()` 做一次 UUID 字符串化；requests 页的 watch 集与活跃连接集同量级（都是当前请求），扫描方向的反转换不来净收益。
+
+第三版设想（通知式关闭）：子模块已有 `DefaultRequestNotify` 在 `Join` 时通知（`tunnel/statistic/manager.go:71`），但 **`Leave` 没有任何钩子**。要根治得给子模块加一个 leave 通知并改所有调用方，属公共 API 扩张，收益不抵风险。维持现状。
+
+结论：这条 Range 保留。它的成本与连接表同阶，而 wrapper 每秒本来就要为连接轮询付一次同形状的 walk，绝对量在既有预算内；`Range` 由子模块 `xsync.Map` 的 bucket 级锁 + 中间切片收集实现，指向它的优化会波及所有调用方。
+
+**否决方向二：私有顶层死代码扫描**
+
+为「精简代码逻辑、不写无效代码」写了一个 `tool/dead_declarations.dart` 探针：扫 `lib/` 下所有 `_`-prefixed 顶层声明，统计全仓库引用数，报 `<=1` 的（`test/lint/dead_file_test.dart` 只能查整个孤儿文件，编译器对「本库内只用一次」的私有声明不报警）。**全仓库仅一个候选，且是误报**：`lib/common/log_payload.dart:3` 的 `_endpoint`，被 `'^$_endpoint --> ...'` 与 `'^dial ...$_endpoint ...'` 两处字符串插值引用，探针只匹配裸标识符所以漏掉了。
+
+该探针是一次性工具，按仓库规矩（脚本收拢、禁止散落一次性脚本）未入库，已删除；这条结论留在账本，后续同类任务不必重写。
+
+结论：Dart 侧无私有顶层死代码可删。这一轮与 2026-11-12 的「`dart analyze` 在 `lib/` 0 告警」互为印证——lib 侧的无效代码已在往轮次清干净，`dart analyze` 的 unused 检查与本次探针的引用计数都指向同一结论。
+
+**本轮同时复核的两个方向（均判定非热点，不是深挖后否决）**：`lib/views/profiles/custom/*` 三个大文件（custom_proxies 1695 行、groups 1371 行、members 818 行）的输入路径全部落在按键/开表单/保存上，没有任何一条接轮询——`customProfileData` 的上游（`customProxiesProvider`/`proxyGroupsProvider`）是数据库 backing provider，只在数据变化时通知；`core/delay.go` 的 `configuredTestTimeout` 每次延迟测试遍历所有 provider，但 `handleTestDelay` 只由 IPC `proxyTestDelay` 单节点触发，不构成批量热路径，且 `timeout <= longest` 已提前跳过未配置的 provider。
+
 ## 7. 已知维护事项
 
 - 2026-11-11 `dart run tool/test.dart` 全量第 6 个失败：`test/core/desktop/process_probe_test.dart`「an exited child process is not alive」在满载机器上偶发（探针在子进程退出后仍报存活），单独重跑与安静环境均通过；该测试 kill 掉 `ping` 后立即探测，属时序敏感，与本会话 Dart 改动无交互。已知既有失败集仍是 5 个（4 个 Linux-only mitm + window 探针）。
