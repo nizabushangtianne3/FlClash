@@ -4,12 +4,13 @@ import 'package:code_forge/code_forge.dart'
 const _maxSuggestions = 60;
 
 /// A prefix beats a segment prefix, which beats the letters in order.
-int? completionScore(String candidate, String typed) {
+/// [lowerTyped] is [typed] already lowercased, so a whole ranking pass pays
+/// for the transform once instead of once per candidate.
+int? completionScore(String candidate, String typed, String lowerTyped) {
   if (typed.isEmpty) {
     return 0;
   }
   final lower = candidate.toLowerCase();
-  final lowerTyped = typed.toLowerCase();
   if (lower.startsWith(lowerTyped)) {
     return 3000 - candidate.length + (candidate.startsWith(typed) ? 100 : 0);
   }
@@ -47,6 +48,7 @@ List<CodeForgeSuggestion> rankSuggestions(
   Iterable<CodeForgeSuggestion> candidates,
 ) {
   final seen = <String>{};
+  final lowerTyped = typed.toLowerCase();
   final scored = <(int, int, CodeForgeSuggestion)>[];
   var index = 0;
   for (final candidate in candidates) {
@@ -54,7 +56,7 @@ List<CodeForgeSuggestion> rankSuggestions(
     if (!seen.add(label) || (label == typed && candidate.snippet == null)) {
       continue;
     }
-    final score = completionScore(label, typed);
+    final score = completionScore(label, typed, lowerTyped);
     if (score != null) {
       scored.add((score, index++, candidate));
     }

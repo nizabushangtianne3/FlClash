@@ -1629,6 +1629,44 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 2. 派发 `release-stable.yaml` 之后要盯的不只是它这一个 run：它只做改版本号、写 changelog、打 tag、push，然后派发 build。**真正的验证在它链式触发的那个 build run**，任一 job 失败都会让 release-stable 标红。
 3. tag 触发的 build 才会跑桌面与 Android 的正式产物构建并创建 Release；`Verify changelog` 这一步只在 `refs/heads/main` 与 `refs/tags/*` 上执行，branch push 不跑。
 4. 本地全量 exit code 非零时逐条核对失败清单，而不是看数量。
+### 2026-11-13 补全排序小写化外提轮次（已落地，账本首个编辑器路径）
+
+`lib/features/editor/completion_matcher.dart` 的 `completionScore` 原来**对每个候选**都执行一次 `typed.toLowerCase()`：一次 3000 候选的文档词补全就是 3000 次同一个小写化 + 3000 次新 String 分配。`typed` 在一次排序趟里是常量，这纯属可外提的重复工作。把它提到 `rankSuggestions` 的循环外，函数签名改为接收已小写化的 `lowerTyped`（`typed` 本身仍按原样保留用于 `candidate.startsWith(typed)` 的 100 分加成）。
+
+配对实测（`test/features/completion_rank_benchmark_test.dart`，同进程 JIT，200 次调用/轮）：
+
+| 候选集 | 基线 perCallUs | 改后 perCallUs | 收益 |
+|---|---|---|---|
+| 36 个配置键 | 53.7µs | 49.6µs | -7.6% |
+| 3000 个文档词 | 1580µs | 1373/1323/1322/1342µs（三轮复测） | **-15.9%** |
+
+`keep`（200 次调用返回的建议总数）三轮都是 **4020，与基线逐字相同**——排序结果未变，只有速度变。这是纯等价变换，且 15.9% 超过判定门槛。
+
+账本此前未覆盖编辑器路径，本轮补上。此前唯一一次触碰 `completion_matcher.dart` 的记录是 v1.0.9 发布失败归因（只提到 `dashboard_text_benchmark_test.dart` import material），从未量过这条路径。
+
+候选规模说明：`documentWords` 会进入候选集（`clash_completion.dart:198`、`script_completion.dart:201` 两处传 `request.documentNames`），所以 3000 不是虚构形状——大配置下它就是真实基数。
+
+另一处未动的原因：曾评估把 `candidate.toLowerCase()` 也缓存进 `seen` map（按 label→lower 复用）。候选集每次击键都换引用，缓存命中率接近 0，且要引入有界 map 的失效语义，收益不抵复杂度，未做。
+
+守护：新增 `test/features/completion_matcher_test.dart`（4 例）：三级排序（prefix > segment prefix > in-order）、大小写双侧折叠、重复 label 去重、空前缀返回 null。其中两例的初版期望写错过——写成 `['pool', 'path-pool', ...]`，但 `rankSuggestions` 里 `label == typed && snippet == null` 会剔除与输入逐字相同的建议，所以 `pool` 不出现。修正期望后才绿，这条行为由用例名如实描述。
+
+验证：`test/features` + `test/lint` **210 例全绿**（含新 4 例）；全量套件失败集与干净基线**逐字相同**的 5 个 Windows 环境性失败（4 个 Linux-only `mitm_trust` + 1 个 `window` 探针）；`dart format` 1099 文件 0 changed；`dart analyze` 0 error / 0 warning，剩 6 条既有 info 全在 `test/core/event_json_test.dart`；`check_coverage.dart` 87.67%、每组高于 floor。
+
+### 2026-11-13 `fixed()` 开销账本更正（实测否证，勿再沿用过时结论）
+
+账本 4 处旧结论（`§2` 第 1268 行、`§3` 第 1417/1419 行与 2026-11-09 条目）都写着或暗示「`fixed(decimals: 1)` 比裸 `toStringAsFixed(1)` 多付约 35ns」。复核结论：**这条开销不存在**。
+
+配对实测（`test/common/num_benchmark_test.dart` 新增用例，同一批 100000 个值、同进程 JIT、两法交替顺序跑 3 轮取中位）：
+
+| 实现 | perCallUs |
+|---|---|
+| `value.toStringAsFixed(1)` | 0.1377µs |
+| `value.fixed(decimals: 1)` | 0.1509µs |
+
+即 `fixed()` 比裸 VM 调用慢约 **13ns**，而非快 35ns；且另一轮测出方向相反（fixed 0.1493 / raw 0.1641）。13ns 落在 VM double→string 的噪声带内，**结论是 `fixed()` 的修剪开销可忽略，不存在「多付 35ns」这回事**。整条链路的成本就是 VM 的 double→string（账本 84% 结论仍成立，但归因里的「35ns 是 Dart 侧可省的」不成立）。
+
+因此此前两个「用整数路径绕开 `toStringAsFixed`」的实验（`§2` 第 1268 行记录：141ns → 53ns）照样**已因语义不等价被撤销**，这里不复述；只更正开销量级本身。新增的配对基准留在仓库里（`@Skip` 手工项），防止这个错误数字再次被引用。
+
 ## 7. 已知维护事项
 
 - 2026-11-11 `dart run tool/test.dart` 全量第 6 个失败：`test/core/desktop/process_probe_test.dart`「an exited child process is not alive」在满载机器上偶发（探针在子进程退出后仍报存活），单独重跑与安静环境均通过；该测试 kill 掉 `ping` 后立即探测，属时序敏感，与本会话 Dart 改动无交互。已知既有失败集仍是 5 个（4 个 Linux-only mitm + window 探针）。
