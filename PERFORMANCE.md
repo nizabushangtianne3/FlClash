@@ -1729,6 +1729,20 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 
 **结论**：`handleGetProxies` 这条最热 IPC 路径确实已到地板（稳态 0 alloc、约 200–500ns/答案），与账本既有结论一致；上一轮的 GC 占比数字作废，如实记录以防后续再被引用。这条路径后续若还要挖，唯一方向是 `document()` 里 `groupDocsMu` 这把全局锁（每答案都取），而不是分配。
 
+### 2026-11-14 筛选标签 l10n 读取缓存轮次（已落地）
+
+上一轮（2026-11-12 facet 单值化）把 DNS 的 cache facet 从「每行建 `resultFilters`」改成逐行单值读取后，那趟 offer pass 剩下的最大一笔就在这行里：`query.cached ? l10n.cache : ''`。生成代码的 `l10n.cache` 是 `Intl.message('Cache', name: 'cache', args: [])`，走 `Intl._lookupMessage` → 全局 `messageLookup.lookupMessage`（locale 解析 + 名字查表），每命中一行付一次。
+
+改法：`cacheFacetLabel` 把字符串缓存在「实例身份」上。`AppLocalizations.load()` 每次装载 locale 都 new 一个新实例并写 `_current`，所以缓存按实例失效——切语言后标签跟着换，不会变陈。DNS 查询页每 300ms 一次 offer，500 行里约一半带 cache 标记，单次 pass 省 86µs。
+
+| 优化 | 父仓库提交 | 配对实测（同进程 7 轮交替取中位） |
+|---|---|---|
+| cache facet 标签按实例缓存，不再每行过一次 `Intl.message` | `e70eab38` | 单次标签读取（200 万次/轮）**331.8ns → 3.36ns（-99%）**；DNS facet offer pass（500 行 ×4 offered facet，2000 次/轮）**322µs → 236µs（-26.7%）**，复跑 316µs → 233µs |
+
+守护：`test/common/app_localizations_test.dart` 新增「follows a locale reload instead of going stale」——en 下读一次标签，重载 zh_CN 后断言它等于 `AppLocalizations.current.cache` 且与 en 取值不同（tearDown 还原 en），钉住「缓存不跨 locale 装载存活」。
+
+验证：focused（`app_localizations_test`/`record_filter_test`/`common_test`）60 例全绿；整批 `test/models test/views test/features test/providers test/core test/common test/widgets` **3846 通过 / 51 跳过 / 5 失败**，5 例即账本既有的 Windows 平台失败（`mitm_trust_test` 4 例 + `window_test` 1 例），与本轮无关；`dart format --set-exit-if-changed` 0 changed；`dart analyze` 0 error / 0 warning（剩余 6 条 info 全在 `test/core/event_json_test.dart`，既有）。本机跑这批用例时把 `setup.build_assets`/`rust_api.build_assets` 临时置 false（CI 的 Dart job 同形状，绕开要 Go 的构建钩子），跑完已还原，提交里不含该改动。
+
 ## 7. 已知维护事项
 
 - 2026-11-11 `dart run tool/test.dart` 全量第 6 个失败：`test/core/desktop/process_probe_test.dart`「an exited child process is not alive」在满载机器上偶发（探针在子进程退出后仍报存活），单独重跑与安静环境均通过；该测试 kill 掉 `ping` 后立即探测，属时序敏感，与本会话 Dart 改动无交互。已知既有失败集仍是 5 个（4 个 Linux-only mitm + window 探针）。
