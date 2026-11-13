@@ -239,4 +239,20 @@ void main() {
       );
     });
   });
+
+  group('cacheFacetLabel', () {
+    tearDown(() async {
+      await AppLocalizations.load(const Locale('en'));
+    });
+
+    test('follows a locale reload instead of going stale', () async {
+      final english = cacheFacetLabel;
+      expect(english, AppLocalizations.current.cache);
+
+      await AppLocalizations.load(const Locale('zh', 'CN'));
+
+      expect(cacheFacetLabel, AppLocalizations.current.cache);
+      expect(cacheFacetLabel, isNot(english));
+    });
+  });
 }

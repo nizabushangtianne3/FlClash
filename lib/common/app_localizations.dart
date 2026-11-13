@@ -9,6 +9,21 @@ import 'package:prism_ui/l10n.dart';
 
 final currentAppLocalizations = AppLocalizations.current;
 
+/// Read once per cache-marked row on every facet offer pass, where the
+/// generated `Intl.message` lookup costs a hundred times a cached read.
+/// A locale load swaps in a fresh instance, so the cache keys on that instance.
+AppLocalizations? _cacheLabelOwner;
+String? _cacheLabel;
+
+String get cacheFacetLabel {
+  final localizations = AppLocalizations.current;
+  if (_cacheLabelOwner != localizations) {
+    _cacheLabelOwner = localizations;
+    _cacheLabel = localizations.cache;
+  }
+  return _cacheLabel!;
+}
+
 class AppUiLocalizations implements UiLocalizations {
   const AppUiLocalizations(this._localizations);
 

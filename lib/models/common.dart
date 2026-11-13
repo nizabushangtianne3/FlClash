@@ -477,7 +477,7 @@ extension DnsQueryExt on DnsQuery {
       target.add(initiator.label);
     }
     if (cached) {
-      target.add(currentAppLocalizations.cache);
+      target.add(cacheFacetLabel);
     }
     if (hasFailureRcode) {
       target.add(rcode);
@@ -501,8 +501,7 @@ extension DnsQueryExt on DnsQuery {
     return [
       if (initiator != null)
         RecordFilter(RecordFacetKind.initiator, initiator.label),
-      if (cached)
-        RecordFilter(RecordFacetKind.cache, currentAppLocalizations.cache),
+      if (cached) RecordFilter(RecordFacetKind.cache, cacheFacetLabel),
       if (hasFailureRcode) RecordFilter(RecordFacetKind.rcode, rcode),
     ];
   }
@@ -541,7 +540,7 @@ final dnsQueryFacets = <RecordFacet<DnsQuery>>[
   ),
   RecordFacet.single(
     RecordFacetKind.cache,
-    (query) => query.cached ? currentAppLocalizations.cache : '',
+    (query) => query.cached ? cacheFacetLabel : '',
     offered: true,
   ),
   RecordFacet.single(
