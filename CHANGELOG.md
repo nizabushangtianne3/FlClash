@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.0.11 (2026-11-13)
+
+**Performance**
+
+- **filters** Keep the cache facet label off the l10n lookup (e70eab3)
+- **editor** 补全排序把 typed 的小写化提到候选循环外 (3bd3048)
+- **dashboard** Group a figure with the digits it already has (ad39d4e)
+
 ## v1.0.10 (2026-11-13)
 
 Internal improvements only.

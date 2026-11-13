@@ -2,6 +2,34 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "1.0.11",
+      "tag": "v1.0.11",
+      "date": "2026-11-13",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "e70eab3",
+              "scope": "filters",
+              "text": "Keep the cache facet label off the l10n lookup"
+            },
+            {
+              "id": "3bd3048",
+              "scope": "editor",
+              "text": "补全排序把 typed 的小写化提到候选循环外"
+            },
+            {
+              "id": "ad39d4e",
+              "scope": "dashboard",
+              "text": "Group a figure with the digits it already has"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.10",
       "tag": "v1.0.10",
       "date": "2026-11-13",
