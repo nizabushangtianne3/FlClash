@@ -1710,6 +1710,25 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 
 **清理说明**：按仓库规矩一次性基准不入库，`test/views/proxies_row_chunks_benchmark_test.dart` 与试写的用例均已删除，工作区回到干净 HEAD；上面这组数字是本轮唯一证据，留给后续重估。
 
+### 2026-11-13 代理表答案路径分配归因轮次（实测，无代码改动）
+
+上一轮留下的疑问是「`BenchmarkHandleGetProxies` 的 profile 里 71% CPU 是 GC、`maps.grow/rehash` 占 10ms」，但那次用 `-benchtime 3x`，只有 3 次迭代，profile 落在基准搭建而不是被测路径上，结论方向性不可靠。本轮用「小 benchtime 起步 + 逐步加大」重新归因，每一步都先量后判断。
+
+**实测一：稳态命中路径已是 0 分配**（`workdir=core/`，`-benchtime 2000x -count=3`，groups=200/members=20/nodes=0 族）：
+
+| 场景 | ns/op | B/op | allocs/op |
+|---|---|---|---|
+| groups=200 无节点（Selector） | 491.1 / 509.5 / 605.7 | 382 | 1 |
+| groups=200 urltest | 697.7 / 888.2 / 731.0 | 561 | 2 |
+| groups=200 fallback | 697.1 / 687.2 / 705.1 | 567 | 2 |
+| groups=200 loadbalance | 577.3 / 476.1 / 527.5 | 377 | 1 |
+
+把 benchtime 提到 `5000x` 后同一组变成 **0 allocs/op**（152–227 B/op 是基准搭建残留）：`BenchmarkHandleGetProxies/groups=200/members=20/nodes=0` 302.3ns、urltest 456.6ns、fallback 352.8ns、loadbalance 268ns。即那 1–2 allocs/op 完全来自 `b.ResetTimer` 之前的建表，稳态答案本身不分配——上一轮「71% CPU 是 GC」的归因是迭代次数不足造成的假象，**不改**。
+
+**实测二：alloc profile 的 100% 归因**（`-alloc_objects` + `-list` 逐行）。`refreshGroupDoc` 的 81221 个分配对象全部落在 `slot.doc = appendGroupDocument(nil, slot.proxy)` 一行，但 `refreshGroupDocs` 的短路条件（`snapshot.validated && snapshot.answersSeen == AnswerGeneration()` 且 provider generation 未动）在同一 profile 里同样大量命中，说明这些分配仍属「建表后第一次全量校验」，不是每答案。
+
+**结论**：`handleGetProxies` 这条最热 IPC 路径确实已到地板（稳态 0 alloc、约 200–500ns/答案），与账本既有结论一致；上一轮的 GC 占比数字作废，如实记录以防后续再被引用。这条路径后续若还要挖，唯一方向是 `document()` 里 `groupDocsMu` 这把全局锁（每答案都取），而不是分配。
+
 ## 7. 已知维护事项
 
 - 2026-11-11 `dart run tool/test.dart` 全量第 6 个失败：`test/core/desktop/process_probe_test.dart`「an exited child process is not alive」在满载机器上偶发（探针在子进程退出后仍报存活），单独重跑与安静环境均通过；该测试 kill 掉 `ping` 后立即探测，属时序敏感，与本会话 Dart 改动无交互。已知既有失败集仍是 5 个（4 个 Linux-only mitm + window 探针）。
