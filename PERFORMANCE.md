@@ -1693,6 +1693,23 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 
 **本轮同时复核的两个方向（均判定非热点，不是深挖后否决）**：`lib/views/profiles/custom/*` 三个大文件（custom_proxies 1695 行、groups 1371 行、members 818 行）的输入路径全部落在按键/开表单/保存上，没有任何一条接轮询——`customProfileData` 的上游（`customProxiesProvider`/`proxyGroupsProvider`）是数据库 backing provider，只在数据变化时通知；`core/delay.go` 的 `configuredTestTimeout` 每次延迟测试遍历所有 provider，但 `handleTestDelay` 只由 IPC `proxyTestDelay` 单节点触发，不构成批量热路径，且 `timeout <= longest` 已提前跳过未配置的 provider。
 
+### 2026-11-13 代理列表行分块轮次（实测低于门槛，不入库，勿重做）
+
+**背景与实测**：`lib/views/proxies/list.dart` 的 `_buildRows`(388) 与 `_buildUnfoldingRows`(402) 都调 `group.all.chunks(columns)`，而 `chunks` 是 `List.generate` + `sublist`，为整组物化全部子列表。参照基准 pair 测过（`test/views/proxies_row_chunks_benchmark_test.dart`，160 节点 4 列，同进程 JIT 2000 轮）：
+
+| 做法 | µs/次 | 说明 |
+|---|---|---|
+| `all.chunks(4)` 全组分块 | 10.82 | 物化 40 个子列表 |
+| 按需切 `rows[index]` | 4.07 | **-62.4%** |
+
+`chunked == sliced`（320000 == 320000）字节一致，方向本身成立。
+
+**判定：不改，收益低于门槛**。两个调用点都不在每帧路径上：`_buildRows` 的结果被 `_rows` 缓存，`_rows == null || _builtExtent != extent` 才重建，稳态滚动每帧不付；`_buildUnfoldingRows` 每 pump 付一次，但展开动画只有 240ms，单帧 10.8µs 占 8ms 帧预算的 0.13%，累计约 313µs。按账本 15% 判定门槛与 AGENTS.md 的帧预算口径，都不构成改动理由。
+
+**同时暴露的覆盖缺口（记账，留待后续）**：`_buildUnfoldingRows` 这条路径**现有测试为零覆盖**——`test/views/proxies_list_test.dart` 两个用例的 `unfoldSet` 都直接含组名（`_controller.value = 1`），走的是稳态 `_buildRows`，没有一个用例驱动过展开动画中态。补用例时踩到的构造约束（后续复用）：该列表的 groups 来自 `proxiesListStateProvider.select(state.groups)`（由 `currentGroupsStateProvider` + `unfoldSetProvider` 派生），不是 `groupsProvider`；unfold 的写入口是 `proxiesActionProvider.notifier.updateCurrentUnfoldSet(...)`，`unfoldSetProvider` 本身是 `$FunctionalProvider`、没有 `notifier`。当时用例在「组未渲染出 ProxyCard」上失败，两条分支都不建行，说明还有未查明的状态条件（`_controller.isDismissed` 的中态判定），未继续深挖——因为被测路径本身已判定不改。
+
+**清理说明**：按仓库规矩一次性基准不入库，`test/views/proxies_row_chunks_benchmark_test.dart` 与试写的用例均已删除，工作区回到干净 HEAD；上面这组数字是本轮唯一证据，留给后续重估。
+
 ## 7. 已知维护事项
 
 - 2026-11-11 `dart run tool/test.dart` 全量第 6 个失败：`test/core/desktop/process_probe_test.dart`「an exited child process is not alive」在满载机器上偶发（探针在子进程退出后仍报存活），单独重跑与安静环境均通过；该测试 kill 掉 `ping` 后立即探测，属时序敏感，与本会话 Dart 改动无交互。已知既有失败集仍是 5 个（4 个 Linux-only mitm + window 探针）。
