@@ -4,17 +4,19 @@ library;
 import 'dart:io';
 
 import 'package:fl_clash/views/dashboard/style.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:prism_ui/typography.dart';
+
+import '../../helpers/test_app.dart';
 
 void main() {
   testWidgets('a figure the callers flatten pays what intl asks for it', (
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
+      TestApp(
+        child: Builder(
           builder: (context) => const SizedBox(key: ValueKey('root')),
         ),
       ),

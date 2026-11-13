@@ -3,14 +3,17 @@ library;
 import 'dart:io';
 
 import 'package:fl_clash/views/dashboard/style.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:prism_ui/prism_ui.dart' show Theme;
+
+import '../../helpers/test_app.dart';
 
 void main() {
   testWidgets('reading the dashboard colors a card pays for', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
+      TestApp(
+        child: Builder(
           builder: (context) => const SizedBox(key: ValueKey('root')),
         ),
       ),
