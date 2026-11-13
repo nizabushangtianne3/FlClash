@@ -930,6 +930,8 @@ wrapper 93.8%。剩余低覆盖逐个查过，取两条有真实逻辑的：
 
 **验证**：`flutter test test/features/tracker_speed_ranker_test.dart`、`test/widgets/connections_view_test.dart`、`test/views/dashboard/connections_table_test.dart` 全绿；`dart analyze --fatal-infos` 两文件零告警；Dart 全量 `dart run tool/test.dart` 5179 个用例，失败集与账本第 7 节记录的 5 个既有失败完全一致（4 个 `Linux ...` mitm + 1 个 Windows 窗口探针计数），无新增。
 
+| `num.compact`（`NumberFormat.compact(locale:"en")`）换成手写 K/M/B 后缀 | 否决，本轮实测 2041 个 0..12.3B 采样值错 1936 个。它的真实规则是 `minimumSignificantDigits=3` 加上 `_styleForNumber` 里按量级逐级 `updateRounding()` 进位传播：7755 打印 `7.75K` 是截断，9999 打印 `10K`、10857 打印 `10.9K` 又带进位，123456 打印 `123K` 而 12345678901 打印 `12.3B`（进位跨量级还会换后缀）。本轮试过固定 2 位小数、四舍五入、截断三种写法，分别错 8/6/1936 处，无法用廉价实现复刻。且 `lib` 中真实调用点只有 6 处（图标数、订阅节点数等），均不在帧热路径；`compact` 仍用于 `dashboardCount` 的 `>100000` 分支与这些低频处。若将来要改，必须照抄 significant-digit 那一趟，并配同形状的比对基准。 |
+
 ## 4. 当前验证矩阵
 
 ### 连接答案路径覆盖收口（2026-11-09）
@@ -1591,6 +1593,18 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 ``
 
 只有时间、内存或分配有明确收益才继续；否则恢复改动并记录拒绝原因。
+
+### 2026-11-13 仪表盘数字分组与共享条纹清理轮次（已落地）
+
+**落地方向一：`dashboardCount` 的 intl 通用模式解析换成纯数字分组**（`ad39d4eb`）。`NumberFormat.decimalPattern('en').format` 对每一个值都要解析模式、走 `_formatFixed` 的 floor/幂/字符串拼接通用链路，而这里要的只是英文千分位。`lib/views/dashboard/style.dart` 改为按数字长度每 3 位插逗号，`< 1000` 直接返回原字符串。
+
+配对实测（`test/views/dashboard/dashboard_count_benchmark_test.dart`，同进程两段各 20000×9）：intl 模式 **511 ns/次**，现实现 **312 ns/次**，约 1.6 倍；基准同时用 9 个采样值断言两边输出逐字一致（`< 100000` 全部分组路径）。调用点全是 1–2 秒一次的轮询（`connection_stats.dart`、`connections_table.dart`、`profiles.dart`），单次节约约 200ns，收益要按调用频率衡量而非单次绝对值。`test/views/dashboard` 174 例全绿。
+
+**落地方向二：删除共享计数条纹**（Clash.Meta `a5626213f`，父仓库 `21cc2eda`）。`Manager.PushUploaded` / `PushDownloaded` 把所有推送都记到 `stripes[0]`，即所有连接抢同一条缓存行；而 tracker 早就在连接生命周期内持有自己绑定的条纹。核查确认这两个方法**在生产代码里已无任何调用方**（`tracker.go` 是唯一写入方，走 `tt.stripe`），只剩测试与基准在用。因此连 `sharedStripe()` 和 `BenchmarkManagerPushShared`（它测的形状已不存在）一并删除。计数测试改为显式取一条条纹推送，`TestManagerParallelPushSumsExactlyAcrossStripes` 改为每个 worker `bindStripe()`——这本来就是它声称在测的东西。
+
+参考基线（同机 `BenchmarkManagerPushStriped` 2.21–2.29 ns/op、0 allocs；共享形状被删前约 52 ns/op），差距来自缓存行争用，这也是生产链路早已走每连接条纹的原因。
+
+**覆盖**：`gofmt -l` 空、`go vet` 空、`go test ./tunnel/statistic` 与父层 `go test .`（15.3s）通过。本机无 gcc，`-race` 未跑（需 CGO），记入本节而非静默跳过。
 
 ### 2026-11-13 v1.0.9 发布失败归因与修复（发布流程，非性能）
 
