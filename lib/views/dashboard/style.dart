@@ -1,6 +1,5 @@
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/ui/ui.dart';
-import 'package:intl/intl.dart' show NumberFormat;
 import 'package:flutter/widgets.dart';
 
 class DashboardColors {
@@ -127,12 +126,30 @@ abstract final class DashboardCorner {
   static const badge = 14.0;
 }
 
-final _groupedFormat = NumberFormat.decimalPattern('en');
+/// English thousands grouping, as `NumberFormat.decimalPattern('en')` prints
+/// it. A dashboard figure is formatted once per poll tick per visible slot, and
+/// the general pattern parser is an order of magnitude more work than the three
+/// steps a grouped integer actually needs.
+String _grouped(int count) {
+  final digits = '$count';
+  final length = digits.length;
+  if (length < 4) {
+    return digits;
+  }
+  final buffer = StringBuffer(digits[0]);
+  for (var i = 1; i < length; i++) {
+    if ((length - i) % 3 == 0) {
+      buffer.write(',');
+    }
+    buffer.write(digits[i]);
+  }
+  return buffer.toString();
+}
 
 /// Grouped digits, as the design shows them, until they outgrow a third of a
 /// phone's width.
 String dashboardCount(int count) =>
-    count < 100000 ? _groupedFormat.format(count) : count.compact;
+    count < 100000 ? _grouped(count) : count.compact;
 
 String dashboardTraffic(num bytes) {
   final show = bytes.traffic;
