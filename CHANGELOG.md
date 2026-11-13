@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.10 (2026-11-13)
+
+Internal improvements only.
+
 ## v1.0.9 (2026-11-12)
 
 **Bug Fixes**
