@@ -1592,6 +1592,29 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 
 只有时间、内存或分配有明确收益才继续；否则恢复改动并记录拒绝原因。
 
+### 2026-11-13 v1.0.9 发布失败归因与修复（发布流程，非性能）
+
+**症状**：`release-stable` run `43320286102` 的 `Build release assets` 步骤失败，链式派发的 build run `43320990647`（tag `v1.0.9`）`Dart` job 失败，`upload` 与 `build` 两个 job 随即 skip，最终 v1.0.9 在 GitHub 上是一个 **0 资产的空 Release**。对照组：v1.0.8 的 tag run `43166990353` 全绿。
+
+**归因链**（全部来自 Actions API 与本地复跑，非推测）：
+
+1. `release-stable.yaml` 的 `Build release assets` 用 `gh workflow run build.yaml --ref v$version` 派发构建，随后 `gh run watch "$run_id" --exit-status` 等待——**build 任一 job 失败都会让这一步非零退出，整个 release job 标红**。所以 release-stable 红不等于 release 脚本本身有问题。
+2. build run `43320990647` 的 Dart job 步骤逐个比对：`Check format`/`Analyze`/`Verify changelog` 全部 success，**唯一失败的是 `Run tests`**（第 11 步），`Check coverage` 因前一步失败被 skip。v1.0.8 的 Dart job 12 步全 success。
+3. 本地按 CI 原样复现：`dart format --set-exit-if-changed` 0 changed；`dart analyze` 剩 6 条既有 info（全在 `test/core/event_json_test.dart`，与本轮无关）；`dart run tool/test.dart -- --reporter expanded --coverage` 失败集与账本登记的 5 个 Windows 环境性失败逐字相同（4 个 Linux-only `mitm_trust` + 1 个 `window` 探针，CI 为 Linux 会通过）；`check_coverage.dart` 87.67%、每个分组高于 floor。CI 与本地唯一的结构差异因此只能来自新增测试文件本身。
+4. v1.0.8..v1.0.9 新增 14 个测试文件。其中两个写成真跑用例（无 `@Skip`）：`test/common/emoji_pattern_test.dart`（`library;`）与 `test/views/dashboard/dashboard_colors_benchmark_test.dart`（`library;`）。把两者各自单独跑、再跑它们所在的 bundle，定位到 `test/lint/design_package_test.dart` 的「the project imports no design library」失败。
+5. 根因：`design_package_test` 递归扫描 `lib`/`test`/`tool`/`plugins` 下所有 `.dart`，禁止 `package:flutter/material.dart`，**只豁免 generated 代码，既不豁免 `@Skip` 文件、也不豁免基准文件**。v1.0.9 新加的两个仪表盘基准文件都 import 了 material：`dashboard_colors_benchmark_test.dart`（第 6 行）与 `dashboard_text_benchmark_test.dart`（第 7 行，后者有 `@Skip` 仍被扫到）。这就是让 CI Dart job 挂掉的那两行。
+6. 本机为什么没在失败集里暴露它：`tool/test.dart` 把失败文件单独重跑，重跑通过的就归因为「共享 isolate 干扰」并放行。`design_package_test` 在 bundle 里失败、单独重跑**也**失败，但本机全量跑的失败清单被那 5 个环境性失败掩盖，容易被一并当成已知项略过。**教训：本地全量 exit code 非零时必须逐条核对失败清单是否只有登记过的那几项，不能看了数量就跳过。**
+
+**修复**：两个基准文件换成仓库既有的取主题化上下文的写法——`TestApp`（`test/helpers/test_app.dart`，内部是 `PrismApp`）+ `import 'package:prism_ui/prism_ui.dart' show Theme;`。`DashboardColors` 的角色本就构建在 prism_ui 的 `Theme` 上，`Theme.of(context).colorScheme` 走的是它而不是 material 的 `Theme`，语义等价且更贴合被测代码。修复后两个基准文件均可跑并打印数字；两个 lint 全绿；全仓库现已无一处 `package:flutter/material.dart` import（`plugins/prism_ui` 原本也未用）。
+
+**验证**：`test/lint/design_package_test.dart` 绿、`test/lint/typography_test.dart` 绿；`dart run tool/test.dart -- --reporter expanded --coverage` 失败集与登记集逐字相同；`check_coverage.dart` 87.67% 且每组高于 floor；`dart format` 1097 文件 0 changed；`dart analyze` 0 error / 0 warning；`gofmt -l`（CI 的 `./*.go ./cmd ./mobile ./platform ./timezone ./tun`）空输出；`go vet .` 通过。
+
+**发布侧教训（后续必须遵守）**：
+
+1. v1.0.9 那个 0 资产 Release 的条目已被消耗掉。重新发布时 `tool/release.sh` 会按 pubspec 版本自动 bump（当前 `1.0.9+2026111203` 打头，新版本收的是本修复提交），**v1.0.9 的空壳会被新版本覆盖，不需要单独清理**。
+2. 派发 `release-stable.yaml` 之后要盯的不只是它这一个 run：它只做改版本号、写 changelog、打 tag、push，然后派发 build。**真正的验证在它链式触发的那个 build run**，任一 job 失败都会让 release-stable 标红。
+3. tag 触发的 build 才会跑桌面与 Android 的正式产物构建并创建 Release；`Verify changelog` 这一步只在 `refs/heads/main` 与 `refs/tags/*` 上执行，branch push 不跑。
+4. 本地全量 exit code 非零时逐条核对失败清单，而不是看数量。
 ## 7. 已知维护事项
 
 - 2026-11-11 `dart run tool/test.dart` 全量第 6 个失败：`test/core/desktop/process_probe_test.dart`「an exited child process is not alive」在满载机器上偶发（探针在子进程退出后仍报存活），单独重跑与安静环境均通过；该测试 kill 掉 `ping` 后立即探测，属时序敏感，与本会话 Dart 改动无交互。已知既有失败集仍是 5 个（4 个 Linux-only mitm + window 探针）。
