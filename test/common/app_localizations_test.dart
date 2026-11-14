@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/common/app_localizations.dart';
+import 'package:fl_clash/common/l10n_labels.dart';
 import 'package:fl_clash/common/network_error.dart';
 import 'package:fl_clash/common/webdav.dart';
 import 'package:fl_clash/core/desktop/helper_client.dart';
@@ -253,6 +255,33 @@ void main() {
 
       expect(cacheFacetLabel, AppLocalizations.current.cache);
       expect(cacheFacetLabel, isNot(english));
+    });
+  });
+
+  group('initiatorLabelOf', () {
+    tearDown(() async {
+      await AppLocalizations.load(const Locale('en'));
+    });
+
+    test('names every initiator the core writes', () {
+      final english = [
+        for (final initiator in DnsQueryInitiator.values)
+          initiatorLabelOf(initiator.index),
+      ];
+      expect(english, DnsQueryInitiator.values.map((i) => i.label).toList());
+    });
+
+    test('follows a locale reload instead of going stale', () async {
+      final english = initiatorLabelOf(DnsQueryInitiator.app.index);
+      expect(english, DnsQueryInitiator.app.label);
+
+      await AppLocalizations.load(const Locale('zh', 'CN'));
+
+      expect(
+        initiatorLabelOf(DnsQueryInitiator.app.index),
+        DnsQueryInitiator.app.label,
+      );
+      expect(initiatorLabelOf(DnsQueryInitiator.app.index), isNot(english));
     });
   });
 }

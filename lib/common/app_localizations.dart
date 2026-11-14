@@ -24,6 +24,27 @@ String get cacheFacetLabel {
   return _cacheLabel!;
 }
 
+/// Every dns row path reads one of these five labels: the offer pass, a facet
+/// chip, a search text and two sort keys. A locale load swaps in a fresh
+/// instance, so the table is held against the live one.
+AppLocalizations? _initiatorLabelsOwner;
+List<String>? _initiatorLabels;
+
+String initiatorLabelOf(int index) {
+  final localizations = AppLocalizations.current;
+  if (_initiatorLabelsOwner != localizations) {
+    _initiatorLabelsOwner = localizations;
+    _initiatorLabels = [
+      localizations.app,
+      localizations.rule,
+      localizations.direct,
+      localizations.proxies,
+      localizations.other,
+    ];
+  }
+  return _initiatorLabels![index];
+}
+
 class AppUiLocalizations implements UiLocalizations {
   const AppUiLocalizations(this._localizations);
 

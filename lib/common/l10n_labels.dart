@@ -21,16 +21,7 @@ extension PageLabelL10n on PageLabel {
 }
 
 extension DnsQueryInitiatorL10n on DnsQueryInitiator {
-  String get label {
-    final appLocalizations = currentAppLocalizations;
-    return switch (this) {
-      DnsQueryInitiator.app => appLocalizations.app,
-      DnsQueryInitiator.rule => appLocalizations.rule,
-      DnsQueryInitiator.direct => appLocalizations.direct,
-      DnsQueryInitiator.proxy => appLocalizations.proxies,
-      DnsQueryInitiator.other => appLocalizations.other,
-    };
-  }
+  String get label => initiatorLabelOf(index);
 }
 
 extension ModeL10n on Mode {
