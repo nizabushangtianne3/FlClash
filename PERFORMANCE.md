@@ -1795,6 +1795,42 @@ extension DnsQueryInitiatorL10n on DnsQueryInitiator {
 
 ## 7. 已知维护事项
 
+### 2026-11-15 CI 门禁补齐轮次（让 core 包的竞态检测真正生效）
+
+本轮补上一个**规则与门禁脱节**的缺口：`.agents/rules.md` 第 461-465 行写着「a bare assignment races every event it happens to be delivering, and `go test -race` catches it in an unrelated test」，并给出了 `swapConn`/`connMu` 的解法形状——但 CI 的 `core` 包**根本没跑 `-race`**，这条规则在 CI 里是**失效的**。
+
+**缺口证据**：
+
+| 位置 | 命令 | 有无 `-race` |
+|---|---|---|
+| `.github/workflows/build.yaml:203`（`Validate Go core wrapper`） | `go test -count=1 .`（working-directory: core） | **无** |
+| `.github/workflows/build.yaml:209`（`Test Clash.Meta proxy groups`） | `go test -race ./adapter/outboundgroup ./adapter/provider ./common/net/packet ./common/net/deadline` | 有（但只覆盖 Clash.Meta 的 4 个子包） |
+| 本轮新增 | `go test -race -count=1 .`（working-directory: core） | **有** |
+
+也就是说，`core` 这个「Dart↔Go wrapper 边界」包——恰好是本会话修过的 `publishRoute` 竞态所在处——长期处于竞态检测盲区。上一轮修掉 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 的 DATA RACE 后，这个盲区就成了「修了但没有回归防护」的状态。
+
+**为什么这条门禁是安全的（不是盲改）**：
+
+- **有历史证据**：账本 2026-11-09 的验证矩阵明确记载「全量 race | `go test . -race -count=1` | 仅 `TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 失败」——即 core 包全量 `-race` 除那一处外**全部通过**，而那一处已在上一轮修好。
+- **无新增测试集合**：`core` 包无 `//go:build` 平台限制，CI 现有步骤已经在跑同一批文件；本步骤只是把同一批文件在 race detector 下再跑一遍。
+- **race detector 在 CI 上可用**：紧邻的 `Test Clash.Meta proxy groups` 步骤已用 `go test -race` 且 CI 长期为绿，说明 ubuntu-latest runner 自带 gcc、cgo 可用。
+- **Linux 可编译**：本地 `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -c .` **exit 0**，交叉编译通过。
+
+**已知覆盖边界（不是缺陷，是 gomobile 构建约束）**：`core` 包有 5 个测试文件带 `//go:build !cgo && !android`（`main_test.go`、`ipc_test.go`、`log_test.go`、`hooks_test.go`、`proxy_perf_test.go`），它们是为 gomobile 绑定（要求 `CGO_ENABLED=0`）而排除的，在 cgo 模式（也就是 `-race` 模式）下不参与编译。已用 `go list` 对拍确认：cgo=1 时 47 个测试文件、cgo=0 时 52 个。**本轮修好的 `route_test.go` 在两种模式下都编译**，所以新增门禁确实覆盖了它；被排除的 5 个文件则仍由现有的 `CGO_ENABLED=0 go test -count=1 .` 步骤覆盖——两种模式互补，合起来覆盖全部 52 个文件。
+
+**验证**：
+
+- 本地等价命令 `go test -race -count=1 .` → **`ok core 15.907s`，0 竞态**（修复后连续 3 轮 + 本轮各次均 0 竞态）。
+- `go test -race -count=3 .`（整个 core 包跑 3 遍）→ **`ok core 45.017s`，0 竞态**。
+- `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -c .` → **exit 0**，Linux 交叉编译通过。
+- YAML 解析：`python -c "import yaml; yaml.safe_load(open('.github/workflows/build.yaml'))"` → **OK**；新步骤落在 `Go core` job 内、位于 `Test Clash.Meta proxy groups` 之后、`Validate the Android core library` 之前。
+- Linux 上的实际结果由本次 CI 的 `Go core` job 给出（见下方「CI 验证」）。
+
+**踩坑**：
+
+① `core` 包的测试文件分成 cgo / 非 cgo 两组，**跑 `-race` 时会静默少掉 5 个文件**——不看 `go list` 输出就以为「全量」其实是「减量全量」。判断覆盖是否完整要对比 `go list -f "{{range .TestGoFiles}}..."` 在 `CGO_ENABLED=0/1` 两种模式下的文件数。
+② 交叉编译验证 Linux 可编译用 `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -c -o <out> .`，比本地装 WSL/Docker 轻得多（本机两者都不可用）。
+
 ### 2026-11-15 core 路由发布器 DATA RACE 修复轮次（账本挂了 6 天的竞态收口）
 
 本轮收掉账本 2026-11-09 登记、一直标为「留作后续独立议题」的 Go 竞态：`TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 在 `go test -race` 下报 DATA RACE。
