@@ -1766,6 +1766,18 @@ extension DnsQueryInitiatorL10n on DnsQueryInitiator {
 
 **踩坑**：① 第一次跑基准时忘了基准文件里的旧路径已经走在新的 getter 上，测出 5.2ns vs 5.1ns 的假相等；基准的 old 分支必须把生成代码的 switch 原文抄一份，否则两侧是同一个函数。② 上一条导致基准输出巨大（每次读都打印），PowerShell 宿主被 ``System.OutOfMemoryException`` 打挂——基准只打印一次汇总行。
 
+
+### 2026-11-14 协议标签与 selected 列表两轮实测否决（无代码改动）
+
+本轮复核两块被账本标记为「可再挖」的位置，都用同进程配对实测收口，两侧各 7 轮交替取中位。
+
+| 位置 | 实测 | 结论 |
+|---|---|---|
+| `TrackerInfoItem._buildHeader` 的 `metadata.network.toUpperCase()` | 2000 行 ×500 次：32.5ns/读 vs `protocolLabel` 的 35.1ns/读，**旧路径反而快 8%** | 否决。核心只写 `tcp`/`udp`/`all`/`invalid` 四个全小写 ASCII，Dart 的 `toUpperCase` 对此有 VM 内快路径；`protocolLabel` 是一次虚拟调用 + switch。表格单元格路径已由 `9c64c9e9` 与 2026-11-12 修正轮次压到 850ns/行、主要由字符串格式化构成，无第二条可削的量 |
+| `RecordFilterController.offer()` 的 `selected` 列表 | 账本 2026-11-12 已记：占 `offer` 全量 2.2% | 维持否决，未重测 |
+
+记录价值：`toUpperCase()` 在这里不是分配问题，把「每行建新字符串」直接换成常量表不一定更快——是否值得改取决于字符串形状。后续若在别的枚举上看到同类写法，先量再动。
+
 ## 7. 已知维护事项
 
 - 2026-11-11 `dart run tool/test.dart` 全量第 6 个失败：`test/core/desktop/process_probe_test.dart`「an exited child process is not alive」在满载机器上偶发（探针在子进程退出后仍报存活），单独重跑与安静环境均通过；该测试 kill 掉 `ping` 后立即探测，属时序敏感，与本会话 Dart 改动无交互。已知既有失败集仍是 5 个（4 个 Linux-only mitm + window 探针）。
