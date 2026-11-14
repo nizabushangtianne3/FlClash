@@ -1795,6 +1795,32 @@ extension DnsQueryInitiatorL10n on DnsQueryInitiator {
 
 ## 7. 已知维护事项
 
+### 2026-11-14 mitm Linux 夹具提取轮次（测试平台假设归位，本机失败集 5 → 1）
+
+本轮落地账本「2026-11-14 门禁修复」留下的独立议题：把 `test/common/mitm_trust_test.dart` 里的 Linux group 提成独立文件，配 library 级 `@TestOn('linux')`，让 Linux 专属夹具只在 Linux 宿主上运行。
+
+**改动**：
+
+- 新增 `test/common/mitm_trust_linux_test.dart`（289 行）：顶部 `@TestOn('linux')` + `library;`，承接原文件的 Linux group 全部 4 个用例及其夹具（`_Processes` 桩、`_Run` 记录、证书常量、`_ca`）。
+- `test/common/mitm_trust_test.dart` 纯删 183 行（`git diff --numstat` 为 `0 183`），Android / macOS / Windows 三个 group 原样保留，未改一字。
+- 形状沿用仓库既有先例 `test/core/desktop/ipc_native_test.dart` 的 library 级 `@TestOn`，而非给单个 group 加注解。
+
+**为什么不动产品代码**：`_findExecutable` 用 `searchPath.split(':')` 拆 PATH 是 Linux-only 产品代码的正确语义；Windows 上 `C:\...` 含盘符冒号会被误切，这是**测试夹具的平台假设错误**，不是产品缺陷。改产品分隔符会为迁就测试宿主而改变真实 Linux 行为，方向反了。
+
+**验证**：
+
+- `dart analyze lib test tool setup.dart` → **No issues found**（提取后新文件一度报 2 条 unused_import，已删 `common/common.dart` 与 `l10n/l10n.dart` 两条无用导入）。
+- `dart format --set-exit-if-changed test/common/mitm_trust_test.dart test/common/mitm_trust_linux_test.dart` → `0 changed`。
+- `flutter test test/common/mitm_trust_test.dart test/common/mitm_trust_linux_test.dart` → **15 例全绿**；Linux 文件在 Windows 上按 `@TestOn` 整体跳过。
+- `flutter test test/core test/common`（改动前）→ 失败 5 条：4 条 `Linux ...` + 1 条 `window_test` 探针；（改动后）→ **失败 1 条**，仅剩 `window_test.dart`「an unsupported probe is retried the next time blur is on」。
+- 全量批次 `dart run tool/test.dart test/models test/views test/features test/core test/common test/widgets` → **3230 通过 / 48 跳过 / 2 失败**，失败仅 `window_test` 探针与 `process_probe_test` 探针；后者单独复跑 3 例全绿，属账本 2026-11-11 已登记的满载时序偶发，与本轮改动无交互。
+
+**踩坑**：
+
+① 第一次跑 `dart run tool/test.dart` 时先把 `pubspec.yaml` 的 `build_assets` 还原了，Rust 构建钩子（`rust_api` hook.dill）被触发后长时间挂住且无输出——钩子在等 cargo/Go 工具链构建。**跑测试前必须先置 false，跑完再 `git checkout -- pubspec.yaml` 还原**；本次挂住的进程按记录的 PID（26024 / 3176 / 13004）逐个结束，未按进程名误杀用户自己的 FlClash。
+② PowerShell 里 `head` 不是可用的别名（`Get-Content -TotalCount` 才是），且中文路径下多行管道易出换行/循环异常；可靠路径是 `apply_patch` + 单行命令 + 落盘日志再比对。
+③ 回归日志必须先落盘再用 `Select-String` 取「Failing tests:」块，否则输出被管道缓冲到进程结束才可见，无法中途判断卡在哪。
+
 - 2026-11-14 门禁修复（非性能）：HEAD `19b5b3dd`(refactor(prefs): write a bounded delay map from the read itself) 落了一个未格式化的文件——`lib/common/preferences.dart` 里 `preferences?.setString(delayMapKey, json.encode(bounded))` 被折成 4 行，`dart format --set-exit-if-changed lib test tool plugins setup.dart` 实测 `Changed lib\common\preferences.dart`（1099 个文件中唯一一个），即 CI `dart` job 的 `Check format` 步骤会红。已按 `dart format` 结果改回单行。顺手把账本挂了很久的 6 条既有 info 一并清零（`test/core/event_json_test.dart:281-286`，4 处 `final` 常量改 `const`、2 处字符串拼接改插值），于是 `dart analyze lib test tool setup.dart` 从「6 issues found」变成 **No issues found**——这是账本记录以来第一次全绿。验证：`event_json_test.dart` 7 例全绿（含改动用例「an escaped spelling of a key keeps reaching its field」）、`preferences_test.dart` + `delay_map_bound_benchmark_test.dart` 26 例全绿、`test/models test/views test/features test/widgets test/database test/manager test/ui test/enum test/pages test/plugins` 2651 例全绿。教训：refactor 提交前本地跑一次 CI 原样的 format+analyze，别只跑 `dart format <file>`（它默认只格式化指定文件，跨文件的 8 空格/换行差异照样漏）。
 
 **顺带的定位结论（给后续修它的人）**：本轮为查清本机那 4 个 mitm_trust Linux 失败，实测出根因是两处平台形状差异叠加，都与仓库代码无关、纯属测试夹具的 POSIX 假设：
@@ -1803,6 +1829,8 @@ extension DnsQueryInitiatorL10n on DnsQueryInitiator {
 2. _findExecutable 用 searchPath.split(colon) 分 PATH，而夹具传的 /nonexistent:<临时目录>/bin 在 Windows 上含盘符冒号（实测切成三段，第三段才是真路径），于是 join(C, certutil) 查不到桩文件，certutil == null，install 抛 mitmCertutilMissing。这一条没有测试侧修法：_findExecutable 是 Linux-only 产品代码，不该为 Windows 宿主改分隔符。
 
 所以正解只有两个：把 Linux group 提成独立文件配 library 级 @TestOn(linux)（test/core/desktop/ipc_native_test.dart 已有此形状；四个平台 group 都是 group() 调用、嵌在 main() 里，@TestOn 无法标在单个 group 上——实测编译报 Expected semicolon after this），或给 Linux group 内用例加 Platform.isLinux 早退（test/common/window_test.dart:81 的既有形状）。两条都要动约 100 行夹具，收益是本机全量 exit 0；CI（ubuntu）本来就绿，用户实际依赖 CI，故本轮判定投入产出比不足，留作后续独立议题。
+
+**该议题已于 2026-11-14 落地（见下方「mitm Linux 夹具提取轮次」）**：采用第一条路径。
 
 
 - 2026-11-11 `dart run tool/test.dart` 全量第 6 个失败：`test/core/desktop/process_probe_test.dart`「an exited child process is not alive」在满载机器上偶发（探针在子进程退出后仍报存活），单独重跑与安静环境均通过；该测试 kill 掉 `ping` 后立即探测，属时序敏感，与本会话 Dart 改动无交互。已知既有失败集仍是 5 个（4 个 Linux-only mitm + window 探针）。
