@@ -1,21 +1,27 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:fl_clash/common/exception.dart';
+import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/desktop/model.dart';
 import 'package:fl_clash/core/interface.dart';
 import 'package:fl_clash/core/method.dart';
+import 'package:fl_clash/core/spill.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:path/path.dart';
 import 'package:test/test.dart';
+import 'package:yaml/yaml.dart';
+
+import '../helpers/app_paths.dart';
 
 class MockCoreHandlerInterface extends Mock implements CoreHandlerInterface {}
 
 void main() {
   late MockCoreHandlerInterface mock;
   late CoreController controller;
+  late Directory root;
 
   setUpAll(() {
     registerFallbackValue(
@@ -48,7 +54,9 @@ void main() {
     );
   });
 
-  setUp(() {
+  setUp(() async {
+    root = Directory.systemTemp.createTempSync('core_controller_test');
+    await useAppPaths(root);
     mock = MockCoreHandlerInterface();
     CoreController.resetInstance();
     controller = CoreController.test(mock);
@@ -56,6 +64,9 @@ void main() {
 
   tearDown(() {
     CoreController.resetInstance();
+    if (root.existsSync()) {
+      root.deleteSync(recursive: true);
+    }
   });
 
   group('CoreController singleton', () {
@@ -67,6 +78,15 @@ void main() {
       CoreController.resetInstance();
       final instance = CoreController.test(mock);
       expect(instance, isA<CoreController>());
+    });
+
+    test('scoped keeps the supplied interface', () async {
+      final scoped = CoreController.scoped(mock);
+      when(() => mock.forceGc()).thenAnswer((_) async {});
+
+      expect(scoped, isA<CoreController>());
+      await scoped.forceGc();
+      verify(() => mock.forceGc()).called(1);
     });
   });
 
@@ -105,6 +125,23 @@ void main() {
 
       verify(() => mock.crash()).called(1);
     });
+
+    test(
+      'init prepares the home directory and delegates to the interface',
+      () async {
+        for (final fileName in const [MMDB, GEOIP, GEOSITE, ASN]) {
+          File(join(root.path, fileName)).writeAsStringSync('data');
+        }
+        when(() => mock.init(any())).thenAnswer((_) async {});
+
+        await controller.init(7);
+
+        final captured = verify(() => mock.init(captureAny())).captured.single;
+        expect(captured, isA<InitParams>());
+        expect((captured as InitParams).homeDir, root.path);
+        expect(captured.version, 7);
+      },
+    );
   });
 
   group('config methods', () {
@@ -164,6 +201,53 @@ void main() {
         verifyNever(() => mock.decryptConfig(any(), any()));
         expect(File(path).readAsStringSync(), 'proxies: []');
       });
+
+      test('keeps the original issue when proxy conversion fails', () async {
+        File(path).writeAsStringSync('proxies: []');
+        when(
+          () => mock.validateConfig(path),
+        ).thenAnswer((_) async => 'invalid');
+        when(
+          () => mock.convertProxies(path),
+        ).thenThrow(Exception('cannot convert'));
+
+        expect(await controller.validateProfile(path), 'invalid');
+        expect(File(path).readAsStringSync(), 'proxies: []');
+      });
+
+      test(
+        'keeps the original issue when conversion finds no proxies',
+        () async {
+          File(path).writeAsStringSync('proxies: []');
+          when(
+            () => mock.validateConfig(path),
+          ).thenAnswer((_) async => 'invalid');
+          when(() => mock.convertProxies(path)).thenAnswer((_) async => []);
+
+          expect(await controller.validateProfile(path), 'invalid');
+          expect(File(path).readAsStringSync(), 'proxies: []');
+        },
+      );
+
+      test('rewrites a share-link list and validates it again', () async {
+        File(path).writeAsStringSync('vless://example');
+        var validations = 0;
+        when(() => mock.validateConfig(path)).thenAnswer((_) async {
+          validations++;
+          return validations == 1 ? 'invalid' : null;
+        });
+        when(() => mock.convertProxies(path)).thenAnswer(
+          (_) async => [
+            {'name': 'Example', 'type': 'vless'},
+          ],
+        );
+
+        expect(await controller.validateProfile(path), isNull);
+        final config = loadYaml(File(path).readAsStringSync()) as YamlMap;
+        final proxies = config['proxies'] as YamlList;
+        expect(proxies.single['name'], 'Example');
+        verify(() => mock.validateConfig(path)).called(2);
+      });
     });
 
     test('updateConfig delegates to interface', () async {
@@ -215,6 +299,50 @@ void main() {
       await setupFuture;
       expect(completed, isTrue);
     });
+
+    test('setupConfig delegates directly without a preload', () async {
+      const params = SetupParams(
+        selectedMap: {},
+        options: CoreOptions(testUrl: 'http://x.com'),
+      );
+      when(() => mock.setupConfig(params)).thenAnswer((_) async {});
+
+      await controller.setupConfig(params: params);
+
+      verify(() => mock.setupConfig(params)).called(1);
+    });
+
+    test('validateConfigWithData deletes its temporary file', () async {
+      late String validatedPath;
+      when(() => mock.validateConfig(any())).thenAnswer((invocation) async {
+        validatedPath = invocation.positionalArguments.first as String;
+        expect(File(validatedPath).readAsBytesSync(), [1, 2, 3]);
+        return 'invalid';
+      });
+
+      expect(await controller.validateConfigWithData([1, 2, 3]), 'invalid');
+      expect(File(validatedPath).existsSync(), isFalse);
+    });
+
+    test(
+      'validateConfigWithData deletes its temporary file after failure',
+      () async {
+        late String validatedPath;
+        when(() => mock.validateConfig(any())).thenAnswer((invocation) async {
+          validatedPath = invocation.positionalArguments.first as String;
+          throw const CoreMethodException(
+            code: 'core_error',
+            message: 'failed',
+          );
+        });
+
+        await expectLater(
+          controller.validateConfigWithData([1, 2, 3]),
+          throwsA(isA<CoreMethodException>()),
+        );
+        expect(File(validatedPath).existsSync(), isFalse);
+      },
+    );
   });
 
   group('proxy methods', () {
@@ -240,6 +368,171 @@ void main() {
       const check = RouteCheck(coreEpoch: 3, routeVersion: 2, held: [true]);
       when(() => mock.checkRoutes(params)).thenAnswer((_) async => check);
       expect(await controller.checkRoutes(params), check);
+    });
+
+    test('validateProxies short-circuits an empty list', () async {
+      expect(await controller.validateProxies(const []), isEmpty);
+      verifyNever(() => mock.validateProxies(any()));
+    });
+
+    test('validateProxies delegates a non-empty list', () async {
+      const proxies = [
+        {'name': 'Example', 'type': 'ss'},
+      ];
+      when(
+        () => mock.validateProxies(proxies),
+      ).thenAnswer((_) async => const {0: 'invalid'});
+
+      expect(await controller.validateProxies(proxies), {0: 'invalid'});
+      verify(() => mock.validateProxies(proxies)).called(1);
+    });
+
+    test('validateFilters short-circuits an empty list', () async {
+      expect(await controller.validateFilters(const []), isEmpty);
+      verifyNever(() => mock.validateFilters(any()));
+    });
+
+    test('validateFilters delegates a non-empty list', () async {
+      const filters = ['(hk'];
+      when(
+        () => mock.validateFilters(filters),
+      ).thenAnswer((_) async => const {0: 'invalid'});
+
+      expect(await controller.validateFilters(filters), {0: 'invalid'});
+      verify(() => mock.validateFilters(filters)).called(1);
+    });
+
+    test('encodeShareLinks short-circuits an empty list', () async {
+      expect(await controller.encodeShareLinks(const []), isEmpty);
+      verifyNever(() => mock.encodeShareLinks(any()));
+    });
+
+    test('encodeShareLinks delegates a non-empty list', () async {
+      const proxies = [
+        {'name': 'Example', 'type': 'ss'},
+      ];
+      when(
+        () => mock.encodeShareLinks(proxies),
+      ).thenAnswer((_) async => ['ss://example']);
+
+      expect(await controller.encodeShareLinks(proxies), ['ss://example']);
+      verify(() => mock.encodeShareLinks(proxies)).called(1);
+    });
+
+    test('decodeShareLinks short-circuits an empty list', () async {
+      expect(await controller.decodeShareLinks(const []), isEmpty);
+      verifyNever(() => mock.decodeShareLinks(any()));
+    });
+
+    test('decodeShareLinks delegates a non-empty list', () async {
+      const lines = ['ss://example'];
+      when(() => mock.decodeShareLinks(lines)).thenAnswer(
+        (_) async => [
+          [
+            {'name': 'Example', 'type': 'ss'},
+          ],
+        ],
+      );
+
+      expect(await controller.decodeShareLinks(lines), hasLength(1));
+      verify(() => mock.decodeShareLinks(lines)).called(1);
+    });
+
+    test('getProxiesGroups converts the Core proxy snapshot', () async {
+      when(() => mock.getProxies()).thenAnswer(
+        (_) async => const ProxiesData(
+          all: ['Selector'],
+          proxies: {
+            'Selector': {
+              'name': 'Selector',
+              'type': 'Selector',
+              'now': 'Example',
+              'all': ['Example'],
+            },
+            'Example': {'name': 'Example', 'type': 'Direct'},
+          },
+        ),
+      );
+
+      final groups = await controller.getProxiesGroups(
+        sortType: ProxiesSortType.none,
+        delayMap: const {},
+        selectedMap: const {},
+        defaultTestUrl: '',
+      );
+
+      expect(groups, hasLength(1));
+      expect(groups.single.name, 'Selector');
+      expect(groups.single.all.single.name, 'Example');
+    });
+  });
+
+  group('profile methods', () {
+    test('readConfig moves the legacy rule field', () async {
+      when(() => mock.readConfig(any())).thenAnswer(
+        (_) async => {
+          'mode': 'rule',
+          'rule': ['MATCH,DIRECT'],
+        },
+      );
+
+      final config = await controller.readConfig(42);
+
+      expect(config['rules'], ['MATCH,DIRECT']);
+      expect(config.containsKey('rule'), isFalse);
+      verify(
+        () => mock.readConfig(join(root.path, 'profiles', '42.yaml')),
+      ).called(1);
+    });
+
+    test('getProfileOutbounds delegates the profile path', () async {
+      when(() => mock.getProfileOutbounds(any())).thenAnswer(
+        (_) async => const {
+          'proxies': [
+            {'name': 'Example', 'type': 'ss'},
+          ],
+        },
+      );
+
+      final outbounds = await controller.getProfileOutbounds(42);
+
+      expect(outbounds['proxies'], hasLength(1));
+      verify(
+        () => mock.getProfileOutbounds(join(root.path, 'profiles', '42.yaml')),
+      ).called(1);
+    });
+
+    test('buildProfile reads and deletes the spilled profile', () async {
+      const base = SetupBase(path: '/profiles/42.yaml', overlay: 'mode: rule');
+      final spillDirectory = Directory(join(root.path, coreSpillDirectoryName))
+        ..createSync(recursive: true);
+      final built = File(join(spillDirectory.path, 'built.yaml'))
+        ..writeAsStringSync('proxies: []');
+      when(() => mock.buildProfile(base)).thenAnswer((_) async => built.path);
+
+      expect(await controller.buildProfile(base), 'proxies: []');
+      expect(built.existsSync(), isFalse);
+    });
+
+    test('getProfileBase removes the legacy rule field', () async {
+      when(() => mock.getProfileBase(any())).thenAnswer(
+        (_) async => const ProfileBase(
+          config: {
+            'mode': 'rule',
+            'rule': ['MATCH,DIRECT'],
+          },
+          digest: 'abc',
+        ),
+      );
+
+      final result = await controller.getProfileBase(42);
+
+      expect(result.base.config['mode'], 'rule');
+      expect(result.base.config.containsKey('rule'), isFalse);
+      expect(result.path, join(root.path, 'profiles', '42.yaml'));
+      verify(
+        () => mock.getProfileBase(join(root.path, 'profiles', '42.yaml')),
+      ).called(1);
     });
   });
 

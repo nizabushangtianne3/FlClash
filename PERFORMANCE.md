@@ -1795,6 +1795,40 @@ extension DnsQueryInitiatorL10n on DnsQueryInitiator {
 
 ## 7. 已知维护事项
 
+### 2026-11-15 CoreController 分支覆盖轮次（core 组覆盖率 81.5% → 84.5%）
+
+本轮不追新的性能热点，先补 `lib/core/controller.dart` 的真实业务分支。该文件是 Core RPC 门面，但并非纯转发：它负责 age 密文原地解密、分享链接转配置、空输入短路、临时文件清理、配置字段迁移和溢出文件读取。改动前的覆盖实测只有 **13/91 行（14.3%）**，这些分支一旦回归，现有测试无法发现。
+
+**补齐的语义**：
+
+- `validateProfile`：覆盖代理转换抛异常时保留原校验错误、转换结果为空时保留原错误，以及分享链接成功重写为 YAML 后再次校验。
+- `validateConfigWithData`：分别覆盖成功和 Core 抛错两条路径，确认 `finally` 始终删除临时文件。
+- `validateProxies` / `validateFilters` / `encodeShareLinks` / `decodeShareLinks`：覆盖空输入不调用 Core，以及非空输入的委托结果。
+- 配置读取：覆盖 `readConfig` / `getProfileBase` 把旧 `rule` 字段迁到 `rules`、`getProfileOutbounds` 的路径、`buildProfile` 读取并删除 Core 溢出文件，以及代理组快照转换。
+- 初始化：覆盖 `init` 在已有 Geo 数据时准备 home 目录并传递真实 `InitParams`；`CoreController.scoped` 继续使用注入接口。
+
+**量化收益**：
+
+| 指标 | 改动前 | 改动后 | 变化 |
+|---|---:|---:|---:|
+| `lib/core/controller.dart` | 13/91（14.3%） | 76/91（83.5%） | **+63 行、+69.2 个百分点** |
+| `core` 分组覆盖率 | 81.5% | **84.5%** | **+3.0 个百分点** |
+| 分组地板 | 76.0% | 76.0% | 余量 5.5 → **8.5 个百分点** |
+
+**验证**：
+
+- `flutter test test/core/controller_test.dart` → **48 例全绿**。
+- `flutter test --coverage test/core` → **239 通过 / 3 跳过 / 0 失败**。
+- `dart run tool/test.dart test/core`（CI 同款共享 isolate）→ **239 通过 / 3 跳过 / 0 失败**，确认每例重绑 `appPath` 没有跨文件污染。
+- `dart format --output=none --set-exit-if-changed lib test tool plugins setup.dart` → **1100 files, 0 changed**。
+- `dart analyze lib test tool setup.dart` → **No issues found**。
+
+**踩坑**：
+
+① `tool/test.dart` 会用 `Process.start('flutter', ...)` 启动子进程；只给父进程设置 `PATH` 不够，必须把 Flutter、Go、Rust 的 `bin` 目录显式加入当前 shell 的 `PATH`，否则报 `'flutter' is not recognized`。
+② YAML 编码器会给字符串值加引号（`name: "Example"`），不要用 `contains('name: Example')` 钉序列化字面量；应解析 YAML 后断言字段值。
+③ `CoreController.init` 的 `InitParams.homeDir` 是当前 `appPath.homeDirPath`，不是测试里的占位路径；用捕获参数后逐字段断言，避免把临时目录写死。
+
 ### 2026-11-15 CI 门禁补齐轮次（让 core 包的竞态检测真正生效）
 
 本轮补上一个**规则与门禁脱节**的缺口：`.agents/rules.md` 第 461-465 行写着「a bare assignment races every event it happens to be delivering, and `go test -race` catches it in an unrelated test」，并给出了 `swapConn`/`connMu` 的解法形状——但 CI 的 `core` 包**根本没跑 `-race`**，这条规则在 CI 里是**失效的**。
