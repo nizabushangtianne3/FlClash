@@ -2,6 +2,24 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "1.0.12",
+      "tag": "v1.0.12",
+      "date": "2026-11-14",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "8cb7b4e",
+              "scope": "l10n",
+              "text": "Label a dns initiator without the message lookup"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.11",
       "tag": "v1.0.11",
       "date": "2026-11-13",

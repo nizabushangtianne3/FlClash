@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.12 (2026-11-14)
+
+**Performance**
+
+- **l10n** Label a dns initiator without the message lookup (8cb7b4e)
+
 ## v1.0.11 (2026-11-13)
 
 **Performance**
