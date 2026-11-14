@@ -1795,6 +1795,36 @@ extension DnsQueryInitiatorL10n on DnsQueryInitiator {
 
 ## 7. 已知维护事项
 
+### 2026-11-15 process 探测竞态轮次（消除最后一条已知偶发失败）
+
+本轮收掉账本 2026-11-11 登记的 `test/core/desktop/process_probe_test.dart`「an exited child process is not alive」——它在满载机器上偶发失败，是账本里最后一条未收口的测试不稳定项。
+
+**根因（实测，非推测）**：Windows 内核在进程终止与 PID 从进程表移除之间存在一个**极窄的瞬时窗口**。`await process.exitCode` 只保证 Dart 侧收到了退出通知，**不保证**内核已经退役该 PID。
+
+| 探测时机 | 误报存活次数 | 说明 |
+|---|---|---|
+| kill 后立即探测（delay=0） | **1/400（0.25%）** | 常态空闲 |
+| kill 后延迟 1ms 探测 | 0/400 | 退出延迟实测最大仅 4ms |
+| kill 后立即探测（32 个 ping 进程占满机器） | **1/200（0.5%）** | 复现原失败的触发条件 |
+| 同上，改用轮询直到退出 | **0/200** | 修复方案有效 |
+
+关键佐证：轮询到「仍报存活」的那一次，紧接着再探一次立刻变 false（`alive=true` → `retry=false`），证明这是**内核状态瞬时未同步**，不是探测逻辑缺陷。
+
+**为什么不动产品代码**：`lib/core/desktop/process_probe.dart` 的 `isProcessAlive` 只在 `helper_client.dart` 的 `_stop()` 里用于 `transportError` 时的**保守决策**——探测为「存活」就 `rethrow`（保留 session），为「已退出」才释放。误报为存活 → **保守地不释放**，这是安全的方向；文件头注释也写明「A recycled pid reads as alive, which delays a confirmation but never fakes one」。改产品语义会让 Helper 误判 Core 已死并释放仍被占用的 session，风险更高。**该保守语义是正确的，问题在测试的时序假设过紧。**
+
+**改动**：`test/core/desktop/process_probe_test.dart` 新增 `_probeUntilExited(pid)`，以 5ms 间隔轮询直到进程从系统消失，5 秒 deadline 兜底；断言改为 `expect(await _probeUntilExited(process.pid), isFalse)`。
+
+**为什么轮询不会掩盖真实回归**（实测验证）：用一个仍存活 30 秒的进程跑同一套轮询，结果 `alive=true elapsedMs=5007`——跑满 deadline 后**如实判失败**。轮询只容忍「内核退役 PID 的瞬时窗口」，进程真没退出时照样红。
+
+**验证**：
+
+- `flutter test test/core/desktop/process_probe_test.dart` → **3 例全绿**。
+- `flutter test test/core test/common` → **1200 通过 / 25 跳过 / 0 失败**。
+- `dart analyze lib test tool setup.dart` → **No issues found**。
+- `dart format --set-exit-if-changed test/core/desktop/process_probe_test.dart` → `0 changed`。
+
+**踩坑**：`List.generate` 的回调是同步的，用它启动进程拿到的是 `Future<Process>`，对 `worker.kill()` 调用会编译失败（`The method 'kill' isn't defined for the type 'Future<Process>'`）；要启动并发进程必须 `await Future.wait(List.generate(...))`。
+
 ### 2026-11-14 window 探测次数断言纠偏轮次（本机确定性失败集 1 → 0）
 
 本轮修掉账本挂了很久的最后一条**确定性**本机失败：`test/common/window_test.dart` 的「an unsupported probe is retried the next time blur is on」期望 4 次 `isEffectSupported` 探测、Windows 实测 3 次。
