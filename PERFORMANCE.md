@@ -1767,6 +1767,21 @@ extension DnsQueryInitiatorL10n on DnsQueryInitiator {
 **踩坑**：① 第一次跑基准时忘了基准文件里的旧路径已经走在新的 getter 上，测出 5.2ns vs 5.1ns 的假相等；基准的 old 分支必须把生成代码的 switch 原文抄一份，否则两侧是同一个函数。② 上一条导致基准输出巨大（每次读都打印），PowerShell 宿主被 ``System.OutOfMemoryException`` 打挂——基准只打印一次汇总行。
 
 
+### 2026-11-14 补全排序 per-candidate lower 缓存轮次（实测否决，无代码改动）
+
+账本 2026-11-13「补全排序小写化外提轮次」把 `typed.toLowerCase()` 提到循环外，并留下一句「曾评估把 `candidate.toLowerCase()` 也缓存进 `seen` map（按 label→lower 复用）。候选集每次击键都换引用，缓存命中率接近 0，且要引入有界 map 的失效语义，收益不抵复杂度，未做」。本轮对这个否定命题做了实测复核，结论**维持否决**，且给出了量化原因。
+
+探测方法：写一个字节级复制 `rankSuggestions` 算法的变体（3000 个 documentWords 候选，同进程 200 次调用），唯一差异是 `lower` 由 `Map<String, String>.putIfAbsent(label, ...)` 服务而非每次 `label.toLowerCase()`。两侧的 `keep`（建议总数）必须逐字相同才算等价对拍。
+
+| 形状 | 200 次调用总耗时 | 结论 |
+|---|---|---|
+ 现实现（每候选现算 lower） | 551.8 ms | 基线 |
+| lower 按 label 字符串缓存 | 550.3 ms | **噪声内，无收益** |
+
+`putIfAbsent` 的字符串哈希查表（字符串的 `hashCode` 在 Dart 里已缓存，但 map 桶遍历与相等比较仍要付）与 `toLowerCase()` 的全小写 ASCII 快路径同价。第一版探测我还试过只缓存不做排序的「简版」，那会测出 283.9 ms → 45.9 ms 的假收益（两侧 `keep` 分别是 4020 与 69000，根本不同形状）——**两侧不做同样的算法就不存在对拍**，这一条与账本 2026-11-14 踩坑 ① 同源。
+
+同时复核了候选集的身份：`_DocumentNames` 有跨击键缓存（`clash_completion.dart:40` 的 `_names` + `follow(edit, ...)` 增量更新），所以同一批 label 字符串实例在连续击键间**确实**是稳定的（账本「换引用、命中率接近 0」在这个具体点上不成立）。但即便命中率 100%，按上表也没有收益，所以不影响结论：不动。
+
 ### 2026-11-14 协议标签与 selected 列表两轮实测否决（无代码改动）
 
 本轮复核两块被账本标记为「可再挖」的位置，都用同进程配对实测收口，两侧各 7 轮交替取中位。
@@ -1779,6 +1794,16 @@ extension DnsQueryInitiatorL10n on DnsQueryInitiator {
 记录价值：`toUpperCase()` 在这里不是分配问题，把「每行建新字符串」直接换成常量表不一定更快——是否值得改取决于字符串形状。后续若在别的枚举上看到同类写法，先量再动。
 
 ## 7. 已知维护事项
+
+- 2026-11-14 门禁修复（非性能）：HEAD `19b5b3dd`(refactor(prefs): write a bounded delay map from the read itself) 落了一个未格式化的文件——`lib/common/preferences.dart` 里 `preferences?.setString(delayMapKey, json.encode(bounded))` 被折成 4 行，`dart format --set-exit-if-changed lib test tool plugins setup.dart` 实测 `Changed lib\common\preferences.dart`（1099 个文件中唯一一个），即 CI `dart` job 的 `Check format` 步骤会红。已按 `dart format` 结果改回单行。顺手把账本挂了很久的 6 条既有 info 一并清零（`test/core/event_json_test.dart:281-286`，4 处 `final` 常量改 `const`、2 处字符串拼接改插值），于是 `dart analyze lib test tool setup.dart` 从「6 issues found」变成 **No issues found**——这是账本记录以来第一次全绿。验证：`event_json_test.dart` 7 例全绿（含改动用例「an escaped spelling of a key keeps reaching its field」）、`preferences_test.dart` + `delay_map_bound_benchmark_test.dart` 26 例全绿、`test/models test/views test/features test/widgets test/database test/manager test/ui test/enum test/pages test/plugins` 2651 例全绿。教训：refactor 提交前本地跑一次 CI 原样的 format+analyze，别只跑 `dart format <file>`（它默认只格式化指定文件，跨文件的 8 空格/换行差异照样漏）。
+
+**顺带的定位结论（给后续修它的人）**：本轮为查清本机那 4 个 mitm_trust Linux 失败，实测出根因是两处平台形状差异叠加，都与仓库代码无关、纯属测试夹具的 POSIX 假设：
+
+1. _Processes.run 的桩匹配是命令行前缀比对，而 LinuxMitmTrustStore._findExecutable 用 join() 拼路径——Windows 上输出反斜杠、夹具写的键是正斜杠，于是桩永不命中、run 落回默认空 stdout。修法是给夹具加一层路径分隔符归一化（本轮试过，生效但不足以转绿，故未入库）。
+2. _findExecutable 用 searchPath.split(colon) 分 PATH，而夹具传的 /nonexistent:<临时目录>/bin 在 Windows 上含盘符冒号（实测切成三段，第三段才是真路径），于是 join(C, certutil) 查不到桩文件，certutil == null，install 抛 mitmCertutilMissing。这一条没有测试侧修法：_findExecutable 是 Linux-only 产品代码，不该为 Windows 宿主改分隔符。
+
+所以正解只有两个：把 Linux group 提成独立文件配 library 级 @TestOn(linux)（test/core/desktop/ipc_native_test.dart 已有此形状；四个平台 group 都是 group() 调用、嵌在 main() 里，@TestOn 无法标在单个 group 上——实测编译报 Expected semicolon after this），或给 Linux group 内用例加 Platform.isLinux 早退（test/common/window_test.dart:81 的既有形状）。两条都要动约 100 行夹具，收益是本机全量 exit 0；CI（ubuntu）本来就绿，用户实际依赖 CI，故本轮判定投入产出比不足，留作后续独立议题。
+
 
 - 2026-11-11 `dart run tool/test.dart` 全量第 6 个失败：`test/core/desktop/process_probe_test.dart`「an exited child process is not alive」在满载机器上偶发（探针在子进程退出后仍报存活），单独重跑与安静环境均通过；该测试 kill 掉 `ping` 后立即探测，属时序敏感，与本会话 Dart 改动无交互。已知既有失败集仍是 5 个（4 个 Linux-only mitm + window 探针）。
 

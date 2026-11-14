@@ -278,12 +278,11 @@ void main() {
     // spelled with an escape sequence has to drop to the general path,
     // which reads the key as a string and dispatches on its unescaped
     // name; otherwise the field it names is silently lost.
-    final head = '{"method":"message","arguments":[{';
-    final mid = '"type":"log","data":{"LogLevel":"info",';
-    final tail = ':"escaped payload"}}]}';
-    final plain = head + mid + '"Payload"' + tail;
-    final escaped =
-        head + mid + '"' + String.fromCharCode(0x5C) + 'u0050ayload"' + tail;
+    const head = '{"method":"message","arguments":[{';
+    const mid = '"type":"log","data":{"LogLevel":"info",';
+    const tail = ':"escaped payload"}}]}';
+    const plain = '$head$mid"Payload"$tail';
+    final escaped = '$head$mid"${String.fromCharCode(0x5C)}u0050ayload"$tail';
 
     expect(messageBatchFromFrame(utf8.encode(plain))?.single.data, isA<Log>());
     final log = messageBatchFromFrame(utf8.encode(escaped))?.single.data;

@@ -207,10 +207,7 @@ class Preferences {
       // this is the read that already paid for decoding all of it.
       final bounded = _boundedDelayMap(urls);
       if (_delayMapSize(urls) > _delayMapMaxBytes) {
-        await preferences?.setString(
-          delayMapKey,
-          json.encode(bounded),
-        );
+        await preferences?.setString(delayMapKey, json.encode(bounded));
       }
       return bounded;
     } catch (error) {
