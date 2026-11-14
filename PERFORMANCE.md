@@ -1795,6 +1795,56 @@ extension DnsQueryInitiatorL10n on DnsQueryInitiator {
 
 ## 7. 已知维护事项
 
+### 2026-11-15 core 路由发布器 DATA RACE 修复轮次（账本挂了 6 天的竞态收口）
+
+本轮收掉账本 2026-11-09 登记、一直标为「留作后续独立议题」的 Go 竞态：`TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 在 `go test -race` 下报 DATA RACE。
+
+**根因（race detector 精确指位）**：
+
+```
+Write at 0x000143079f60 by goroutine 28:
+  core.recordRoutes.func1()        core/route_test.go:63   ← publishRoute = previous
+Previous read at 0x000143079f60 by goroutine 32:
+  core.applyRouteSnapshot()        core/route.go:313       ← publishRoute(state)
+  core.bumpRouteEpoch()            core/route.go:341
+  core.routeRefreshWorker()        core/route.go:100
+  core.safeGo.func1()              core/method.go:209
+```
+
+`publishRoute` 原本是一个**无锁的包级函数变量**：生产侧只在 `var` 块初始化一次（`core/route.go:126`）永不改动；测试侧 `recordRoutes`（`core/route_test.go:55-66`）却把它替换成 recorder、cleanup 时换回原值。而 `routeRefreshWorker` 由 `safeGo`（`core/route.go:79`，来自 `RuleUpdateCallback`）在**独立 goroutine** 中运行，会调用 `applyRouteSnapshot` → `publishRoute(state)`。`safeGo` 是 fire-and-forget（`core/method.go:202-212`，无 WaitGroup、无 context），`stopRouteWatch` 也只停 poll ticker、停不了这个 worker，所以**测试侧无法等待它结束**，只能在读取端保证安全。
+
+**生产环境是否有风险**：没有。`publishRoute` 的赋值点只有两处——生产侧的 `var` 初始化（init 阶段单次赋值）与测试侧的替换，生产运行时该变量只读。因此这是**测试夹具问题**，但它是一处真实的数据竞争，且 `.agents/rules.md` 第 461-465 行已就同类问题（`conn` 的裸赋值）留下规则：「a bare assignment races every event it happens to be delivering, and `go test -race` catches it in an unrelated test」。
+
+**修复（沿用仓库既有的 `conn`/`connMu` 模式）**：
+
+- `core/route.go`：把函数变量拆成 `publishRouteFn` + `publishRouteMu`，新增 `publishRoute(state)` 读取入口——**先取函数指针再解锁，再调用**，避免在锁内执行外部回调（与 `core/server.go:218-220` 的 `connMu` 用法一致）。
+- `core/route_test.go`：`recordRoutes` 改用 `swapPublishRoute` 替换/还原，辅助函数放在测试文件里（与 `core/ipc_test.go:132` 的 `swapConn` 同位置惯例）。
+- 协议零改动：`RouteState`（`core/protocol.go:253-256`，JSON tag `core-epoch`/`route-version`）与 Dart 侧 `lib/models/core.dart:296-297` 的映射完全未动。
+
+**对照实测（同一台机器、同一命令）**：
+
+| `go test -race -count=1 .`（整个 core 包） | 竞态数 | 结果 |
+|---|---|---|
+| 修复前 · 第 1 轮 | 1 | FAIL |
+| 修复前 · 第 2 轮 | 1 | FAIL |
+| 修复前 · 第 3 轮 | 1 | FAIL |
+| **修复后 · 3 轮** | **0** | **ok（3/3）** |
+
+**验证**：
+
+- `go test -race -count=1 .` → **3 轮连续 `ok core`，0 竞态**（修复前 3/3 轮 FAIL）。
+- `go test -race -run TestRouteVersionsPollLeavesRuleSetsToTheirEvent -count=1 .` → `ok`。
+- `go test -count=1 .` → `ok core 14.249s`；`CGO_ENABLED=0 go test -count=1 .` → `ok core 15.203s`（CI 原样）。
+- `go vet . ./cmd/...` → **exit 0**；`gofmt -l`（CI 范围，87 个文件）→ **0 changed**。
+- Dart 侧 `flutter test test/core` → **218 通过 / 3 跳过 / 0 失败**。
+- `dart format --set-exit-if-changed lib test tool plugins setup.dart` → **1100 files, 0 changed**；`dart analyze lib test tool setup.dart` → **No issues found**。
+
+**踩坑**：
+
+① `-race` 需要 cgo，Windows 上必须同时给 `CGO_ENABLED=1` 与 `CC=gcc`，且 gcc 要在 PATH 里。本机可用的是 `D:\Codex\tools\mingw64-16.2.0-posix-seh-ucrt\mingw64\bin\gcc.exe`（**注意是双层 `mingw64\mingw64\bin`**，第一层没有 `bin`）。
+② PowerShell 下 `gofmt -l ./*.go` 的通配符**不会展开**，会报 `CreateFile ./*.go: The filename, directory name, or volume label syntax is incorrect` 且悄悄输出「0 changed」——CI 用 bash 所以没问题，但本地验证必须用 `Get-ChildItem` 展开出文件列表，否则等于没检查。
+③ 用 `git stash` 做基线对照是干净的：`git stash push -- core/route.go core/route_test.go` 后跑 `-race`，3/3 轮稳定复现竞态，`git stash pop` 恢复。
+
 ### 2026-11-15 process 探测竞态轮次（消除最后一条已知偶发失败）
 
 本轮收掉账本 2026-11-11 登记的 `test/core/desktop/process_probe_test.dart`「an exited child process is not alive」——它在满载机器上偶发失败，是账本里最后一条未收口的测试不稳定项。

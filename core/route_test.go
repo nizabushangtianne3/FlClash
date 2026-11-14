@@ -56,13 +56,22 @@ func recordRoutes(t *testing.T) *routeRecorder {
 	t.Helper()
 	clearRoute()
 	recorder := &routeRecorder{}
-	previous := publishRoute
-	publishRoute = recorder.record
+	previous := swapPublishRoute(recorder.record)
 	t.Cleanup(func() {
 		clearRoute()
-		publishRoute = previous
+		swapPublishRoute(previous)
 	})
 	return recorder
+}
+
+// swapPublishRoute installs a publisher the way publish reads one, and
+// returns the one it replaced.
+func swapPublishRoute(next func(RouteState)) func(RouteState) {
+	publishRouteMu.Lock()
+	defer publishRouteMu.Unlock()
+	previous := publishRouteFn
+	publishRouteFn = next
+	return previous
 }
 
 func stampRoute(epoch, version uint64) {

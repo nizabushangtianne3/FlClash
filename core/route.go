@@ -123,10 +123,21 @@ func init() {
 var (
 	currentRoute routeTracker
 
-	publishRoute = func(state RouteState) {
+	publishRouteMu sync.Mutex
+	publishRouteFn = func(state RouteState) {
 		sendMessage(RouteChangedMessage, state)
 	}
 )
+
+// The refresh worker runs on its own goroutine, so a test that swaps the
+// publisher while a refresh is still in flight would race the swap. The
+// publisher is read under the same lock that installs it.
+func publishRoute(state RouteState) {
+	publishRouteMu.Lock()
+	publisher := publishRouteFn
+	publishRouteMu.Unlock()
+	publisher(state)
+}
 
 func routeStateLocked() RouteState {
 	return RouteState{
