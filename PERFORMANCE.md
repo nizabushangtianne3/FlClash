@@ -1743,6 +1743,29 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 
 验证：focused（`app_localizations_test`/`record_filter_test`/`common_test`）60 例全绿；整批 `test/models test/views test/features test/providers test/core test/common test/widgets` **3846 通过 / 51 跳过 / 5 失败**，5 例即账本既有的 Windows 平台失败（`mitm_trust_test` 4 例 + `window_test` 1 例），与本轮无关；`dart format --set-exit-if-changed` 0 changed；`dart analyze` 0 error / 0 warning（剩余 6 条 info 全在 `test/core/event_json_test.dart`，既有）。本机跑这批用例时把 `setup.build_assets`/`rust_api.build_assets` 临时置 false（CI 的 Dart job 同形状，绕开要 Go 的构建钩子），跑完已还原，提交里不含该改动。
 
+
+### 2026-11-14 DNS 发起方标签缓存轮次（已落地）
+
+上一轮把 cache facet 的标签从 `Intl.message` 读到缓存后，同页的 `initiator` 暴露为同一形状：DNS 查询页每一行有四条路径读它——facet 的 `optionsOf`、结果列的筛选 chip、一条搜索文本、两个排序列键——每次读都走一遍生成代码的 `appLocalizations.<x>`（`Intl.message` 的全局 `messageLookup` 查表）。
+
+```dart
+extension DnsQueryInitiatorL10n on DnsQueryInitiator {
+  String get label => initiatorLabelOf(index);
+}
+```
+
+五个标签在 `lib/common/app_localizations.dart` 里按 `AppLocalizations` 的实例身份持有列表：`AppLocalizations.load()` 每次都新建实例并替换 `_current`，所以切语言后缓存自然失效。放在这个文件而不是 `l10n_labels.dart` 是必要的——后者被 `common.dart` 作为 export 列出，而 `app_localizations.dart` 经 `constant.dart` 引进整个 barrel，放过去会形成导入环（实测报 ``Undefined class``）。
+
+| 优化 | 父仓库提交 | 配对实测（同进程 7 轮交替取中位） |
+|---|---|---|
+| initiator 五标签按实例缓存，不再每行走一次 `Intl.message` | `8cb7b4e0` | 单次标签读取（4000 万次读/轮）**251.1ns → 17.8ns（-92.9%）**；500 行 ×4 处读取 ×2000 趟的一轮 **1004ms → 71ms** |
+
+守护：`test/common/app_localizations_test.dart` 新增两个用例——「names every initiator the core writes」把五个索引逐个对拍 `DnsQueryInitiator.label`，防止索引与枚举顺序脱钩（这是按 ``index`` 取表的唯一风险）；「follows a locale reload instead of going stale」与上一轮 cache 那条同形状，en 下读一次、重载 zh_CN 后断言值已换且与 en 不同。
+
+验证：``app_localizations_test`` 21 例全绿；整批 ``test/models test/views test/features test/core test/common test/widgets test/providers`` **3848 通过 / 51 跳过 / 5 失败**，5 例即账本登记的 Windows 平台失败（`mitm_trust_test` 4 例 + `window_test` 1 例）逐字相同；``dart format --set-exit-if-changed`` 0 changed；``dart analyze`` 0 error / 0 warning，剩余 6 条 info 全在 `test/core/event_json_test.dart`。本机跑批时同样把 `setup.build_assets` 与 `rust_api.build_assets` 临时置 false 再还原。
+
+**踩坑**：① 第一次跑基准时忘了基准文件里的旧路径已经走在新的 getter 上，测出 5.2ns vs 5.1ns 的假相等；基准的 old 分支必须把生成代码的 switch 原文抄一份，否则两侧是同一个函数。② 上一条导致基准输出巨大（每次读都打印），PowerShell 宿主被 ``System.OutOfMemoryException`` 打挂——基准只打印一次汇总行。
+
 ## 7. 已知维护事项
 
 - 2026-11-11 `dart run tool/test.dart` 全量第 6 个失败：`test/core/desktop/process_probe_test.dart`「an exited child process is not alive」在满载机器上偶发（探针在子进程退出后仍报存活），单独重跑与安静环境均通过；该测试 kill 掉 `ping` 后立即探测，属时序敏感，与本会话 Dart 改动无交互。已知既有失败集仍是 5 个（4 个 Linux-only mitm + window 探针）。
