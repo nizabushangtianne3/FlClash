@@ -1795,6 +1795,38 @@ extension DnsQueryInitiatorL10n on DnsQueryInitiator {
 
 ## 7. 已知维护事项
 
+### 2026-11-14 window 探测次数断言纠偏轮次（本机确定性失败集 1 → 0）
+
+本轮修掉账本挂了很久的最后一条**确定性**本机失败：`test/common/window_test.dart` 的「an unsupported probe is retried the next time blur is on」期望 4 次 `isEffectSupported` 探测、Windows 实测 3 次。
+
+**根因（git 历史实证）**：断言值与候选列表在两次提交间失配。
+
+| 提交 | Windows 候选 | macOS 候选 | 测试期望 |
+|---|---|---|---|
+| `69285213`（引入 glass） | `mica, acrylic, blur`（3 个） | `glass, blur`（2 个） | `Windows ? 4 : 3` ✅ 当时正确 |
+| `2a5a42c3`（移除 acrylic） | `mica, blur`（2 个） | `glass, blur`（2 个） | 未同步 ❌ |
+
+`2a5a42c3` 因「Windows 10 的 acrylic 高亮会跟随拖拽指针」而从候选里删掉 `acrylic`，把 Windows 候选从 3 个减为 2 个，探测次数随之从 4 降到 3，但**没有同步 `window_test.dart` 的期望值**。Windows 实测序列为 `mica → blur → mica`（首次两个候选全失败 2 次，第二次第一个候选命中 1 次）。
+
+**为什么期望值可以统一成 3（而不是按平台分支）**：
+
+- 两平台候选数都是 2（Windows `mica, blur`；macOS `glass, blur`），原生 `isEffectSupported` 每次只探测 1 个 effect（`plugins/window/windows/window_style.cpp` 的 `IsEffectSupported(Effect)` 收单个 effect 参数；macOS `WindowEffectView.isSupported` 同理）。
+- 该用例的 mock handler（`test/common/window_test.dart:87-90`）对所有 effect 一律返回同一个 `supported` 布尔值，**完全不区分 effect**，所以序列只由 Dart 侧的候选列表决定，与宿主系统版本无关——macOS 26 的 `glass` 可用、macOS 15 不可用，都不影响该用例的次数。
+
+**改动**：
+
+- `test/common/window_test.dart`：`hasLength(Platform.isWindows ? 4 : 3)` → `hasLength(3)`。
+- 同时把断言从「只数次数」加强为「钉住探测序列」：抽出 `probes` 列表，额外断言 `probes[0] != probes[1]`（两个候选确实不同）与 `probes[2] == probes[0]`（失败不缓存、第二次重新从候选开头探测）。这正是该用例要守的语义——`Window._resolveBlurEffect` 在全部候选失败时返回 `WindowEffect.none` 但**不写入 `_blurEffect`**，所以下次启用模糊会重新探测（`lib/common/window.dart` 的 `_resolveBlurEffect`）。
+
+**验证**：
+
+- `flutter test test/common/window_test.dart` → **18 例全绿**。
+- `flutter test test/core test/common` → **1200 通过 / 25 跳过 / 0 失败**，「Failing tests:」块为空——本机**确定性**失败集归零（此前是 5 → 1 → 0）。
+- `dart analyze lib test tool setup.dart` → **No issues found**。
+- `dart format --set-exit-if-changed test/common/window_test.dart` → `0 changed`。
+
+**遗留**：账本 2026-11-11 登记的 `test/core/desktop/process_probe_test.dart`「an exited child process is not alive」属**满载时序偶发**（子进程退出后立即探测），单独复跑 3 例全绿，不是确定性失败，留作后续独立议题。
+
 ### 2026-11-14 mitm Linux 夹具提取轮次（测试平台假设归位，本机失败集 5 → 1）
 
 本轮落地账本「2026-11-14 门禁修复」留下的独立议题：把 `test/common/mitm_trust_test.dart` 里的 Linux group 提成独立文件，配 library 级 `@TestOn('linux')`，让 Linux 专属夹具只在 Linux 宿主上运行。

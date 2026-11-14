@@ -102,10 +102,13 @@ void main() {
 
     expect(first, isNull);
     expect(second, 0.5);
-    expect(
-      methodCalls.where((call) => call.method == 'isEffectSupported'),
-      hasLength(Platform.isWindows ? 4 : 3),
-    );
+    final probes = methodCalls
+        .where((call) => call.method == 'isEffectSupported')
+        .map((call) => call.arguments['effect'])
+        .toList();
+    expect(probes, hasLength(3));
+    expect(probes[0], isNot(probes[1]));
+    expect(probes[2], probes.first);
     expect(methodCalls.last.arguments['effect'], isNot('none'));
   });
 
