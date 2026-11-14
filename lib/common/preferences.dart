@@ -203,12 +203,14 @@ class Preferences {
           };
         }
       }
+      // A payload that outgrew the bound is rewritten on the way in, since
+      // this is the read that already paid for decoding all of it.
       final bounded = _boundedDelayMap(urls);
-      // A store that outgrew the bound is rewritten on the way in: the next
-      // persist would trim it anyway, and this is the one read that pays for
-      // decoding the whole oversized payload.
       if (_delayMapSize(urls) > _delayMapMaxBytes) {
-        await _overwriteDelayMap(bounded);
+        await preferences?.setString(
+          delayMapKey,
+          json.encode(bounded),
+        );
       }
       return bounded;
     } catch (error) {
@@ -226,11 +228,6 @@ class Preferences {
       delayMapKey,
       json.encode(_boundedDelayMap(delayMap)),
     );
-  }
-
-  Future<void> _overwriteDelayMap(DelayMap delayMap) async {
-    final preferences = await _store.value;
-    await preferences?.setString(delayMapKey, json.encode(delayMap));
   }
 
   /// Drops the oldest urls past [_delayMapMaxUrls] and, inside each url, the
