@@ -14,10 +14,16 @@ int? completionScore(String candidate, String typed, String lowerTyped) {
   if (lower.startsWith(lowerTyped)) {
     return 3000 - candidate.length + (candidate.startsWith(typed) ? 100 : 0);
   }
-  for (var i = 1; i < candidate.length; i++) {
-    if (_startsSegment(candidate, i) && lower.startsWith(lowerTyped, i)) {
-      return 2000 - i - candidate.length;
+  // A segment prefix can only begin where the typed text occurs, so the
+  // substring search finds those places and the segment probe only runs on
+  // them. A candidate that never contains the typed text skips the probe
+  // entirely, which is what a large word table pays for on every keystroke.
+  var at = lower.indexOf(lowerTyped, 1);
+  while (at > 0) {
+    if (_startsSegment(candidate, at)) {
+      return 2000 - at - candidate.length;
     }
+    at = lower.indexOf(lowerTyped, at + 1);
   }
   if (lower.isEmpty || lower[0] != lowerTyped[0]) {
     return null;
