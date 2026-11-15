@@ -419,16 +419,21 @@ func TestRouteVersionsPollLeavesRuleSetsToTheirEvent(t *testing.T) {
 	isRunning.Store(true)
 	t.Cleanup(func() { isRunning.Store(false) })
 	rp.SetTunnel(tunnel.Tunnel)
+	t.Cleanup(stopRouteWatch)
 	ruleSet := rp.NewRuleSetProvider(
 		"ruleset", cp.Domain, cp.YamlRule, 0,
 		resource.NewFileVehicle(filepath.Join(t.TempDir(), "ruleset.yaml")),
 		nil, nil, rules.ParseRule,
 	).(*rp.RuleSetProvider)
+	// A rule-set update reaches the epoch on its own goroutine, so the watch is
+	// opened first: an event released before it exists schedules nothing.
+	withTunnelProviders(t, nil, map[string]cp.RuleProvider{"ruleset": ruleSet})
+	before := handleWatchRoute(true, 0).CoreEpoch
 	if _, _, err := ruleSet.SideUpdate([]byte("payload:\n  - example.com\n")); err != nil {
 		t.Fatalf("SideUpdate: %v", err)
 	}
-	withTunnelProviders(t, nil, map[string]cp.RuleProvider{"ruleset": ruleSet})
-	before := handleWatchRoute(true, 0).CoreEpoch
+	waitForRouteEpoch(t, before+1)
+	settled := routeState().CoreEpoch
 
 	// Hold the reset path while the poll runs, so the debounced rule-set event
 	// cannot race the assertion on a loaded runner.
@@ -439,20 +444,26 @@ func TestRouteVersionsPollLeavesRuleSetsToTheirEvent(t *testing.T) {
 	}
 
 	refreshRouteVersions()
-	if got := routeState().CoreEpoch; got != before {
+	if got := routeState().CoreEpoch; got != settled {
 		selectMu.Unlock()
-		t.Errorf("epoch = %d after the poll, want rule sets left to their update event", got)
+		t.Errorf("epoch = %d after the poll, want %d", got, settled)
 		return
 	}
 	selectMu.Unlock()
 
+	waitForRouteEpoch(t, settled+1)
+}
+
+// waitForRouteEpoch returns once the epoch reads want.
+func waitForRouteEpoch(t *testing.T, want uint64) {
+	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		if got := routeState().CoreEpoch; got == before+1 {
+		if got := routeState().CoreEpoch; got == want {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("epoch = %d after the update event, want %d", routeState().CoreEpoch, before+1)
+			t.Fatalf("epoch = %d, want %d", routeState().CoreEpoch, want)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
