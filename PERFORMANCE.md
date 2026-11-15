@@ -1652,6 +1652,60 @@ D:\Codex\tools\go-bin\benchstat.exe <baseline> <current>
 
 验证：`test/features` + `test/lint` **210 例全绿**（含新 4 例）；全量套件失败集与干净基线**逐字相同**的 5 个 Windows 环境性失败（4 个 Linux-only `mitm_trust` + 1 个 `window` 探针）；`dart format` 1099 文件 0 changed；`dart analyze` 0 error / 0 warning，剩 6 条既有 info 全在 `test/core/event_json_test.dart`；`check_coverage.dart` 87.67%、每组高于 floor。
 
+### 2026-11-15 分段起点改由子串搜索定位轮次（性能，编辑器路径，本会话单项最大）
+
+上一轮（2026-11-13）把 `typed.toLowerCase()` 外提，3000 词文档补全从 1580µs 降到 1322µs（-15.9%）。本轮先**归因**再动手：用一次性归因基准把每键击 1226µs 拆开，实测得到
+
+| 组成 | 每键击成本 | 占比 |
+|---|---|---|
+| **分段探测**（`_startsSegment`，逐字符 4 次大小写转换） | **1018.8µs** | **83.1%** |
+| 候选小写化（`candidate.toLowerCase()`） | 84.5µs | 6.9% |
+| 其余（排序、集合、分配） | ~122.8µs | 10.0% |
+
+结论与直觉相反：**热點不在小写化，而在逐位置的分段探测**。候选形如 `TokyoNode123`，原实现对每个字符调用 `_startsSegment`，而它内部做 4 次 `toLowerCase`/`toUpperCase` 转换——3000 候选 × ~12 字符 = 3.6 万次调用、约 14.4 万次大小写转换。
+
+**改动**（`lib/features/editor/completion_matcher.dart`，+12/-4）：分段前缀只可能从「typed 文本出现的位置」开始，所以先用 `lower.indexOf(lowerTyped, 1)` 找到这些位置，再只对这些位置做分段探测；候选完全不含 typed 文本时**整段跳过探测**。
+
+```dart
+// 改前：逐位置探测，每个位置付 4 次大小写转换
+for (var i = 1; i < candidate.length; i++) {
+  if (_startsSegment(candidate, i) && lower.startsWith(lowerTyped, i)) {
+    return 2000 - i - candidate.length;
+  }
+}
+
+// 改后：子串搜索先定位，探测只跑在匹配位置上
+var at = lower.indexOf(lowerTyped, 1);
+while (at > 0) {
+  if (_startsSegment(candidate, at)) {
+    return 2000 - at - candidate.length;
+  }
+  at = lower.indexOf(lowerTyped, at + 1);
+}
+```
+
+配对实测（`test/features/completion_rank_benchmark_test.dart`，**同进程交替新旧实现 5 轮**，同机同负载）：
+
+| 候选集 | 旧版 perCallUs | 新版 perCallUs | 收益 |
+|---|---|---|---|
+| 3000 个文档词 | 中位 **1235.7**（1304.28 / 1206.83 / 1235.725 / 1220.6 / 1332.345） | 中位 **355.7**（355.695 / 349.02 / 361.555 / 358.93 / 351.335） | **-71.2%（3.47×）** |
+| 36 个配置键 | 中位 **51.8** | 中位 **41.6** | **-19.7%** |
+
+**5 轮全部是新版更快，无一轮反转**。`keep`（200 次调用返回的建议总数）两版都是 **4020**，逐字相同。
+
+**等价性守护**：`test/features/completion_matcher_test.dart` 新增 2 个**常驻**用例，把旧算法（逐位置扫描）作为测试内参考实现，对 **27 个候选标签 × 25 个前缀 = 675 组**逐一比对分数。候选集刻意覆盖 Unicode（`ÜnïcodeNode`、`中文节点`、`emoji😀Node`）、分隔符变体（`-`/`_`/`.`/空格）、大小写变体（`ALLCAPS`/`MiXeD CaSe`/`allcaps`）、数字与前导分隔符。实测 2660 组（含另一轮手工对照）全部相等。
+
+**候选规模说明**：命中的是真实主路径——`lib/features/editor/script_completion.dart:198-202` 的 `completeFrom` 传的是 `_keywords + _globals + request.documentWords`，文档越大候选越多，所以 3000 不是虚构形状。
+
+验证：`dart analyze lib/features/editor/ test/features/completion_matcher_test.dart` → No issues found；`test/features/ test/views/ test/common/ test/lint/` **1747 例全绿**（0 失败）；`test/features/` 单独 184 例全绿；`comment_density.sh` 两个文件均 PASS。
+
+**踩坑**：
+
+1. **本机 `flutter test` 挂起的真因不是中文路径，而是 setup hook**：`pubspec.yaml` 的 `hooks.user_defines.setup.build_assets: true` 会触发 Go Core + Rust Helper 构建，而本机缺 Android SDK，hook 静默挂起（`flutter test` 240s 无任何输出，dartvm CPU 几乎为 0）。把 `setup.build_assets` 置 `false` 后同一个测试 34s 跑完 21 例。`.agents/commands.md` 已写明这个开关，本轮是第一次真正用上。**注意 `rust_api` 不能一起关**：关了会让 `test/plugins/code_forge/completion_test.dart`、`test/views/profile_preview_test.dart`、`test/views/proxy_providers_view_test.dart` 三个文件在 `setUpAll` 报 `Editor native library not found`——那是环境问题不是代码问题（已在基线旧实现上复现同样报错），且 Rust 库构建完成后三者全绿。
+2. **junction 挡不住 `flutter test`**：`D:\Codex\work\flclash-r10` junction 指向中文路径仓库时 `flutter pub get` 要 5 分钟，纯 ASCII 的 robocopy 副本只要 5 秒。但 `flutter test` 在两种路径下都挂起——说明挂起原因是 hook 而非路径。ASCII 副本另有一利：`pub get` 与 `dart analyze` 都快。
+3. **paired 对照必须每轮校验编译成功**：生成旧版文件时按行号切片切多了一个 `}`，旧版编译失败，脚本的 `Select-String` 取不到数字却沿用了上一轮的变量值，输出看起来像「两版一样快」。脚本要显式判空并报 `COMPILE_OR_RUN_FAILED`，否则会得出完全相反的结论。
+4. **`flutter test` 的 `@Skip` 手动基准用 `--run-skipped` 跑**，且要先 `flutter pub get`（hook 开关变更后必须重跑，否则 hook 缓存键没更新）。
+
 ### 2026-11-13 `fixed()` 开销账本更正（实测否证，勿再沿用过时结论）
 
 账本 4 处旧结论（`§2` 第 1268 行、`§3` 第 1417/1419 行与 2026-11-09 条目）都写着或暗示「`fixed(decimals: 1)` 比裸 `toStringAsFixed(1)` 多付约 35ns」。复核结论：**这条开销不存在**。
