@@ -2039,6 +2039,58 @@ Previous read at 0x000143079f60 by goroutine 32:
 
 **该议题已于 2026-11-14 落地（见下方「mitm Linux 夹具提取轮次」）**：采用第一条路径。
 
+### 2026-11-15 Go 测试隔离轮次（测试，不是性能；四个全局单例污染归零）
+
+上一轮（`b13cbf62`）把 CI 的 Go core 偶发红归零后，本轮用 `go test -shuffle` 系统扫了一遍「默认顺序绿、乱序红」的一整类缺陷。父仓库 `d49bca9d` 只改 5 个测试文件（+53/-5），**产品代码零改动**。
+
+**根因（实测定位，四条独立链路）**：
+
+1. **`config.SetProxyNameList` 全局泄漏**：`core/Clash.Meta/config/patch.go` 的 `SetProxyNameList` 写全局，`core/Clash.Meta/config/config.go` 在 `ParseConfig` 末尾无条件调用。`core/route.go` 的 `routeGroupProjections` 见 `len(source)>0` 就走按名查表分支，而 `tunnel.AllProxies()` 只有新装的 `{group}`，名字全 nil → 投影出空 picks。插桩实证：`current_src=[DIRECT REJECT a b g]`、`snap=1 groups=0`、`allproxies_len=1`。**注意**：单纯「保存/恢复到测试入口时的值」无效（污染照传，且把失败面扩大到非 route 测试），必须是**入口置 nil + 退出恢复**。
+2. **`statistic.DefaultManager` 行泄漏**：`core/connection_helpers_test.go` 的 `newConnectionDeltaTracker` 只清理 pipe，不关 tracker → 别的测试留下的 row 让断言 `should have 2 item(s), but has 3`。改为 `t.Cleanup` 里 `tracker.Close()`。
+3. **`probeConnsPool` 拨号器泄漏**：`core/probe.go` 的 `probeConnsPool` 按 `{epoch, version, proxy, tls}` 复用 transport，而 transport 的 `probeDialer.dials` 记住**每一个拨过的地址**。别的测试用同一个 key 留下的 dials，会让本测试的 `handleOutboundIp` 答出 4 个 host 而不是 1 个。按 `core/probe_test.go` 既有形状（入口清池 + 退出清池）修。
+4. **`cachefile.Cache()` nil 防护缺失**：`core/Clash.Meta/component/profile/cachefile/cache.go:78` 的 `Close()` 直接 `c.DB.Close()`，而同文件的 `SetSelected`/`SelectedMap` 都有 `c.DB == nil` 防护。`core/config_test.go:846` 的 cleanup 对 nil DB 调用 → `bbolt.(*DB).Close(0x0)` panic，**中断整个测试二进制并掩盖其他结果**。该文件在独立子模块 `core/Clash.Meta`（`nizabushangtianne3/Clash.Meta`），改它要另起子模块提交，故本轮只改测试侧三处调用点（`core/config_test.go` ×2、`core/profile_base_test.go` ×1），加 `closeCacheFile()` helper 先判 `cache.DB != nil`。**子模块侧的 `Close()` 缺 nil 防护仍待修**，记为后续独立议题。
+
+**顺带修的 IPC 帧捕获竞态**：`core/ipc_test.go` 的 `captureFrames` 把 fake conn 装到全局 `conn` 上，而 `core/message.go` 的 `runMessageBatcher` 是**全二进制生命周期的常驻 goroutine**，每 48ms flush 一次全局队列。别的测试留下的消息若在捕获窗口内 flush，就会多写一帧 → `captured 2 frames, want 1`。修法是捕获前排空三个消息队列。
+
+**量化对照**（`go test -shuffle=<seed> -count=1 .`，基线 `b13cbf62` vs 改动后，10 个 seed）：
+
+| 失败用例 | 基线 | 改动后 |
+|---|---|---|
+| route 投影 4 例（`TestHandleChangeProxyReportsWhetherThePickMoved`、`TestNestedGroupSwitchPublishesEveryPick`、`TestProbeAnswersCarryTheExitsTheyReached`、`TestRouteVersionsScratchFollowsAGroupPick` 的投影部分） | 7/10 | **0/10** |
+| `TestConnectionDelta*` 4 例 | 5/10 | **0/10** |
+| `TestHandleResetNetworkClosesTheRowsItAnswers` / `TestConnectionDeltaAnswersEveryRowThatLeft` | 4/10 | **0/10** |
+| `TestApplyConfigTellsARejectedProfileFromAFailedCall` | 2/10 | 0/10（nil 防护后） |
+| `TestProbeAnswersCarryTheExitsTheyReached`（单独统计，宽采样 20 seed） | 3/20 | **0/20** |
+| `TestTestDelayKeepsToTheTimeoutTheGroupNames` / `TestTestDelayDoesNotSpendTheProbeBudgetQueueing` | 0/10 | 0/10（交接摘要里的「3/10 新增」经本轮单独跑 5/5 通过 + 满载 3 次重跑不再复现，判定为交接时的插桩残留，非真回归） |
+
+**验证**（CI 同款门禁，`go-1.27.1` + 任务级缓存）：
+
+- `gofmt -l ./*.go ./cmd ./mobile ./platform ./timezone ./tun` → 空（exit 0）。
+- `go test -count=1 .` → ok（18s）。
+- `go vet . ./cmd/...` 与 `GOOS=linux go vet ./platform` → 均 exit 0。
+- `go test -race -count=1 .` → rc 0，无 DATA RACE。
+- **稳定性加强**：`go test -shuffle=1..30 -count=1 .` 全部 30 个 seed 全绿（17-18s/seed），默认顺序亦全绿。改动前同一组 seed 有 13 个红。
+- GitHub Actions run `43686079124`（sha `d49bca9d`）→ 见下方轮次结论。
+
+**踩坑**：
+
+1. **PowerShell 的 `foreach($s in ...)` + `"-shuffle=" + $s` 在 `Set-Content -Encoding ascii` 写出的脚本里不展开**：`-shuffle=$s` 会被当成字面量 `$s` 传给 `go`，报 `invalid value "$s" for flag -shuffle`。解法是显式拼 `"-shuffle=" + $s` 并用 `[IO.File]::WriteAllText` 写脚本，不要靠 `Set-Content` 的 here-string。
+2. **PowerShell 不展开 `*.go` glob**：`gofmt -l ./*.go` 在 PowerShell 里报 `CreateFile ./*.go: The filename, directory name, or volume name is incorrect`，退出码 2，看起来像门禁红了，实际是 shell 差异。CI 同款命令必须走 Git Bash 跑。
+3. **`$LASTEXITCODE` 会被前一条命令覆盖**：脚本里用 `& $go fmt ./... | Out-Null` 垫在 `gofmt -l` 前面，读到的退出码是错的（实测 2，而 Git Bash 下同一命令是 0）。门禁退出码必须在命令紧邻处采。
+4. **基线对照必须用 `git stash` 前后同一台机器跑同一组 seed**：交接摘要里的 seed=4 panic 曾被当作新引入，本轮 `git stash push -- core/route_test.go core/connection_helpers_test.go` 后在**基线**上跑同一 seed，实测同样 panic 于 `core/config_test.go:846` → 判定为既有问题。
+5. **插桩会改 `-shuffle` 的种子序**：在测试文件里加 `t.Logf` 后用例数变化，`-shuffle=<seed>` 的实际排列也变，交接摘要的「基线 vs 改动后」数字若在不同插桩状态下采集就不可比。
+6. **`apply_patch` 连续追加会留重复 helper**：本轮 `route_test.go` 曾多出一个与 `clearProxyNameList` 注释重复、且不置 nil 的 `keepProxyNameList`（零引用）。提交前必须 `git diff` 全量复核。
+
+**性能面的复核（顺带实测，回答「性能还有没有空间」）**：账本第 1358 行「性能侧已挖到地板」是 2026-11-11 的结论，本轮按账本自己的要求「重新测量，不要直接复用旧数据」抽测了三条：
+
+| 路径 | 账本（2026-11-11） | 实测（2026-11-15，`-benchtime 2000x -count 5`） | 结论 |
+|---|---|---|---|
+| 连接轮询稳态 500 | 371ns / 308B / 6 allocs | 410-431ns / 309B / 6 allocs | 噪声内，**仍见底** |
+| 连接轮询表变动 100 | 2.15µs / 2.31KB / 13 allocs | 1.96-2.44µs / 2.08KB / 12 allocs | 吻合，**仍见底** |
+| 连接轮询表变动 500 | 未记 | 5.1-5.6µs / 1.8KB / 12 allocs | O(活跃连接) 必然，账本已定案「不做」 |
+
+`core/Clash.Meta` 在 `bbf113d6f`（epoch 微秒）之后只多了一个 `a5626213f`（删掉无生产调用方的 shared counter stripe），不触及 `xsync.Map.Range` 路径，故表变动路径的成本没有被本轮的任何改动抬高。**「已见底」的判断在本轮复核后仍然成立**——性能机会不在主路径，而在最近 4 天新落地的那批 Dart/UI 改动（dashboard grouping、emoji 记忆化、l10n label 缓存等）是否开出了新热点，那需要第 10 轮专门扫。
+
 
 - 2026-11-11 `dart run tool/test.dart` 全量第 6 个失败：`test/core/desktop/process_probe_test.dart`「an exited child process is not alive」在满载机器上偶发（探针在子进程退出后仍报存活），单独重跑与安静环境均通过；该测试 kill 掉 `ping` 后立即探测，属时序敏感，与本会话 Dart 改动无交互。已知既有失败集仍是 5 个（4 个 Linux-only mitm + window 探针）。
 
