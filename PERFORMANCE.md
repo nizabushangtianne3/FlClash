@@ -2005,6 +2005,31 @@ Previous read at 0x000143079f60 by goroutine 32:
 
 - 2026-11-14 门禁修复（非性能）：HEAD `19b5b3dd`(refactor(prefs): write a bounded delay map from the read itself) 落了一个未格式化的文件——`lib/common/preferences.dart` 里 `preferences?.setString(delayMapKey, json.encode(bounded))` 被折成 4 行，`dart format --set-exit-if-changed lib test tool plugins setup.dart` 实测 `Changed lib\common\preferences.dart`（1099 个文件中唯一一个），即 CI `dart` job 的 `Check format` 步骤会红。已按 `dart format` 结果改回单行。顺手把账本挂了很久的 6 条既有 info 一并清零（`test/core/event_json_test.dart:281-286`，4 处 `final` 常量改 `const`、2 处字符串拼接改插值），于是 `dart analyze lib test tool setup.dart` 从「6 issues found」变成 **No issues found**——这是账本记录以来第一次全绿。验证：`event_json_test.dart` 7 例全绿（含改动用例「an escaped spelling of a key keeps reaching its field」）、`preferences_test.dart` + `delay_map_bound_benchmark_test.dart` 26 例全绿、`test/models test/views test/features test/widgets test/database test/manager test/ui test/enum test/pages test/plugins` 2651 例全绿。教训：refactor 提交前本地跑一次 CI 原样的 format+analyze，别只跑 `dart format <file>`（它默认只格式化指定文件，跨文件的 8 空格/换行差异照样漏）。
 
+### 2026-11-15 Go core 门禁修复轮次（CI 偶发失败归零，无产品代码改动）
+
+上一轮（`e35a65c1`）把 CI 的 Go core job 弄红了：`TestRouteVersionsPollLeavesRuleSetsToTheirEvent` 报 `core/route_test.go:455: epoch = 2 after the update event, want 1`。本地 200 次重复、全套 5 轮、4 个相关用例各 100 轮 × `-cpu=2` 均未复现，属只在 CI 上出现的偶发。
+
+**根因（实测定位，不是猜测）**：`core/Clash.Meta/common/utils/callback.go` 的 `Callback.Emit` 对每个监听者 `go element.Value(item)` 起独立协程，所以 `ruleSet.SideUpdate()` 返回后 update 事件仍在异步飞行。`core/route.go` 的 `scheduleRouteRefresh` 里 `if !isRunning.Load()` 只挡了"没在运行"，没挡"watch 没开"——真正决定 bump 是否发生的是其后 `routeWatched()`。原用例顺序是「第一次 SideUpdate → `withTunnelProviders` 注册 → `handleWatchRoute(true,0)` 开 watch」，那次 update 的 emit 若在 watch 建立之后才被调度，就多 bump 一个 epoch；若在之前落地则被丢弃、一次都不 bump。用一次性诊断测试（已删除）实测 30 轮：29 轮观测到 watch 打开后 epoch +1，emit→bump 最大延迟约 6.6ms，高于用例的 5ms 轮询步长——这就是 CI 偶发把 `2` 观测成 `want 1` 的来源。交接摘要里"两个 worker 各 bump 一次"的假说被证据排除：`routeRefreshWorker` 的 reset 分支在 `bumpRouteEpoch()` 之前就清掉了 `routeRefreshQueued`，单次事件只有一条路径能 bump。
+
+**改动**：只动 `core/route_test.go` 一个文件（+17/-6）。把 `withTunnelProviders` 与 `handleWatchRoute(true, 0)` 提到第一次 `SideUpdate` 之前，让那次 update 的 emit 必定在 watch 已开的条件下落地；随后用新增的 `waitForRouteEpoch(t, want)` helper（单参精确等待）先等它静止，再以 `settled := routeState().CoreEpoch` 作基线，轮询断言与最后一次等待分别改成 `!= settled` 和 `settled+1`；并补 `t.Cleanup(stopRouteWatch)`，把 watch 与轮询协程一起收掉。**产品代码零改动**：worker 合并/去抖属行为变更，风险远大于收益。
+
+**为什么不去改子模块**：让 `Emit` 同步执行会改变 mihomo 的回调语义并牵动全部 listener；子模块修改还要另起一次子模块提交，为消一个测试侧偶发不值得。
+
+**验证**（CI 同款门禁，`go-1.27.1` + 任务级缓存）：
+
+- `gofmt -l ./*.go ./cmd ./mobile ./platform ./timezone ./tun` → 空。
+- `go test -count=1 .` → ok（15.3s）。
+- `go vet . ./cmd/...` 与 `GOOS=linux go vet ./platform` → 均 exit 0。
+- 稳定性加强：改动后 `-count=400 -cpu=1,4,8` 1200 次全绿；`-race -count=400` 无 DATA RACE。
+- GitHub Actions run `43666895849`（sha `f462bd92`）：`Go core` 与 `Dart`、`Android unit tests`、`Rust`、`Windows helper test`、`Plugins`、三个 Desktop 构建均 success。
+
+**踩坑**：
+
+1. 门禁必须在 `core/` 子目录跑，不在仓库根；且本机 PowerShell 把中文路径当命令行参数传给 `go` 时会按 GBK 编码损坏（`java项目` 变 `java椤圭洰`），可靠做法是建 ASCII junction `D:\Codex\work\flclash-ci8` 指回原仓库，再走 Git Bash 执行同一段门禁脚本。
+2. `apply_patch` 连续两次对同一函数追加上下文，中间会留下重复 helper 副本；提交前必须 `git diff` 全量复核一次，不能只看 exit code。
+3. `comment-density.sh` 按新增行计算独立注释占比：即便注释承载的是不可替代的非显然约束，10/24 也判 41.7% 超标。按它的指引把"为什么"挪进测试名与账本（本文件），代码只留 1 条 2 行注释才降到 5% 以下。
+4. `go test -race` 需 gcc；本机 `D:\Codex\tools\mingw64-16.2.0-posix-seh-ucrt\mingw64\bin` 可用，配 `CGO_ENABLED=1` 即可。
+
 **顺带的定位结论（给后续修它的人）**：本轮为查清本机那 4 个 mitm_trust Linux 失败，实测出根因是两处平台形状差异叠加，都与仓库代码无关、纯属测试夹具的 POSIX 假设：
 
 1. _Processes.run 的桩匹配是命令行前缀比对，而 LinuxMitmTrustStore._findExecutable 用 join() 拼路径——Windows 上输出反斜杠、夹具写的键是正斜杠，于是桩永不命中、run 落回默认空 stdout。修法是给夹具加一层路径分隔符归一化（本轮试过，生效但不足以转绿，故未入库）。
