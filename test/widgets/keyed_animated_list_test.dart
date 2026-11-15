@@ -145,22 +145,77 @@ void main() {
     await tester.pumpAndSettle();
     expect(mounts, 2);
   });
+
+  testWidgets('a row far down keeps its state when the list shifts', (
+    tester,
+  ) async {
+    final items = [for (var i = 0; i < 10; i++) '$i'];
+    final state = GlobalKey<CountsMountsState>();
+    Widget build(List<String> list) => HostApp(
+      home: HostScaffold(
+        body: KeyedAnimatedList<String>(
+          items: list,
+          keyOf: (item) => item,
+          itemBuilder: (_, item) => item == '8'
+              ? _CountsMounts(key: state)
+              : const SizedBox(height: 40),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(build(items));
+    await tester.pumpAndSettle();
+    expect(find.byKey(state), findsOneWidget);
+
+    // The row at the far end of the table has to keep its state when the
+    // rows above it move, which is what the child index callback answers.
+    await tester.pumpWidget(build([...items.take(9), 'new']));
+    await tester.pumpAndSettle();
+    expect(find.byKey(state), findsOneWidget);
+  });
+
+  testWidgets('a row keeps its state when a row above it leaves', (
+    tester,
+  ) async {
+    final items = [for (var i = 0; i < 10; i++) '$i'];
+    final state = GlobalKey<CountsMountsState>();
+    Widget build(List<String> list) => HostApp(
+      home: HostScaffold(
+        body: KeyedAnimatedList<String>(
+          items: list,
+          keyOf: (item) => item,
+          itemBuilder: (_, item) => item == '8'
+              ? _CountsMounts(key: state)
+              : const SizedBox(height: 40),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(build(items));
+    await tester.pumpAndSettle();
+    expect(find.byKey(state), findsOneWidget);
+
+    await tester.pumpWidget(build(items.where((item) => item != '0').toList()));
+    await tester.pumpAndSettle();
+    expect(find.byKey(state), findsOneWidget);
+  });
+
 }
 
 class _CountsMounts extends StatefulWidget {
-  const _CountsMounts({required this.onMount});
+  const _CountsMounts({this.onMount, super.key});
 
-  final VoidCallback onMount;
+  final VoidCallback? onMount;
 
   @override
-  State<_CountsMounts> createState() => _CountsMountsState();
+  State<_CountsMounts> createState() => CountsMountsState();
 }
 
-class _CountsMountsState extends State<_CountsMounts> {
+class CountsMountsState extends State<_CountsMounts> {
   @override
   void initState() {
     super.initState();
-    widget.onMount();
+    widget.onMount?.call();
   }
 
   @override

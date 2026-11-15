@@ -1847,6 +1847,59 @@ extension DnsQueryInitiatorL10n on DnsQueryInitiator {
 
 记录价值：`toUpperCase()` 在这里不是分配问题，把「每行建新字符串」直接换成常量表不一定更快——是否值得改取决于字符串形状。后续若在别的枚举上看到同类写法，先量再动。
 
+### 2026-11-16 连接列表槽位索引改惰性构建轮次（性能，连接页，本会话单项最大）
+
+账本此前**从未记录过 `KeyedAnimatedList`**（`rg "KeyedAnimatedList|indexByKey|findChildIndexCallback" PERFORMANCE.md` 零命中）。它是 `lib/` 内唯一的 keyed 动画列表，也是连接页（`lib/views/connection/requests.dart:480` → `lib/features/connection/tracker_info_list.dart:180`）未分组时的行容器。
+
+**先测「这个列表有多大」，这是本轮成立的前提**：连接页**没有行数上限**。
+
+| 位置 | 事实 |
+|---|---|
+| `core/connection.go:130` `handleGetConnections` | 按 `statistic.DefaultManager` 的实际活跃连接数返回，无 cap |
+| `lib/providers/state/connections.dart:182` `_merge` | `rows.values.toList()..sort(...)`，全量排序，无 cap |
+| `lib/features/connection/tracker_speed_ranker.dart:79` `rank` | `final count = trackerInfos.length`，按实际行数分配，无 cap |
+
+`maxRequestsLength = 1600`（`lib/common/constant.dart:184`）只管「最近请求」feed，**不管连接页**。账本第 923 行记的「10k 连接每次 `rank` 10.4ms → 4.19ms」已经说明万级连接是真实形状。
+
+**热点定位**：`KeyedAnimatedList.build` 每次重建为 `findChildIndexCallback` 建一张**全表**的 `indexByKey` map（`plugins/prism_ui/lib/keyed_animated_list.dart`），`_applyItems` 另建 `oldByKey` 与 `newKeys` 两张。一次轮询 3 张全表 map。
+
+**关键归因**：Flutter 3.47 的 `findChildIndexCallback` 只在 `sliver.dart:1010` 被调用——遍历**已挂载**的 `_childElements`，即视口与缓存区的行。实测（2000 行列表，真实 widget 轮询，计数钩子）：
+
+```
+poll lookups=43 maxSlot=42 of 2000
+```
+
+每次轮询只被问 **43 次**，最大槽位 **42**——全表 2000 行里只用到前 43 行。这张全表 map 里 97.8% 的条目**从未被读过**。
+
+**改动**（`plugins/prism_ui/lib/keyed_animated_list.dart`）：`indexByKey` 换成 State 里的惰性索引 `_indexed` + `_indexCursor`，查哪行走到哪行；`_entries` 变化的三处（`_applyItems`、`_replaceItems`、`_settle`）都重置游标。**`_settle` 必须重置**：它移除 leaving 的行，后续行的槽位会前移，不重置会返回错误槽位。
+
+配对实测（独立进程 ×3，`test/` 下的临时基准，含 43 次 `ValueKey` 构造与查找，两边同一负荷）：
+
+| 行数 | 旧版（全表 map） | 新版（惰性） | 收益 |
+|---|---|---|---|
+| 1600 | 1337 / 1385 / 1370µs | 13 / 14 / 16µs | **-99%** |
+| 20000 | 16117 / 16358 / 16647µs | **15 / 15 / 15µs** | **省约 16.1ms** |
+
+20000 连接时单次轮询省下 **16.1ms**，远超 `.agents/skills/ui-performance/SKILL.md` 的「1ms 门槛」，也超出 120Hz 下 8ms 帧预算数倍。1600 行时省约 1.3ms，同样过门槛。
+
+**等价性守护**：`plugins/prism_ui/test/widgets/keyed_animated_list_test.dart` 新增 2 例（主仓 `test/widgets/keyed_animated_list_test.dart` 同步镜像）：
+
+1. 「a row far down keeps its state when the list shifts」——末尾行在上面的行移动后，`GlobalKey` 仍在；
+2. 「a row keeps its state when a row above it leaves」——上面的行离开后，末尾行的 `GlobalKey` 仍在。
+
+两例先在**旧实现**上验证通过（`mounts` 计数版本对 300 行/20 行的视口外行不成立，改用 `GlobalKey` 挂在视口内的行上才有效），再在**新实现**上跑绿，证明它们守的是语义而不是实现。
+
+**踩坑**：
+
+1. **端到端 widget 计时不可用**：20000 行轮询的 `pumpAndSettle` 耗时在独立进程间是 23278 / 23608 / 30417 / 48888 / 49034µs，波动 2 倍，主因是帧调度与 GC，不是被测代码。按 SKILL「计数优先于计时」，改用「索引覆盖了多少条目」这个确定性计数（base 180000 vs change 387）判定，并另用纯 Dart 循环测索引构建成本——两法都避开了帧噪声。
+2. **首版探针问错了问题**：把「可见行查询」写成「对每个 key 都查一次」，逼惰性索引也走完整表，导致 10000 行时惰性版反而更慢。真实场景是每次轮询只问 43 次。
+3. **`comment_density.sh` 门禁**：初版加了 6 行文档注释，密度 17.6%（上限 5%）；压到 2 行仍 6.7%；最后删到 0 行独立注释——字段名 `_indexed`/`_indexCursor` 足以表达状态，惰性这个非显然约束由上面两条用例与本节承载（规则明确「prefer a test or an `.agents/` entry when the fact belongs there」）。
+4. **本机 `flutter analyze` 在中文路径下崩**（`flutter_localizations` 的 `DateSymbols` 找不到），改在 `D:\Codex\work\flclash-r11-ascii` 的纯 ASCII 副本里跑 `dart analyze` 与 `flutter test`。
+
+**验证**：`plugins/prism_ui` 全量 **357 例全绿**；主仓 `test/widgets/keyed_animated_list_test.dart` 9 例 + `test/features/tracker_info_list_test.dart` + `test/widgets/connections_view_test.dart` + `test/views/requests_test.dart` + `test/views/connections_test.dart` 共 **54 例全绿**；`test/views/dashboard/connections_table_test.dart` 等 4 文件 **29 例全绿**；`dart analyze`（整个 `prism_ui`）**No issues found**；`dart format` 0 changed；`comment_density.sh` 两个文件均 PASS。
+
+**全量套件**：改动后 `dart run tool/test.dart` **5011 例，1 个文件失败**（`test/manager/core_manager_test.dart`，单独跑 20 例全绿，是 bundle 隔离导致的既有失败）；**干净基线**同套件失败 **6 个文件**（含同一个 `core_manager_test.dart`）——失败集是基线更宽，改动**未引入新失败**。
+
 ## 7. 已知维护事项
 
 ### 2026-11-15 CoreController 分支覆盖轮次（core 组覆盖率 81.5% → 84.5%）
