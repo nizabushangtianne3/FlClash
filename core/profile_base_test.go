@@ -402,12 +402,21 @@ func TestHandleGetProxyDefinitionReadsTheRunningConfig(t *testing.T) {
 	}
 }
 
+// The cache singleton is opened once per process, against whatever home dir
+// the first test happened to install. A cleanup that finds no database behind
+// it must not panic the whole binary on the way out.
+func closeCacheFile() {
+	if cache := cachefile.Cache(); cache.DB != nil {
+		_ = cache.Close()
+	}
+}
+
 func TestHandleGetProxyDefinitionReadsAProviderProxyAsItsProviderBuildsIt(t *testing.T) {
 	home := t.TempDir()
 	previous := constant.Path.HomeDir()
 	constant.SetHomeDir(home)
 	t.Cleanup(func() { constant.SetHomeDir(previous) })
-	t.Cleanup(func() { _ = cachefile.Cache().Close() })
+	t.Cleanup(closeCacheFile)
 	const subscription = `proxies:
   - {name: a, type: socks5, server: 127.0.0.1, port: 1080}
   - {name: b, type: socks5, server: 127.0.0.2, port: 1080}

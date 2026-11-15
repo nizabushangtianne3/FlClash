@@ -139,11 +139,28 @@ func swapConn(next ipcConn) ipcConn {
 
 func captureFrames(t *testing.T, run func()) [][]byte {
 	t.Helper()
+	drainMessageQueues()
 	fake := &fakeConn{}
 	previous := swapConn(fake)
 	defer swapConn(previous)
 	run()
 	return fake.frames(t)
+}
+
+// The message batcher runs for the whole test binary and flushes whatever
+// another test left behind, so a capture that swaps the connection under it
+// can pick up a frame it never asked for. The queues are emptied before the
+// capture opens its window, so the batcher has nothing of its own to send.
+func drainMessageQueues() {
+	for _, queue := range []chan Message{stateMessageQueue, priorityMessageQueue, bulkMessageQueue} {
+		for draining := true; draining; {
+			select {
+			case <-queue:
+			default:
+				draining = false
+			}
+		}
+	}
 }
 
 func captureSingleFrame(t *testing.T, run func()) []byte {

@@ -55,6 +55,14 @@ func clearRoute() {
 func recordRoutes(t *testing.T) *routeRecorder {
 	t.Helper()
 	clearRoute()
+	clearProxyNameList(t)
+	// The pool hands back a transport per epoch, version, proxy and trust, and
+	// that transport's dialer remembers every address it opened. A test that
+	// raced outbound lookups under a key another test still holds answers with
+	// the dials that test left behind, and every answer then names the wrong
+	// host.
+	forgetProbeConnections()
+	t.Cleanup(forgetProbeConnections)
 	recorder := &routeRecorder{}
 	previous := swapPublishRoute(recorder.record)
 	t.Cleanup(func() {
@@ -62,6 +70,17 @@ func recordRoutes(t *testing.T) *routeRecorder {
 		swapPublishRoute(previous)
 	})
 	return recorder
+}
+
+// A config parse writes the group names it found into the global name list,
+// which the route projection reads to pick the groups it follows. A test that
+// applied a config leaves that list behind, and a later test that installs one
+// group under it then projects nothing at all.
+func clearProxyNameList(t *testing.T) {
+	t.Helper()
+	nameList := config.GetProxyNameList()
+	t.Cleanup(func() { config.SetProxyNameList(nameList) })
+	config.SetProxyNameList(nil)
 }
 
 // swapPublishRoute installs a publisher the way publish reads one, and

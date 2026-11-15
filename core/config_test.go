@@ -16,7 +16,6 @@ import (
 
 	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/adapter/provider"
-	"github.com/metacubex/mihomo/component/profile/cachefile"
 	"github.com/metacubex/mihomo/component/updater"
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
@@ -843,7 +842,7 @@ func TestApplyConfigTellsARejectedProfileFromAFailedCall(t *testing.T) {
 	previous := constant.Path.HomeDir()
 	constant.SetHomeDir(home)
 	t.Cleanup(func() {
-		_ = cachefile.Cache().Close()
+		closeCacheFile()
 		constant.SetHomeDir(previous)
 	})
 	withCurrentConfig(t, nil)
@@ -872,7 +871,7 @@ func TestApplyConfigPatchesTheListenersWithTheAppliedConfig(t *testing.T) {
 	previousHome := constant.Path.HomeDir()
 	constant.SetHomeDir(home)
 	t.Cleanup(func() {
-		_ = cachefile.Cache().Close()
+		closeCacheFile()
 		constant.SetHomeDir(previousHome)
 	})
 	withCurrentConfig(t, nil)

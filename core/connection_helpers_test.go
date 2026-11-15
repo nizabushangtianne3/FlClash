@@ -20,7 +20,7 @@ func newConnectionDeltaTracker(t *testing.T, metadata *C.Metadata) statistic.Tra
 		_ = remote.Close()
 	})
 	go func() { _, _ = io.Copy(io.Discard, remote) }()
-	return statistic.NewTCPTracker(
+	tracker := statistic.NewTCPTracker(
 		outbound.NewConn(local, outbound.NewDirectWithOption(outbound.DirectOption{Name: "DIRECT"})),
 		statistic.DefaultManager,
 		metadata,
@@ -29,6 +29,10 @@ func newConnectionDeltaTracker(t *testing.T, metadata *C.Metadata) statistic.Tra
 		0,
 		true,
 	)
+	// The tracker announces itself to the shared manager, so a test that
+	// leaves it there keeps a row for every later one to answer whole.
+	t.Cleanup(func() { _ = tracker.Close() })
+	return tracker
 }
 
 func benchmarkConnectionTrackers(b *testing.B, count int) []statistic.Tracker {
