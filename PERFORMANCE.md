@@ -1896,6 +1896,8 @@ poll lookups=43 maxSlot=42 of 2000
 3. **`comment_density.sh` 门禁**：初版加了 6 行文档注释，密度 17.6%（上限 5%）；压到 2 行仍 6.7%；最后删到 0 行独立注释——字段名 `_indexed`/`_indexCursor` 足以表达状态，惰性这个非显然约束由上面两条用例与本节承载（规则明确「prefer a test or an `.agents/` entry when the fact belongs there」）。
 4. **本机 `flutter analyze` 在中文路径下崩**（`flutter_localizations` 的 `DateSymbols` 找不到），改在 `D:\Codex\work\flclash-r11-ascii` 的纯 ASCII 副本里跑 `dart analyze` 与 `flutter test`。
 
+5. **CI 的 `Check format` 覆盖 `plugins`，本地只跑了 submodule 的两个文件就以为过了**：CI 的步骤是 `dart format --output=show --set-exit-if-changed lib test tool plugins setup.dart`（`.github/workflows/build.yaml`），主仓 `test/widgets/keyed_animated_list_test.dart` 这份镜像也在其中。首推的 `46c9f2b3` 就栽在这里——Dart job 在 `Check format` 失败（Analyze / Run tests / Check coverage 全部 `skipped`），其余 job（Rust、Windows helper、Desktop windows、Desktop linux、Android、Go core、Plugins）**全绿**。本地复查命令必须是仓库全量那条，不能只对改过的文件跑。修复提交 `1e8e11dc` 删掉一个多余空行（删坏测试时留下的），`dart format --output=none --set-exit-if-changed lib test tool plugins setup.dart` 复跑 **1100 文件 0 changed**。
+
 **验证**：`plugins/prism_ui` 全量 **357 例全绿**；主仓 `test/widgets/keyed_animated_list_test.dart` 9 例 + `test/features/tracker_info_list_test.dart` + `test/widgets/connections_view_test.dart` + `test/views/requests_test.dart` + `test/views/connections_test.dart` 共 **54 例全绿**；`test/views/dashboard/connections_table_test.dart` 等 4 文件 **29 例全绿**；`dart analyze`（整个 `prism_ui`）**No issues found**；`dart format` 0 changed；`comment_density.sh` 两个文件均 PASS。
 
 **全量套件**：改动后 `dart run tool/test.dart` **5011 例，1 个文件失败**（`test/manager/core_manager_test.dart`，单独跑 20 例全绿，是 bundle 隔离导致的既有失败）；**干净基线**同套件失败 **6 个文件**（含同一个 `core_manager_test.dart`）——失败集是基线更宽，改动**未引入新失败**。
