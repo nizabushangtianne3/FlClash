@@ -10,3 +10,12 @@ FlClash's desktop system-proxy integration.
 The public `Proxy` API validates the port, applies HTTP, HTTPS, and SOCKS
 settings to `127.0.0.1`, and returns `false` when the selected platform backend
 is unavailable or a command fails.
+
+`clearStaleProxy` undoes a proxy that a killed run left behind. It only acts on
+a proxy that is enabled, points at `127.0.0.1`, and whose port has no listener,
+so a proxy that points somewhere else or still has a live server stays as it
+is. A probe that fails counts as a live server.
+
+Linux is left out: its backends write their settings through `gsettings` and
+`kwriteconfig`, and neither reports what is stored in a form that can be
+compared with a port.

@@ -94,8 +94,7 @@ bumped=0
 if [[ -n "$want_version" ]]; then
   version="$want_version"
 elif git rev-parse -q --verify "refs/tags/v$current" >/dev/null; then
-  IFS='.' read -r vmaj vmin vpat <<<"$current"
-  version="$vmaj.$vmin.$((vpat + 1))"
+  version="$(tool/next_version.sh "$current")"
   echo "pubspec is at $current, which is already tagged; targeting $version"
 else
   version="$current"

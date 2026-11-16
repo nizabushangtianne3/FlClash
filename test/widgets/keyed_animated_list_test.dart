@@ -199,6 +199,58 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(state), findsOneWidget);
   });
+
+  testWidgets('a list that only moves traffic keeps its rows', (tester) async {
+    final items = [for (var i = 0; i < 10; i++) '$i'];
+    final state = GlobalKey<CountsMountsState>();
+    Widget build(List<String> list) => HostApp(
+      home: HostScaffold(
+        body: KeyedAnimatedList<String>(
+          items: list,
+          keyOf: (item) => item,
+          itemBuilder: (_, item) => item == '8'
+              ? _CountsMounts(key: state)
+              : const SizedBox(height: 40),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(build(items));
+    await tester.pumpAndSettle();
+    expect(find.byKey(state), findsOneWidget);
+
+    // The same rows in the same order, which is what a poll that only moves
+    // traffic publishes. The rows keep their state.
+    await tester.pumpWidget(build(items));
+    await tester.pumpAndSettle();
+    expect(find.byKey(state), findsOneWidget);
+  });
+
+  testWidgets('a list that moves one row off the same order slides it', (
+    tester,
+  ) async {
+    final items = [for (var i = 0; i < 10; i++) '$i'];
+    final state = GlobalKey<CountsMountsState>();
+    Widget build(List<String> list) => HostApp(
+      home: HostScaffold(
+        body: KeyedAnimatedList<String>(
+          items: list,
+          keyOf: (item) => item,
+          itemBuilder: (_, item) => item == '8'
+              ? _CountsMounts(key: state)
+              : const SizedBox(height: 40),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(build(items));
+    await tester.pumpAndSettle();
+
+    final moved = [...items.take(9), 'new'];
+    await tester.pumpWidget(build(moved));
+    await tester.pumpAndSettle();
+    expect(find.byKey(state), findsOneWidget);
+  });
 }
 
 class _CountsMounts extends StatefulWidget {

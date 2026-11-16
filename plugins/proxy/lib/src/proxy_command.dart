@@ -4,6 +4,32 @@ import 'package:flutter/foundation.dart';
 
 const proxyHost = '127.0.0.1';
 
+/// Whether a loopback port still has a listener. A failed probe counts as one.
+abstract interface class ProxyPortProbe {
+  Future<bool> isListening(int port);
+}
+
+class SocketPortProbe implements ProxyPortProbe {
+  const SocketPortProbe();
+
+  @override
+  Future<bool> isListening(int port) async {
+    try {
+      final socket = await Socket.connect(
+        InternetAddress(proxyHost, type: InternetAddressType.IPv4),
+        port,
+        timeout: const Duration(milliseconds: 200),
+      );
+      socket.destroy();
+      return true;
+    } on SocketException {
+      return false;
+    } on Object {
+      return true;
+    }
+  }
+}
+
 typedef ProxyProcessRunner =
     Future<ProcessResult> Function(
       String executable,

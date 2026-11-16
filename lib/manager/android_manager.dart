@@ -64,6 +64,10 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
 
   @override
   void dispose() {
+    // A pending save outlives this widget only for as long as the engine
+    // does; the Tile and the shortcuts both start from the stored state, so
+    // dropping it would leave them reading the previous one.
+    debouncer.flush(FunctionTag.saveSharedFile);
     debouncer.cancel(FunctionTag.reloadPackages);
     if (app?.onPackagesChanged == _reloadPackages) {
       app?.onPackagesChanged = null;

@@ -270,6 +270,12 @@ git tag v0.8.96
 git push origin main && git push origin v0.8.96
 ```
 
+The app version counts in decades: the patch runs from 0 to 9 and then rolls
+into the minor, which rolls into the major at 9 as well, so `1.0.9` is followed
+by `1.1.0` and `1.9.9` by `2.0.0`. `tool/next_version.sh` holds that rule and
+both `tool/bump_version.sh` and `tool/release.sh` call it, so the two can never
+disagree about what comes next. `tool/version_test.sh` pins the sequence.
+
 Push the tag by name. Every release tag here is lightweight, and `--follow-tags` carries annotated tags only: it skips a
 lightweight one silently, so the branch lands, the tag does not, and the release workflow never fires.
 

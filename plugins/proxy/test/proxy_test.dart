@@ -428,6 +428,99 @@ USB 10/100/1000 LAN
       expect(await proxy.start(7890, const []), isFalse);
       expect(callCount, 1);
     });
+
+    test('reads the port of an enabled proxy that points at this app', () {
+      expect(
+        MacosProxyCommands.parseProxyPort('''
+Enabled: Yes
+Server: 127.0.0.1
+Port: 7890
+Authenticated Proxy Enabled: 0
+'''),
+        7890,
+      );
+    });
+
+    test('reports no port for a proxy that is off or points elsewhere', () {
+      expect(
+        MacosProxyCommands.parseProxyPort('''
+Enabled: No
+Server: 127.0.0.1
+Port: 7890
+'''),
+        isNull,
+      );
+      expect(
+        MacosProxyCommands.parseProxyPort('''
+Enabled: Yes
+Server: proxy.example.test
+Port: 7890
+'''),
+        isNull,
+      );
+      expect(MacosProxyCommands.parseProxyPort('Enabled: Yes'), isNull);
+    });
+
+    test('clears a proxy whose port has no listener', () async {
+      final commands = <ProxyCommand>[];
+      final proxy = MacosProxy(
+        commandRunner: ProxyCommandRunner((
+          executable,
+          arguments, {
+          runInShell = false,
+        }) async {
+          if (arguments.first == '-listallnetworkservices') {
+            return ProcessResult(0, 0, 'Wi-Fi\n', '');
+          }
+          if (arguments.first == '-getwebproxy') {
+            return ProcessResult(
+              0,
+              0,
+              'Enabled: Yes\nServer: 127.0.0.1\nPort: 7890\n',
+              '',
+            );
+          }
+          commands.add(ProxyCommand(executable, arguments));
+          return ProcessResult(0, 0, '', '');
+        }),
+        portProbe: _FakePortProbe(false),
+      );
+
+      expect(await proxy.clearStaleProxy(), isTrue);
+      expect(
+        commands.any((command) => command.args.contains('-setwebproxystate')),
+        isTrue,
+      );
+    });
+
+    test('leaves a proxy alone while its port still has a listener', () async {
+      final commands = <ProxyCommand>[];
+      final proxy = MacosProxy(
+        commandRunner: ProxyCommandRunner((
+          executable,
+          arguments, {
+          runInShell = false,
+        }) async {
+          if (arguments.first == '-listallnetworkservices') {
+            return ProcessResult(0, 0, 'Wi-Fi\n', '');
+          }
+          if (arguments.first == '-getwebproxy') {
+            return ProcessResult(
+              0,
+              0,
+              'Enabled: Yes\nServer: 127.0.0.1\nPort: 7890\n',
+              '',
+            );
+          }
+          commands.add(ProxyCommand(executable, arguments));
+          return ProcessResult(0, 0, '', '');
+        }),
+        portProbe: _FakePortProbe(true),
+      );
+
+      expect(await proxy.clearStaleProxy(), isFalse);
+      expect(commands, isEmpty);
+    });
   });
 
   group('windowsBypassList', () {
@@ -487,5 +580,26 @@ USB 10/100/1000 LAN
 
       expect(await proxy.stopProxy(), isFalse);
     });
+
+    test('sends the Windows stale proxy contract', () async {
+      MethodCall? capturedCall;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(proxy.methodChannel, (call) async {
+            capturedCall = call;
+            return true;
+          });
+
+      expect(await proxy.clearStaleProxy(), isTrue);
+      expect(capturedCall?.method, 'ClearStaleProxy');
+    });
   });
+}
+
+class _FakePortProbe implements ProxyPortProbe {
+  final bool listening;
+
+  const _FakePortProbe(this.listening);
+
+  @override
+  Future<bool> isListening(int port) async => listening;
 }

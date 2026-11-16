@@ -29,6 +29,9 @@ class _FakeProxy implements Proxy {
 
   @override
   Future<bool> stopProxy() => _call('stop');
+
+  @override
+  Future<bool> clearStaleProxy() => _call('clear stale');
 }
 
 ProxyState _state({required bool isStart}) {
@@ -103,5 +106,21 @@ void main() {
     await queue.close();
 
     expect(proxy.calls, ['start 7890', 'stop', 'stop']);
+  });
+
+  test('the stale proxy cleaner asks the platform to clear it', () async {
+    final proxy = _FakeProxy();
+    await StaleProxyCleaner(proxy).clean();
+
+    expect(proxy.calls, ['clear stale']);
+  });
+
+  test('the stale proxy cleaner survives a platform failure', () async {
+    final proxy = _FakeProxy();
+    proxy.failure = StateError('channel gone');
+
+    await StaleProxyCleaner(proxy).clean();
+
+    expect(proxy.calls, ['clear stale']);
   });
 }

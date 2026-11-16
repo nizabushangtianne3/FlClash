@@ -6,7 +6,8 @@ import 'src/macos_proxy.dart';
 import 'src/proxy_command.dart';
 import 'src/windows_proxy.dart';
 
-export 'src/proxy_command.dart' show ProxyExecutableChecker, ProxyProcessRunner;
+export 'src/proxy_command.dart'
+    show ProxyExecutableChecker, ProxyPortProbe, ProxyProcessRunner;
 
 class Proxy {
   static const int _minPort = 1;
@@ -58,6 +59,21 @@ class Proxy {
         homeDir: Platform.environment['HOME'],
       ),
       'windows' => await ProxyPlatform.instance.stopProxy(),
+      String() => false,
+    };
+  }
+
+  /// Clears a system proxy that points at this app's port with nothing
+  /// listening behind it, which is what a killed run leaves behind. A proxy
+  /// that points elsewhere is left alone.
+  Future<bool> clearStaleProxy() async {
+    return switch (Platform.operatingSystem) {
+      'macos' => await _macosProxy.clearStaleProxy(),
+      'windows' => await ProxyPlatform.instance.clearStaleProxy(),
+      // The Linux backends write their settings through gsettings and
+      // kwriteconfig, and neither reports what is stored in a form that can
+      // be compared with a port, so a stale proxy there is left to the
+      // desktop's own settings rather than guessed at.
       String() => false,
     };
   }

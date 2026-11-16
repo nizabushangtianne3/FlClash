@@ -1933,7 +1933,9 @@ final oldByKey = {for (final entry in _entries) entry.key: entry};
 final newKeys = {for (final item in items) widget.keyOf(item)};
 ```
 
-账本此前以 20000 行推演它约 3997µs，且判定「是 O(n) diff 的必要输入」。本轮先补了规模事实：`KeyedAnimatedList` 全仓唯一使用点是连接页 live 页签（`lib/features/connection/tracker_info_list.dart:180`），行数由 `FixedList(maxRequestsLength)` 决定，即 **1600 行**（暂停态 3200，`lib/common/constant.dart:184-188`）。20000 行不是真实数据，门槛判断必须重做。
+账本此前以 20000 行推演它约 3997µs，且判定「是 O(n) diff 的必要输入」。本轮复核了规模事实：`KeyedAnimatedList` 全仓唯一使用点是连接页 live 页签（`lib/features/connection/tracker_info_list.dart:180`），而 live 页签的列表来自 `connectionsProvider`（`lib/providers/state/connections.dart`），其 `_rows` 是**无上限**的 map——`core/connection.go` 的 `handleGetConnections` 按 Core 实际活跃连接数返回，子模块 `statistic.Manager.connections` 是无上限 `xsync.Map`，Core 侧 `connectionRows.order` 同样无 cap。`maxRequestsLength = 1600`（`lib/common/constant.dart:184`）只管「最近请求」feed，**不管连接页**（与本文件第 1854-1862 行第 11 轮小节已列的事实一致）。
+
+**本轮曾在此处犯过一次错误并已纠正**：初稿把 live 页签的行数误读成 `FixedList(maxRequestsLength)` 的 1600，据此写下「20000 行不是真实数据」，与第 11 轮小节的实测结论直接矛盾，也与本次代码核实矛盾。纠正后按 20000 行重测，结论翻转（见下）。
 
 **成本（3 个独立进程，纯 Dart 基准，复刻 `_applyItems` 全文，3 次尝试各 300 轮取中位数）**：
 
@@ -1941,6 +1943,7 @@ final newKeys = {for (final item in items) widget.keyOf(item)};
 |---|---|---|---|
 | 1600 | 500-504µs | 911-920µs | **506-510µs** |
 | 3200 | 1002-1037µs | 1846-1913µs | **1016-1051µs** |
+| **20000（真实规模）** | **9628-9894µs** | 18190-18584µs | 9873-10154µs |
 
 **第一条否决**：`countedPath`（把阈值判断前移、先一遍扫描数出 inserted/removed 再决定是走 diff 还是 `_replaceItems`）比原路径**慢一倍**。原路径建那两张 map 时就已经把计数做完了（`inserted.where` + `removed.where` 只是再读一遍已建好的 map），额外预先扫两遍纯属浪费。
 
@@ -1955,9 +1958,31 @@ final newKeys = {for (final item in items) widget.keyOf(item)};
 
 而条件 2、3 的**验证本身就要扫两张全表建一个 set**，其开销与被省掉的两张全表 map 完全相同——`window` 最终测得 506-510µs vs `current` 500-504µs，差距落在进程内噪声里（三个进程间 <2%）。换句话说：**省掉 map 的收益，被「证明可以省」的前置检查全部吃回去**。
 
-**结论**：维持现有实现，不落代码。`_applyItems` 那两张 map 是 O(n) diff 的固有成本，在 1600/3200 行的真实规模上低于 1ms，按 `.agents/skills/ui-performance/SKILL.md` 第 6 条（saves under a millisecond at the largest data, is reported and left out）两个维度都指向同一结论。
+**结论（按纠正后的真实规模）**：`_applyItems` 那两张全表 map 在 **20000 行时约 9.6-9.9ms**，远超 `.agents/skills/ui-performance/SKILL.md` 的 1ms 门槛，也超出 120Hz 下 8ms 帧预算。本轮的三条路径都没有解法（`counted` 慢一倍、`window` 被自己的验证成本吃掉），但**候选本身过门槛，是真实待办**——留给下一轮带着「窗口验证成本必须低于被省掉的 map 成本」这个约束重新设计。
 
-**轮间教训**：账面「估约 3997µs」的候选一旦按真实规模重测可能直接低于门槛；而「绕开 O(n) diff 的全表结构」这类改法要小心——**等价性验证本身常常也是 O(n)**，收益会被验证成本吃掉，除非调用方能提供一个廉价的 key 唯一性保证。本轮共试了三条路径、逐条用 400 trial 等价性校验钉死，探针保留在 `D:\Codex\work\r13-bench`（不依赖 FlClash 包，绕开 sqlite3 构建钩子）。
+**轮间教训**：① 账面「估约 3997µs」的候选必须按**真实规模**重测——本轮把 live 页签的行数误读成 1600，差点把一个 9.9ms 的真实热点判成「低于门槛、不做」；**引用既有轮次的结论前要先核对它到底管哪个列表**（第 11 轮小节第 1854-1862 行早已写明连接页无上限）。② 「绕开 O(n) diff 的全表结构」这类改法要小心——**等价性验证本身常常也是 O(n)**，收益会被验证成本吃掉，除非调用方能提供一个廉价的 key 唯一性保证。本轮共试了三条路径、逐条用 400 trial 等价性校验钉死，探针保留在 `D:\Codex\work\r13-bench`（不依赖 FlClash 包，绕开 sqlite3 构建钩子）。
+
+### 2026-11-16 连接 diff 同序快路径轮次（性能，连接页，20000 行 -85%）
+
+第 13 轮留下的候选是 `_applyItems` 的两张全表 map（20000 行约 9.6-9.9ms）。本轮先找出**生产里最常见的那种输入**：`updateTraffic` 每轮询只换 item 的 traffic、不换行序（`rank` 稳态复用上次序），所以新旧列表**长度相同、逐位 key 相同、没有 leaving 行**。这种情况下根本不需要 diff 表。
+
+**落地**：`plugins/prism_ui/lib/keyed_animated_list.dart` 的 `_applyItems` 顶部加一条 `_sameOrder(items)` 快路径——长度相同、逐位 key 相同、且所有行都已 settled 时，原地更新 item、bump generation 后直接返回，跳过两张全表 map。**不满足条件一律回退原路径**，所以 diff 语义没有变化。
+
+**实测**（纯 Dart 基准 `D:\Codex\work\r13-bench\bin\bench2.dart`，3 进程 × 400 trial 等价性校验全过）：
+
+| 规模 | 原路径 | 同序快路径 | 变化 |
+|---|---|---|---|
+| 1600 | 525-543µs | 117-119µs | **-78%** |
+| 20000 | 9628-9894µs | 1603-1655µs | **-85%**（省约 8.8ms） |
+
+20000 行的 9.9ms 已经超出 120Hz 下 8ms 帧预算；快路径把这一帧的 diff 成本压回 1.6ms。
+
+**两条被实测否决的路径**（都写在账本里，免得再试一遍）：
+
+1. **`oneTablePath`（只建一张 map）**：比原路径**更慢**。原路径建两张 map 时顺带把计数做完了，合并成一张之后 `inserted`/`removed` 反而要再扫一遍。
+2. **`headBlockPath`（头部块快路径）**：实测 -97%，**但语义不等价**——原路径按「旧表中其后第一个幸存行」给 leaving 行分组，头部块的切法与之不同。没做。
+
+**约束记录**（代码里只留了一行 doc，语义写在这里）：`KeyedAnimatedList` 的同序快路径依赖「连接页轮询只更新 traffic、不重排行」这一事实；若将来列表语义改成会重排，该快路径必须重新评估。
 
 ## 7. 已知维护事项
 

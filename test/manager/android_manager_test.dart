@@ -127,4 +127,27 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('flushes a pending save when the widget goes away', (
+    tester,
+  ) async {
+    await pumpAndroidManager(tester);
+    container.read(patchClashConfigProvider.notifier).value =
+        const PatchClashConfig(testUrl: 'http://flushed.test');
+    await tester.pump();
+    expect(store.getString('sharedState'), isNull);
+
+    // Swiping the app away before the debounce elapses still has to leave the
+    // Tile and the shortcuts a state they can start from.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    final raw = store.getString('sharedState');
+    expect(raw, isNotNull);
+    final restored = SharedState.fromJson(
+      json.decode(raw!) as Map<String, Object?>,
+    );
+    expect(restored.setupParams?.options.testUrl, 'http://flushed.test');
+    expect(tester.takeException(), null);
+  });
 }

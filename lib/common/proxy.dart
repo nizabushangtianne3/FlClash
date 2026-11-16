@@ -9,6 +9,29 @@ final proxy = system.isDesktop && !safeModeBuild ? Proxy() : null;
 
 final systemProxyQueue = proxy == null ? null : SystemProxyQueue(proxy!);
 
+/// Clears a system proxy a killed run left behind.
+class StaleProxyCleaner {
+  final Proxy _proxy;
+
+  StaleProxyCleaner(this._proxy);
+
+  Future<void> clean() async {
+    try {
+      final cleared = await _proxy.clearStaleProxy();
+      if (cleared) {
+        commonPrint.log('cleared a system proxy left behind by a killed run');
+      }
+    } catch (error) {
+      commonPrint.log(
+        'unable to clear a stale system proxy: ${compactError(error)}',
+        logLevel: LogLevel.warning,
+      );
+    }
+  }
+}
+
+final staleProxyCleaner = proxy == null ? null : StaleProxyCleaner(proxy!);
+
 /// Exit's stop goes through the same queue as every other change, so a start
 /// still waiting behind a slow call cannot turn the proxy back on after it.
 /// A stop also clears settings someone else made, so it only undoes a start

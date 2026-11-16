@@ -456,6 +456,10 @@ namespace proxy
       proxy_applied_ = true;
       result->Success(startProxy(*port, *bypassDomain));
     }
+    else if (method_call.method_name() == "ClearStaleProxy")
+    {
+      result->Success(ClearStaleProxy());
+    }
     else
     {
       result->NotImplemented();

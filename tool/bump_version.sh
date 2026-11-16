@@ -9,9 +9,12 @@ usage() {
   cat <<'EOF'
 Usage: tool/bump_version.sh [major|minor|all]
 
-major  Bump app version patch: 0.8.94 -> 0.8.95
+major  Bump app version patch: 1.0.8 -> 1.0.9
 minor  Bump build number: YYYYMMDDNN, NN is today's build count from 01 to 99 (default)
 all    Bump both app version patch and build number
+
+The patch rolls over into the minor at 9, and the minor into the major at 9:
+1.0.9 -> 1.1.0 and 1.9.0 -> 2.0.0.
 EOF
 }
 
@@ -31,9 +34,7 @@ app_version="${version%%+*}"
 build_number="${version##*+}"
 
 if [[ "$mode" == "major" || "$mode" == "all" ]]; then
-  IFS='.' read -r major minor patch <<<"$app_version"
-  patch=$((patch + 1))
-  app_version="$major.$minor.$patch"
+  app_version="$(tool/next_version.sh "$app_version")"
 fi
 
 if [[ "$mode" == "minor" || "$mode" == "all" ]]; then
@@ -58,3 +59,4 @@ sed "s/^version: .*/version: $new_version/" "$pubspec_file" >"$tmp_file"
 mv "$tmp_file" "$pubspec_file"
 
 echo "$version -> $new_version"
+
