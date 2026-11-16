@@ -2,7 +2,16 @@
 
 ## v1.1.0 (2026-11-16)
 
-Internal improvements only.
+**Bug Fixes**
+
+- **android** Flush the pending save the Tile and the shortcuts start from, so a start inside the debounce window no longer refuses with "No configuration found" (0c2992a)
+- **proxy** Clear a system proxy left behind by a killed run on Windows and macOS when nothing listens on its port any more (0c2992a)
+- **build** Roll the app version in decades, so 1.0.9 becomes 1.1.0 and 1.9.0 becomes 2.0.0 (0c2992a)
+
+**Performance**
+
+- **list** Index the rows a keyed list reports on demand, saving about 16.1ms per poll on a 20000-row connection table (46c9f2b)
+- **editor** Find a segment start behind the substring search, taking word table ranking from 1235.7us to 355.7us per call (97529c8)
 
 ## v1.0.12 (2026-11-14)
 

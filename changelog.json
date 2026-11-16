@@ -6,7 +6,43 @@
       "tag": "v1.1.0",
       "date": "2026-11-16",
       "prerelease": false,
-      "groups": []
+      "groups": [
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "0c2992a",
+              "scope": "android",
+              "text": "Flush the pending save the Tile and the shortcuts start from, so a start inside the debounce window no longer refuses with \"No configuration found\""
+            },
+            {
+              "id": "0c2992a",
+              "scope": "proxy",
+              "text": "Clear a system proxy left behind by a killed run on Windows and macOS when nothing listens on its port any more"
+            },
+            {
+              "id": "0c2992a",
+              "scope": "build",
+              "text": "Roll the app version in decades, so 1.0.9 becomes 1.1.0 and 1.9.0 becomes 2.0.0"
+            }
+          ]
+        },
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "46c9f2b",
+              "scope": "list",
+              "text": "Index the rows a keyed list reports on demand, saving about 16.1ms per poll on a 20000-row connection table"
+            },
+            {
+              "id": "97529c8",
+              "scope": "editor",
+              "text": "Find a segment start behind the substring search, taking word table ranking from 1235.7us to 355.7us per call"
+            }
+          ]
+        }
+      ]
     },
     {
       "version": "1.0.12",
