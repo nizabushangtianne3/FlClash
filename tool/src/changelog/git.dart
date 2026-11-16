@@ -153,7 +153,7 @@ class Git {
     // quoting non-ASCII subject lines.
     final result = Process.runSync(
       'git',
-      arguments,
+      ['-c', 'i18n.logOutputEncoding=utf-8', ...arguments],
       workingDirectory: workingDirectory,
       stdoutEncoding: utf8,
       stderrEncoding: utf8,
