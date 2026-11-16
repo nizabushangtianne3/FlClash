@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'dart:io';
 
 import 'models.dart';
@@ -144,10 +146,17 @@ class Git {
   }
 
   String _run(List<String> arguments) {
+    // Git stores commit text as UTF-8 and a Windows console decodes a child's
+    // stdio with the system code page, so a Chinese commit message arrives as
+    // mojibake here while the same run on Linux is fine. Read the stream as
+    // UTF-8 explicitly and ask git for UTF-8 too, which also stops it from
+    // quoting non-ASCII subject lines.
     final result = Process.runSync(
       'git',
       arguments,
       workingDirectory: workingDirectory,
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
     );
     if (result.exitCode != 0) {
       throw GitException('git ${arguments.join(' ')} failed: ${result.stderr}');
