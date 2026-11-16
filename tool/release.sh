@@ -5,6 +5,20 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$script_dir/.." && pwd)"
 cd "$root"
 
+changelog_dart() {
+  # `dart run` reads pubspec.yaml and starts the hooks its user_defines ask
+  # for, and the rust_api hook this repository needs cannot finish while it
+  # is being built, so the local release never got past the preview. Calling
+  # the entrypoint with an explicit package config skips pubspec discovery
+  # altogether. CI has already turned the hook off, where `dart run` works.
+  if [[ -f .dart_tool/package_config.json ]]; then
+    dart --packages="$root/.dart_tool/package_config.json" \
+      tool/changelog.dart "$@"
+  else
+    dart run tool/changelog.dart "$@"
+  fi
+}
+
 mode=""
 want_version=""
 do_push=0
@@ -131,11 +145,12 @@ echo "push      : $([[ $do_push == 1 ]] && echo yes || echo 'no (printed at the 
 echo
 
 committed=0
+preview_log="$(mktemp)"
 restore() {
   ((committed)) && return 0
   git checkout -- pubspec.yaml changelog.json CHANGELOG.md 2>/dev/null || true
 }
-trap restore EXIT
+trap 'restore; rm -f "$preview_log"' EXIT
 
 if ((bumped)); then
   sed -i.bak "s/^version: [0-9]*\.[0-9]*\.[0-9]*/version: $version/" pubspec.yaml
@@ -144,11 +159,11 @@ fi
 tool/bump_version.sh minor
 
 echo "--- release notes for $tag ---"
-if dart run tool/changelog.dart build --unreleased >/dev/null 2>&1; then
-  dart run tool/changelog.dart render release 2>/dev/null |
+if changelog_dart build --unreleased >"$preview_log" 2>&1; then
+  changelog_dart render release 2>/dev/null |
     sed -n '/changelog:begin/,/changelog:end/p' | sed '1d;$d'
 else
-  echo "(preview unavailable: 'build --unreleased' found nothing to collect)"
+  sed 's/^/  /' "$preview_log"
 fi
 git checkout -- changelog.json 2>/dev/null || true
 echo "--- end of notes ---"
@@ -178,14 +193,14 @@ if ((assume_yes == 0)); then
 fi
 
 if [[ "$mode" == "stable" ]]; then
-  dart run tool/changelog.dart release --version "$version"
+  changelog_dart release --version "$version"
   echo
   git --no-pager diff --stat -- CHANGELOG.md changelog.json pubspec.yaml
   echo
   git add CHANGELOG.md changelog.json pubspec.yaml
   git commit -m "chore(release): v$version"
   committed=1
-  dart run tool/changelog.dart verify
+  changelog_dart verify
 elif ! git diff --quiet -- pubspec.yaml; then
   git add pubspec.yaml
   git commit -m "chore: bump version to $(sed -n 's/^version: //p' pubspec.yaml)"
