@@ -1903,6 +1903,27 @@ poll lookups=43 maxSlot=42 of 2000
 **全量套件**：改动后 `dart run tool/test.dart` **5011 例，1 个文件失败**（`test/manager/core_manager_test.dart`，单独跑 20 例全绿，是 bundle 隔离导致的既有失败）；**干净基线**同套件失败 **6 个文件**（含同一个 `core_manager_test.dart`）——失败集是基线更宽，改动**未引入新失败**。
 
 ## 7. 已知维护事项
+### 2026-11-16 RecordFeedList 全表索引复核轮次（实测否决，无代码改动）
+
+账本此前只覆盖 `KeyedAnimatedList`（同日在上一小节落地），`RecordFeedList` 从未记录。它同样有一个 `_indexes ??= {for …}` 兜底全表 map（`lib/widgets/record_feed_list.dart:70`），服务的页面是 `lib/views/logs.dart`（4000 行）、`lib/views/dns_queries.dart`（2400 行）。本轮决定在动它之前先量清楚这个 map 到底建不建。
+
+**探针**（ASCII 副本 `D:\Codex\work\flclash-r12-ascii`，`test/r12_feed_index_test.dart`，`ObjectKey.new`，与生产 `keyOf` 同形）在副本的 `lib/widgets/record_feed_list.dart` 里对 `_indexOf` 各路径打点（计数器只在副本，仓库零改动）。
+
+**两种形态的结果**：
+
+| 形态 | indexes | entries | lookups | builtHits | shiftHits | tableHits | misses | maxSlot |
+|---|---|---|---|---|---|---|---|---|
+| 头部插入（不真实） | **1** | 4001 | 43 | 30 | 0 | 42 | 0 | 43 of 4000 |
+| 尾部追加 + 头部裁剪（真实） | **0** | 0 | 43 | 0 | 33 | 0 | 10 | 0 of 4000 |
+
+生产侧 `FixedList.add`/`appendAll`（`lib/common/fixed.dart:37-95`）只从尾部追加、满了从头 `removeRange` 掉，所以真实形态是第二行：**全表 map 一次都没建**。`_builtBefore` + `_trimmed` 位移路径把 43 次可见行查询全部接走，`tableHits=0`。第一行那种形态需要列表在头部插入，FlClash 里没有任何 feed 这么做。
+
+**成本兜底**（3 个独立进程，纯 Dart 循环，map 构建本体）：2400 行 795-968µs、4000 行 435-477µs、8000 行 935-943µs。即使走到兜底也全部低于 1ms，而按 `.agents/skills/ui-performance/SKILL.md` 第 6 条「saves under a millisecond at the largest data, is reported and left out」，两个维度都指向同一结论。
+
+**结论**：维持现有实现，不落代码。第 12 轮结论同向。
+
+轮间教训：本轮先测了一个不存在的形态（头部插入），差一点依据假阳性去改生产代码。探针必须复现生产数据形状——`FixedList` 的追加/裁剪语义就是判据。
+
 
 ### 2026-11-15 CoreController 分支覆盖轮次（core 组覆盖率 81.5% → 84.5%）
 
