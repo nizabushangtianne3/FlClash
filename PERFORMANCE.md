@@ -1902,7 +1902,6 @@ poll lookups=43 maxSlot=42 of 2000
 
 **全量套件**：改动后 `dart run tool/test.dart` **5011 例，1 个文件失败**（`test/manager/core_manager_test.dart`，单独跑 20 例全绿，是 bundle 隔离导致的既有失败）；**干净基线**同套件失败 **6 个文件**（含同一个 `core_manager_test.dart`）——失败集是基线更宽，改动**未引入新失败**。
 
-## 7. 已知维护事项
 ### 2026-11-16 RecordFeedList 全表索引复核轮次（实测否决，无代码改动）
 
 账本此前只覆盖 `KeyedAnimatedList`（同日在上一小节落地），`RecordFeedList` 从未记录。它同样有一个 `_indexes ??= {for …}` 兜底全表 map（`lib/widgets/record_feed_list.dart:70`），服务的页面是 `lib/views/logs.dart`（4000 行）、`lib/views/dns_queries.dart`（2400 行）。本轮决定在动它之前先量清楚这个 map 到底建不建。
@@ -1924,6 +1923,43 @@ poll lookups=43 maxSlot=42 of 2000
 
 轮间教训：本轮先测了一个不存在的形态（头部插入），差一点依据假阳性去改生产代码。探针必须复现生产数据形状——`FixedList` 的追加/裁剪语义就是判据。
 
+
+### 2026-11-16 连接 diff 全表 map 复核轮次（实测否决，无代码改动）
+
+上一轮（第 11 轮）把 `KeyedAnimatedList` 的**回答侧**改成惰性索引后，`_applyItems` 里那两行仍然是每次轮询都跑的整表工作：
+
+```dart
+final oldByKey = {for (final entry in _entries) entry.key: entry};
+final newKeys = {for (final item in items) widget.keyOf(item)};
+```
+
+账本此前以 20000 行推演它约 3997µs，且判定「是 O(n) diff 的必要输入」。本轮先补了规模事实：`KeyedAnimatedList` 全仓唯一使用点是连接页 live 页签（`lib/features/connection/tracker_info_list.dart:180`），行数由 `FixedList(maxRequestsLength)` 决定，即 **1600 行**（暂停态 3200，`lib/common/constant.dart:184-188`）。20000 行不是真实数据，门槛判断必须重做。
+
+**成本（3 个独立进程，纯 Dart 基准，复刻 `_applyItems` 全文，3 次尝试各 300 轮取中位数）**：
+
+| 行数 | current（两张全表 map） | counted（先计数后建 map） | window（位移窗口） |
+|---|---|---|---|
+| 1600 | 500-504µs | 911-920µs | **506-510µs** |
+| 3200 | 1002-1037µs | 1846-1913µs | **1016-1051µs** |
+
+**第一条否决**：`countedPath`（把阈值判断前移、先一遍扫描数出 inserted/removed 再决定是走 diff 还是 `_replaceItems`）比原路径**慢一倍**。原路径建那两张 map 时就已经把计数做完了（`inserted.where` + `removed.where` 只是再读一遍已建好的 map），额外预先扫两遍纯属浪费。
+
+**第二条否决**（本轮主要工作）：`windowPath` 利用生产形态——连接列表是尾部追加 + 头部裁剪，幸存的旧行停在同一个偏移量上——用一个从 `entries[start]` 起的前向窗口回答 diff，避开两张全表 map。初版在 1600 行上量到 **112-113µs（-78%）**、3200 行 **223-225µs（-79%，省 815µs）**，看起来是本轮最大单项。
+
+但随后的等价性校验（400 个随机 trial，逐项比对 key、`_Phase`、item 三方一致）在 trial 1/2/19/172/398 连续抓到语义分歧，逐个补条件后收益归零：
+
+1. **被裁掉的行必须标 `leaving` 并进 `next`**（`removedBefore` 分组的语义）。原路径把窗口外的旧行整体以 leaving 放进 `next` 开头，窗口只放幸存行会少掉整整一段。
+2. **旧列表 key 必须唯一**：重复 key 会让原路径把同一个 `_Entry` 追加两份，窗口只留一份。
+3. **新列表 key 也必须唯一**：新列表重复 key 同样触发原路径的复制行为。
+4. **新列表必须是旧列表的一个完整后缀加追加**：一旦新列表把旧行重新排序（trial 172 里 `684` 从旧列表尾部被提到新列表头部），窗口起点就落在顺序不同的位置上，必须回退。
+
+而条件 2、3 的**验证本身就要扫两张全表建一个 set**，其开销与被省掉的两张全表 map 完全相同——`window` 最终测得 506-510µs vs `current` 500-504µs，差距落在进程内噪声里（三个进程间 <2%）。换句话说：**省掉 map 的收益，被「证明可以省」的前置检查全部吃回去**。
+
+**结论**：维持现有实现，不落代码。`_applyItems` 那两张 map 是 O(n) diff 的固有成本，在 1600/3200 行的真实规模上低于 1ms，按 `.agents/skills/ui-performance/SKILL.md` 第 6 条（saves under a millisecond at the largest data, is reported and left out）两个维度都指向同一结论。
+
+**轮间教训**：账面「估约 3997µs」的候选一旦按真实规模重测可能直接低于门槛；而「绕开 O(n) diff 的全表结构」这类改法要小心——**等价性验证本身常常也是 O(n)**，收益会被验证成本吃掉，除非调用方能提供一个廉价的 key 唯一性保证。本轮共试了三条路径、逐条用 400 trial 等价性校验钉死，探针保留在 `D:\Codex\work\r13-bench`（不依赖 FlClash 包，绕开 sqlite3 构建钩子）。
+
+## 7. 已知维护事项
 
 ### 2026-11-15 CoreController 分支覆盖轮次（core 组覆盖率 81.5% → 84.5%）
 
