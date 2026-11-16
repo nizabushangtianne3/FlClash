@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.0 (2026-11-16)
+
+Internal improvements only.
+
 ## v1.0.12 (2026-11-14)
 
 **Performance**
